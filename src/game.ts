@@ -29,7 +29,7 @@ import { FieldTheme, TeamKey } from './assets'
 
 export interface GameConfig {
   canvas: HTMLCanvasElement
-  mode: 'bot' | '2p' | 'online'
+  mode: 'bot' | '2p' | 'online' | 'practice'
   format?: '1v1' | '2v2'
   difficulty: 'easy' | 'medium' | 'hard'
   theme?: FieldTheme
@@ -472,6 +472,18 @@ export class Game {
       })
     }
 
+    // Efeito Magnus / Spin Curvo no BeatBall (estilo Haxball profissional)
+    if (Math.abs(this.ball.angularVelocity) > 0.02 && bspd > 1.5) {
+      const perpX = -bv.y / bspd
+      const perpY = bv.x / bspd
+      const curveMag = this.ball.angularVelocity * 0.38
+      Matter.Body.setVelocity(this.ball, {
+        x: this.ball.velocity.x + perpX * curveMag,
+        y: this.ball.velocity.y + perpY * curveMag
+      })
+      Matter.Body.setAngularVelocity(this.ball, this.ball.angularVelocity * 0.978)
+    }
+
     // Efeitos visuais e trilhas
     this.renderer.updateBallTrail(this.ball, dt)
     const ballSpd = vlen(this.ball.velocity as Vec2)
@@ -631,6 +643,10 @@ export class Game {
       x: dir.x * force,
       y: dir.y * force
     })
+    // Efeito curvo com base na inclinação vertical do movimento do jogador
+    const spin = (p.dashDir.y || 0) * 0.42 * (isP1 ? 1 : -1)
+    Matter.Body.setAngularVelocity(this.ball, spin)
+
     this.audio.playPowerHit()
     this.particles.emitHit(this.ball.position.x, this.ball.position.y, dir.x * force, dir.y * force)
     this.renderer.triggerShake(6, 0.16)
@@ -646,6 +662,9 @@ export class Game {
       x: dir.x * force,
       y: dir.y * force
     })
+    const spin = (p.dashDir.y || 0) * 0.65 * powerRatio * (p === this.p1 ? 1 : -1)
+    Matter.Body.setAngularVelocity(this.ball, spin)
+
     this.audio.playPowerHit()
     this.particles.emitPowerShot(this.ball.position.x, this.ball.position.y, dir.x * force, dir.y * force)
     this.renderer.triggerShake(powerRatio * 11, 0.22)
@@ -827,6 +846,15 @@ export class Game {
     this.raf = requestAnimationFrame(this.loop)
   }
   isPaused() { return this.paused }
+
+  setTrainingMode(enabled: boolean) {
+    if (enabled) {
+      this.timeLeft = 999999
+      this.bot = null
+      this.phase = 'PLAYING'
+      this.audio.startBGM()
+    }
+  }
 
   destroy() {
     cancelAnimationFrame(this.raf)

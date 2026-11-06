@@ -415,11 +415,15 @@ export class TurboSoccerGame {
       e.preventDefault()
       this.togglePause()
     }
-    // Teclas de Quick Chat / Emote (1, 2, 3, 4)
+    // Teclas de Quick Chat / Emote (1 a 8)
     if (e.code === 'Digit1') this.showQuickChat('⚽ Golaço! VAI!')
     if (e.code === 'Digit2') this.showQuickChat('🛡️ Grande defesa!')
     if (e.code === 'Digit3') this.showQuickChat('⚡ Passa a bola aqui!')
     if (e.code === 'Digit4') this.showQuickChat('🔥 Que manobra!')
+    if (e.code === 'Digit5') this.showQuickChat('🚀 Na trave!')
+    if (e.code === 'Digit6') this.showQuickChat('🏎️ Sai da frente!')
+    if (e.code === 'Digit7') this.showQuickChat('🤝 Belo passe!')
+    if (e.code === 'Digit8') this.showQuickChat('👏 Boa partida!')
   }
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -2227,6 +2231,20 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       pc.jumpHoldTimer -= dt
     }
 
+    // ── FLIP CANCEL (Rocket League Pro Mechanic) ──
+    // Se o jogador pressionar o direcional oposto durante o flip, cancela a rotação mantendo o impulso!
+    if (pc.flipTimer > 0) {
+      let cancelZ = 0
+      if (gp.connected && Math.abs(gp.stickY) > 0.35) cancelZ = -Math.sign(gp.stickY)
+      if (this.keys['KeyS'] || this.keys['ArrowDown']) cancelZ = -1
+      if (this.keys['KeyW'] || this.keys['ArrowUp'])   cancelZ = 1
+      if (cancelZ !== 0 && pc.flipDirZ !== 0 && Math.sign(cancelZ) !== Math.sign(pc.flipDirZ)) {
+        pc.flipTimer = 0.44 // finaliza a rotação do flip imediatamente
+        pc.pitch = 0
+        pc.aerialPitch = 0
+      }
+    }
+
     // ── CONTROLE AÉREO CONTÍNUO (PITCH E ROLL NO AR — Rocket League / Turbo Soccer) ──
     if (!pc.grounded && pc.flipTimer <= 0 && !pc.flipLocked) {
       let pitchInput = 0
@@ -2234,11 +2252,15 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       if (gp.connected) {
         if (Math.abs(gp.stickY) > 0.18) pitchInput = -gp.stickY // frente (-stickY) = pitch DOWN (+), trás = pitch UP (-)
         if (Math.abs(gp.steerX) > 0.18) rollInput = gp.steerX
+        if (gp.lb) rollInput -= 1.0 // Air Roll Esquerda
+        if (gp.rb) rollInput += 1.0 // Air Roll Direita
       } else {
         if (this.keys['KeyW'] || this.keys['ArrowUp'])   pitchInput = 1
         if (this.keys['KeyS'] || this.keys['ArrowDown']) pitchInput = -1
         if (this.keys['KeyA'] || this.keys['ArrowLeft']) rollInput = -1
         if (this.keys['KeyD'] || this.keys['ArrowRight']) rollInput = 1
+        if (this.keys['KeyQ']) rollInput = -1.2 // Air Roll Livre Q
+        if (this.keys['KeyE']) rollInput = 1.2  // Air Roll Livre E
       }
 
       if (pitchInput !== 0) {
@@ -2247,7 +2269,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         pc.aerialPitch *= 0.90
       }
       if (rollInput !== 0) {
-        pc.aerialRoll += rollInput * 3.5 * dt
+        pc.aerialRoll += rollInput * 3.8 * dt
       } else {
         pc.aerialRoll *= 0.90
       }
@@ -2385,7 +2407,24 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       }
     }
 
-    // ── MOVIMENTO HORIZONTAL NO SOLO ──
+    // ── MOVIMENTO HORIZONTAL NO SOLO & WALL RIDING (Rocket League Style) ──
+    const limX = FIELD_W / 2 - 2.8
+    const limZ = FIELD_L / 2 - 2.8
+    const nearWallX = Math.abs(car.pos.x) >= limX - 1.2
+    const nearWallZ = Math.abs(car.pos.z) >= limZ - 1.2 && Math.abs(car.pos.x) > GOAL_W / 2
+
+    // Wall Riding: quando o carro atinge as paredes com velocidade, sobe a rampa curva e anda na parede
+    if ((nearWallX || nearWallZ) && Math.abs(car.speed) > 0.35) {
+      const climbSpeed = Math.abs(car.speed) * 28 * dt
+      car.pos.y = Math.min(CEIL_H - 2.5, car.pos.y + climbSpeed)
+      car.grounded = true // permite pular da parede!
+      car.jumpCount = 0
+      if (nearWallX) {
+        const wallSide = Math.sign(car.pos.x)
+        car.rollAngle = -wallSide * Math.PI * 0.45 // inclina as rodas contra a parede
+      }
+    }
+
     if (car.grounded) {
       const spd = car.speed * 50 * dt
       car.pos.x += Math.sin(car.yaw) * spd
@@ -2395,10 +2434,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
     // Aplica pitch/roll visual aereo
     car.pitch     = car.aerialPitch
-    car.rollAngle = car.isRolling ? car.rollAngle : car.aerialRoll
+    car.rollAngle = car.isRolling ? car.rollAngle : (nearWallX && car.pos.y > 1.0 ? car.rollAngle : car.aerialRoll)
 
-    const limX = FIELD_W / 2 - 2.8
-    const limZ = FIELD_L / 2 - 2.8
     car.pos.x = Math.max(-limX, Math.min(limX, car.pos.x))
     car.pos.z = Math.max(-limZ, Math.min(limZ, car.pos.z))
 

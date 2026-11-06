@@ -509,6 +509,25 @@ export class Renderer {
     ctx.strokeStyle = '#141426'
     ctx.lineWidth = 4
     ctx.stroke()
+
+    // Badge flutuante acima do personagem (estilo Haxball / BeatBall)
+    ctx.save()
+    const badgeY = y - r - 14
+    const label = num === 1 ? 'VOCÊ' : `P${num}`
+    ctx.font = `bold ${Math.round(r * 0.48)}px 'Inter', sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const textW = ctx.measureText(label).width + 12
+    ctx.fillStyle = 'rgba(10, 14, 23, 0.80)'
+    ctx.beginPath()
+    ctx.roundRect(x - textW / 2, badgeY - 9, textW, 18, 5)
+    ctx.fill()
+    ctx.strokeStyle = color
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.fillStyle = num === 1 ? '#00ff88' : '#ffffff'
+    ctx.fillText(label, x, badgeY)
+    ctx.restore()
   }
 
   drawCountdown(text: string) {
