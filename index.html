@@ -925,6 +925,24 @@
     <button class="btn btn-secondary turbo-theme-btn active" data-turbo-theme="classic" style="border-color:#00ff88; color:#00ff88;">☀️ DIURNO</button>
     <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="cyber" style="border-color:#00cfff; color:#00cfff;">🌙 NOTURNO</button>
     <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="futsal" style="border-color:#ff6b00; color:#ff6b00;">🥅 FUTSAL</button>
+    <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="snowday" style="border-color:#38bdf8; color:#38bdf8;">🏒 SNOW DAY (GELO)</button>
+  </div>
+
+  <!-- MODO DE JOGO / RUMBLE -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-orange); letter-spacing:2px; margin-top:6px;">🎲 MODO DE JOGO:</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+    <button class="btn btn-secondary turbo-mode-btn active" data-turbo-mode="standard" style="border-color:#00ff88; color:#00ff88;">⚽ CLÁSSICO</button>
+    <button class="btn btn-secondary turbo-mode-btn" data-turbo-mode="rumble" style="border-color:#ffd23f; color:#ffd23f;">🧲 RUMBLE (POWER-UPS)</button>
+    <button class="btn btn-secondary turbo-mode-btn" data-turbo-mode="snowday" style="border-color:#38bdf8; color:#38bdf8;">🏒 HOCKEY NO GELO</button>
+  </div>
+
+  <!-- EXPLOSÃO DE GOL PERSONALIZADA -->
+  <div style="font-size:11px; font-weight:700; color:#ff4d7d; letter-spacing:2px; margin-top:6px;">💥 EXPLOSÃO DE GOL:</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+    <button class="btn btn-secondary turbo-explosion-btn active" data-explosion="toon" style="border-color:#ff6600; color:#ff6600;">🔥 TOON FIRE</button>
+    <button class="btn btn-secondary turbo-explosion-btn" data-explosion="supernova" style="border-color:#c084fc; color:#c084fc;">🌌 SUPERNOVA</button>
+    <button class="btn btn-secondary turbo-explosion-btn" data-explosion="lightning" style="border-color:#00e5ff; color:#00e5ff;">⚡ RAIO EMP</button>
+    <button class="btn btn-secondary turbo-explosion-btn" data-explosion="confetti" style="border-color:#22c55e; color:#22c55e;">🎉 CONFETE</button>
   </div>
 
   <!-- AJUSTES DE CORRIDA (PRÉ-PARTIDA) -->
@@ -1059,6 +1077,21 @@
       <input class="online-input" id="online-join-code" placeholder="CÓDIGO DA SALA" maxlength="12" autocomplete="off" spellcheck="false" />
       <button class="btn btn-primary" id="btn-online-join">🔗 ENTRAR NA SALA</button>
       <div class="online-status" id="online-join-status"></div>
+    </div>
+  </div>
+
+  <!-- LISTA DE SALAS PÚBLICAS (LOBBY BROWSER) -->
+  <div style="width:min(680px,94vw); background:rgba(15,23,42,0.88); border:2px solid rgba(0,255,136,0.3); border-radius:18px; padding:14px 18px; margin-top:10px; box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-family:'Orbitron',sans-serif; font-size:12px; font-weight:900; color:#00ff88; letter-spacing:1px; display:flex; align-items:center; gap:6px;">
+        <span>🌐</span> SALAS PÚBLICAS DISPONÍVEIS
+      </div>
+      <button class="btn btn-secondary" id="btn-refresh-rooms" style="padding:4px 12px; font-size:10px; border-color:#00cfff; color:#00cfff;">
+        🔄 ATUALIZAR
+      </button>
+    </div>
+    <div id="online-rooms-container" style="display:flex; flex-direction:column; gap:8px; max-height:160px; overflow-y:auto;">
+      <div style="color:rgba(255,255,255,0.4); font-size:11px; text-align:center; padding:12px;">Nenhuma sala pública encontrada no momento. Crie uma para aparecer aqui!</div>
     </div>
   </div>
 

@@ -14,6 +14,7 @@ import GUI from 'lil-gui'
 import { GamepadManager } from './gamepad'
 import { initAudio, AudioManager, setAudioMuted, isAudioMuted } from './audio'
 import { CAR_MODELS } from './carModels'
+import { dbService } from './supabase'
 
 
 const FIELD_W  = 220      // Arena 4v4 épica (era 160)
@@ -78,10 +79,13 @@ interface SmokePuff {
   maxLife: number
 }
 
-export type TurboTheme = 'classic' | 'cyber' | 'futsal'
+export type TurboTheme = 'classic' | 'cyber' | 'futsal' | 'snowday'
 
 export type TurboBotLevel = 'easy' | 'medium' | 'hard'
 export type TurboMatchFormat = '1v1' | '2v2' | '3v3' | '4v4'
+export type GoalExplosionType = 'toon' | 'supernova' | 'lightning' | 'confetti'
+export type TurboGameMode = 'standard' | 'rumble' | 'snowday'
+export type RumblePowerup = 'magnet' | 'shockwave' | 'punch' | 'overdrive'
 
 export interface TurboTuning {
   playerSpeedMult?: number
@@ -91,6 +95,8 @@ export interface TurboTuning {
   theme?: TurboTheme
   botLevel?: TurboBotLevel
   matchFormat?: TurboMatchFormat
+  goalExplosion?: GoalExplosionType
+  gameMode?: TurboGameMode
 }
 
 // ============================================================
@@ -247,6 +253,33 @@ export class TurboSoccerGame {
   private selectedCarModelId = 'octane-cartoon'
   private theme: TurboTheme = 'classic'
   private botLevel: TurboBotLevel = 'medium'
+  private goalExplosion: GoalExplosionType = 'toon'
+  private gameMode: TurboGameMode = 'standard'
+
+  // Rumble
+  private rumblePowerup: RumblePowerup | null = null
+  private rumbleTimer = 7.0
+  private rumbleActive: { type: RumblePowerup; timeLeft: number } | null = null
+  private botRumbleStates: Map<CarObject, { powerup: RumblePowerup | null; timer: number; active: { type: RumblePowerup; timeLeft: number } | null }> = new Map()
+
+  // Instant Replay
+  private replayBuffer: Array<{
+    ballPos: THREE.Vector3
+    ballRot: THREE.Euler
+    cars: Array<{ pos: THREE.Vector3; yaw: number; pitch: number; roll: number }>
+  }> = []
+  private isReplaying = false
+  private replayPlaybackFrames: Array<{
+    ballPos: THREE.Vector3
+    ballRot: THREE.Euler
+    cars: Array<{ pos: THREE.Vector3; yaw: number; pitch: number; roll: number }>
+  }> = []
+  private replayPlaybackIdx = 0
+  private hudReplayBanner?: HTMLElement
+  private hudRumbleCard?: HTMLElement
+  private hudRumbleIcon?: HTMLElement
+  private hudRumbleName?: HTMLElement
+  private hudRumbleHint?: HTMLElement
 
   constructor(container: HTMLElement, carModelId = 'octane-cartoon', tuning?: TurboTuning) {
     this.container = container
@@ -254,6 +287,11 @@ export class TurboSoccerGame {
     this.theme = tuning?.theme ?? 'classic'
     this.botLevel = tuning?.botLevel ?? 'medium'
     this.matchFormat = tuning?.matchFormat ?? '1v1'
+    this.goalExplosion = tuning?.goalExplosion ?? 'toon'
+    this.gameMode = tuning?.gameMode ?? 'standard'
+    if (this.gameMode === 'snowday') {
+      this.theme = 'snowday'
+    }
 
     if (tuning) {
       if (tuning.playerSpeedMult !== undefined) this.studioParams.playerSpeedMult = tuning.playerSpeedMult
@@ -282,7 +320,7 @@ export class TurboSoccerGame {
 
     // 1. Cena Cartoon
     this.scene = new THREE.Scene()
-    const themeBg = this.theme === 'cyber' ? 0x0b1020 : this.theme === 'futsal' ? 0x1e293b : 0x38bdf8
+    const themeBg = this.theme === 'cyber' ? 0x0b1020 : this.theme === 'futsal' ? 0x1e293b : this.theme === 'snowday' ? 0x93c5fd : 0x38bdf8
     this.scene.background = new THREE.Color(themeBg)
 
 
@@ -406,6 +444,12 @@ export class TurboSoccerGame {
 
   private onKeyDown = (e: KeyboardEvent) => {
     this.keys[e.code] = true
+    if (e.code === 'KeyR' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
+      this.activatePlayerRumble()
+    }
+    if (e.code === 'Space' && this.isReplaying) {
+      this.stopGoalReplay()
+    }
     if (e.code === 'KeyC') {
       this.triggerBarrelRoll()
     }
@@ -877,9 +921,10 @@ export class TurboSoccerGame {
     c.height = 1024
     const ctx = c.getContext('2d')!
 
-    const grassA = this.theme === 'cyber' ? '#0b1220' : this.theme === 'futsal' ? '#b45309' : '#22c55e'
-    const grassB = this.theme === 'cyber' ? '#1e1b4b' : this.theme === 'futsal' ? '#92400e' : '#16a34a'
-    const lineCol = this.theme === 'cyber' ? '#00cfff' : '#ffffff'
+    const isSnow = this.theme === 'snowday'
+    const grassA = isSnow ? '#f0f9ff' : this.theme === 'cyber' ? '#0b1220' : this.theme === 'futsal' ? '#b45309' : '#22c55e'
+    const grassB = isSnow ? '#e0f2fe' : this.theme === 'cyber' ? '#1e1b4b' : this.theme === 'futsal' ? '#92400e' : '#16a34a'
+    const lineCol = isSnow ? '#0284c7' : this.theme === 'cyber' ? '#00cfff' : '#ffffff'
 
 
     ctx.fillStyle = grassA
@@ -1824,6 +1869,29 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         </div>
       </div>
 
+      <!-- BANNER DE REPLAY DA JOGADA -->
+      <div id="turbo-replay-banner" style="position:absolute;top:85px;left:50%;transform:translateX(-50%);
+        display:none;align-items:center;gap:12px;background:rgba(20,20,38,0.92);
+        border:2px solid #00cfff;border-radius:20px;padding:8px 22px;box-shadow:0 0 25px rgba(0,207,255,0.6);
+        pointer-events:all;z-index:220;">
+        <span style="font-size:16px;">⏪</span>
+        <span style="color:#00cfff;font-weight:900;font-size:13px;letter-spacing:2px;">REPLAY DA JOGADA (CÂMERA LENTA)</span>
+        <button id="btn-skip-replay" style="background:#ff5500;border:none;color:white;border-radius:12px;
+          padding:5px 14px;font-size:10px;font-weight:900;cursor:pointer;font-family:'Orbitron',sans-serif;margin-left:6px;">PULAR [ESPAÇO]</button>
+      </div>
+
+      <!-- CARD DE POWER-UP RUMBLE -->
+      <div id="turbo-rumble-card" style="position:absolute;bottom:140px;right:28px;display:none;
+        background:rgba(30,41,59,0.92);border:3px solid #facc15;border-radius:18px;padding:10px 16px;
+        align-items:center;gap:12px;box-shadow:0 0 20px rgba(250,204,21,0.5);
+        pointer-events:all;cursor:pointer;user-select:none;z-index:110;">
+        <div id="turbo-rumble-icon" style="font-size:30px;filter:drop-shadow(0 0 8px #facc15);">⏳</div>
+        <div>
+          <div id="turbo-rumble-name" style="font-size:11px;font-weight:900;color:#facc15;letter-spacing:1px;">CARREGANDO...</div>
+          <div id="turbo-rumble-hint" style="font-size:9px;color:rgba(255,255,255,0.7);margin-top:2px;">[R] OU [CTRL]</div>
+        </div>
+      </div>
+
       <!-- OVERLAY DE PAUSA -->
       <div id="turbo-pause-overlay" style="position:absolute;inset:0;display:none;
         align-items:center;justify-content:center;flex-direction:column;gap:18px;
@@ -1848,6 +1916,22 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     this.hudCtrlMode   = document.getElementById('turbo-ctrl-mode')!
     this.hudCountdown  = document.getElementById('turbo-countdown-text')!
     this.hudCamStatus  = document.getElementById('ballcam-status')!
+
+    this.hudReplayBanner = document.getElementById('turbo-replay-banner') || undefined
+    this.hudRumbleCard   = document.getElementById('turbo-rumble-card') || undefined
+    this.hudRumbleIcon   = document.getElementById('turbo-rumble-icon') || undefined
+    this.hudRumbleName   = document.getElementById('turbo-rumble-name') || undefined
+    this.hudRumbleHint   = document.getElementById('turbo-rumble-hint') || undefined
+
+    if (this.gameMode === 'rumble' && this.hudRumbleCard) {
+      this.hudRumbleCard.style.display = 'flex'
+      this.hudRumbleCard.addEventListener('click', () => this.activatePlayerRumble())
+    }
+
+    const btnSkipReplay = document.getElementById('btn-skip-replay')
+    if (btnSkipReplay) {
+      btnSkipReplay.addEventListener('click', () => this.stopGoalReplay())
+    }
 
     document.getElementById('btn-toggle-cam')!.addEventListener('click', () => this.toggleBallCam())
     document.getElementById('btn-toggle-studio')!.addEventListener('click', () => this.toggleStudioGUI())
@@ -1935,6 +2019,12 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     const dt = Math.min(this.clock.getDelta(), 0.05)
 
     if (!this.paused) {
+      if (this.isReplaying) {
+        this.updateReplayPlayback(dt)
+        this.outlineEffect.render(this.scene, this.camera)
+        return
+      }
+
       this.carHitCooldown = Math.max(0, this.carHitCooldown - dt)
 
       // 1. Contagem Regressiva de Kickoff (3.. 2.. 1.. VAI!)
@@ -1953,6 +2043,25 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         this.updateDynamicObstacles(dt)
         this.updateBoostCoins(dt)
         this.updateDemoRespawn(dt)
+
+        if (this.gameMode === 'rumble') {
+          this.updateRumble(dt)
+        }
+
+        // Buffer do Instant Replay
+        this.replayBuffer.push({
+          ballPos: this.ball.pos.clone(),
+          ballRot: this.ball.mesh.rotation.clone(),
+          cars: this.allCars.map((c) => ({
+            pos: c.pos.clone(),
+            yaw: c.yaw,
+            pitch: c.pitch,
+            roll: c.roll
+          }))
+        })
+        if (this.replayBuffer.length > 200) {
+          this.replayBuffer.shift()
+        }
       } else {
         for (const car of this.allCars) car.freeze()
       }
@@ -3148,7 +3257,8 @@ private resolveCarCarCollision() {
       }
 
       // Fricção no gramado (impede a bola de rolar infinitamente e entrar no gol sozinha)
-      const grassFriction = Math.pow(0.978, dt * 60)
+      const baseFriction = this.gameMode === 'snowday' ? 0.995 : 0.978
+      const grassFriction = Math.pow(baseFriction, dt * 60)
       b.vel.x *= grassFriction
       b.vel.z *= grassFriction
       if (Math.hypot(b.vel.x, b.vel.z) < 0.14) {
@@ -3359,6 +3469,27 @@ private resolveCarCarCollision() {
         this.triggerCameraShake(0.25)
       }
 
+      // EFEITO DO SUPER SOCO / BOLA DE FOGO NO IMPACTO COM A BOLA
+      const isPunchActive = (car === this.playerCar && this.rumbleActive?.type === 'punch') ||
+        (this.botRumbleStates.get(car)?.active?.type === 'punch')
+      if (isPunchActive) {
+        b.vel.multiplyScalar(2.25)
+        this.emitCartoonStarBurst(b.pos, 32, 0xff3300)
+        this.triggerCameraShake(1.1)
+        this.audio.playDemo()
+        if (car === this.playerCar) {
+          this.rumbleActive = null
+          this.rumbleTimer = 10.0
+          this.updateRumbleHUD()
+        } else {
+          const st = this.botRumbleStates.get(car)
+          if (st) {
+            st.active = null
+            st.timer = 12.0
+          }
+        }
+      }
+
       const maxBallSpeed = 52
       if (b.vel.length() > maxBallSpeed) {
         b.vel.setLength(maxBallSpeed)
@@ -3495,7 +3626,7 @@ private resolveCarCarCollision() {
 
   private onGoalScored(scorer: 'player' | 'bot') {
     if (this.goalCooldown > 0) return
-    this.goalCooldown = 3.5
+    this.goalCooldown = 4.2
 
     if (scorer === 'player') {
       this.scorePlayer++
@@ -3505,16 +3636,6 @@ private resolveCarCarCollision() {
       this.audio.playGoal()
       this.audio.playVictory()
       this.audio.playCheer()
-
-
-      this.emitCartoonStarBurst(this.ball.pos, 24, scorer === 'player' ? 0xffd23f : 0x00cfff)
-      this.triggerCameraShake(0.85)
-      confetti({
-        particleCount: 120,
-        spread: 90,
-        origin: { y: 0.55 },
-        colors: ['#ff5500', '#facc15', '#22c55e', '#38bdf8', '#ffffff']
-      })
     } else {
       this.scoreBot++
       this.hudScoreB.textContent = String(this.scoreBot)
@@ -3523,6 +3644,8 @@ private resolveCarCarCollision() {
       this.audio.playGoal()
       this.audio.playCheer()
     }
+
+    this.triggerGoalExplosion(this.ball.pos, this.goalExplosion, scorer)
 
     const sub = document.getElementById('turbo-goal-sub')!
     sub.textContent = `${this.scorePlayer} × ${this.scoreBot}`
@@ -3537,8 +3660,341 @@ private resolveCarCarCollision() {
     setTimeout(() => {
       if (this.destroyed) return
       this.hudGoalBanner.style.display = 'none'
+      this.startGoalReplay()
+    }, 1800)
+  }
+
+  private triggerGoalExplosion(pos: THREE.Vector3, type: GoalExplosionType, scorer: 'player' | 'bot') {
+    // 1. Shockwave empurrando todos os carros para longe do gol
+    for (const car of this.allCars) {
+      const d = car.pos.distanceTo(pos)
+      if (d < 95 && d > 1) {
+        const dir = car.pos.clone().sub(pos).normalize()
+        const force = Math.max(0, (95 - d) / 95) * 52
+        car.vel.add(dir.multiplyScalar(force))
+        car.vel.y += 20 * (1 - d / 95)
+      }
+    }
+
+    // 2. Efeito visual temático da Goal Explosion
+    if (type === 'supernova') {
+      this.emitCartoonStarBurst(pos, 45, 0xa855f7)
+      this.emitCartoonStarBurst(pos.clone().add(new THREE.Vector3(0, 4, 0)), 35, 0x06b6d4)
+      this.triggerCameraShake(1.2)
+      this.audio.playVictory()
+      confetti({
+        particleCount: 160,
+        spread: 120,
+        origin: { y: 0.5 },
+        colors: ['#a855f7', '#06b6d4', '#ec4899', '#3b82f6', '#ffffff']
+      })
+    } else if (type === 'lightning') {
+      this.emitCartoonStarBurst(pos, 35, 0x00e5ff)
+      this.emitCartoonStarBurst(pos.clone().add(new THREE.Vector3(0, 6, 0)), 25, 0xffffff)
+      this.triggerCameraShake(1.05)
+      this.audio.playDemo()
+      confetti({
+        particleCount: 140,
+        spread: 100,
+        origin: { y: 0.5 },
+        colors: ['#00e5ff', '#38bdf8', '#ffffff', '#ffd23f']
+      })
+    } else if (type === 'confetti') {
+      this.emitCartoonStarBurst(pos, 28, 0x22c55e)
+      this.triggerCameraShake(0.7)
+      this.audio.playCheer()
+      confetti({
+        particleCount: 320,
+        spread: 140,
+        origin: { y: 0.45 },
+        colors: ['#ff0055', '#00ff88', '#00cfff', '#ffd23f', '#ff6600', '#a855f7']
+      })
+    } else {
+      // 'toon' clássico
+      this.emitCartoonStarBurst(pos, 32, scorer === 'player' ? 0xffd23f : 0x00cfff)
+      this.triggerCameraShake(0.85)
+      confetti({
+        particleCount: 140,
+        spread: 95,
+        origin: { y: 0.55 },
+        colors: ['#ff5500', '#facc15', '#22c55e', '#38bdf8', '#ffffff']
+      })
+    }
+  }
+
+  private startGoalReplay() {
+    if (this.replayBuffer.length < 30) {
       this.resetKickoff()
-    }, 2800)
+      return
+    }
+
+    this.isReplaying = true
+    this.replayPlaybackFrames = [...this.replayBuffer]
+    this.replayPlaybackIdx = 0
+
+    if (this.hudReplayBanner) {
+      this.hudReplayBanner.style.display = 'flex'
+    }
+
+    setTimeout(() => {
+      if (this.isReplaying) {
+        this.stopGoalReplay()
+      }
+    }, 3500)
+  }
+
+  public stopGoalReplay() {
+    if (!this.isReplaying) return
+    this.isReplaying = false
+    if (this.hudReplayBanner) {
+      this.hudReplayBanner.style.display = 'none'
+    }
+    this.resetKickoff()
+  }
+
+  private updateReplayPlayback(dt: number) {
+    if (!this.isReplaying || this.replayPlaybackFrames.length === 0) return
+
+    this.replayPlaybackIdx += Math.max(1, Math.round(dt * 30))
+
+    if (this.replayPlaybackIdx >= this.replayPlaybackFrames.length) {
+      this.stopGoalReplay()
+      return
+    }
+
+    const frame = this.replayPlaybackFrames[this.replayPlaybackIdx]
+    if (!frame) return
+
+    this.ball.pos.copy(frame.ballPos)
+    this.ball.mesh.position.copy(frame.ballPos)
+    this.ball.mesh.rotation.copy(frame.ballRot)
+
+    for (let i = 0; i < this.allCars.length && i < frame.cars.length; i++) {
+      const c = this.allCars[i]
+      const cf = frame.cars[i]
+      c.pos.copy(cf.pos)
+      c.yaw = cf.yaw
+      c.pitch = cf.pitch
+      c.roll = cf.roll
+      c.mesh.position.copy(cf.pos)
+      c.mesh.rotation.set(cf.pitch, cf.yaw, cf.roll, 'YXZ')
+    }
+
+    const camOffset = new THREE.Vector3(0, 18, 36)
+    this.camera.position.lerp(this.ball.pos.clone().add(camOffset), 0.12)
+    this.camera.lookAt(this.ball.pos)
+  }
+
+  public activatePlayerRumble() {
+    if (this.gameMode !== 'rumble' || !this.rumblePowerup || this.rumbleActive) return
+    const p = this.rumblePowerup
+    this.rumblePowerup = null
+
+    if (p === 'shockwave') {
+      this.triggerShockwave(this.playerCar.pos)
+      this.rumbleTimer = 10.0
+      this.updateRumbleHUD()
+      this.showQuickChat('💨 ONDA DE CHOQUE!')
+      return
+    }
+
+    if (p === 'magnet') {
+      this.rumbleActive = { type: 'magnet', timeLeft: 4.0 }
+      this.audio.playCheer()
+      this.showQuickChat('🧲 ÍMÃ ATIVADO!')
+    } else if (p === 'punch') {
+      this.rumbleActive = { type: 'punch', timeLeft: 7.0 }
+      this.audio.playGoal()
+      this.showQuickChat('🔥 SUPER SOCO PRONTO!')
+    } else if (p === 'overdrive') {
+      this.rumbleActive = { type: 'overdrive', timeLeft: 5.0 }
+      this.audio.playVictory()
+      this.showQuickChat('⚡ NITRO OVERDRIVE!')
+    }
+    this.updateRumbleHUD()
+  }
+
+  private activateBotRumble(bot: CarObject, st: { powerup: RumblePowerup | null; timer: number; active: { type: RumblePowerup; timeLeft: number } | null }) {
+    if (!st.powerup || st.active) return
+    const p = st.powerup
+    st.powerup = null
+
+    if (p === 'shockwave') {
+      this.triggerShockwave(bot.pos)
+      st.timer = 11.0 + Math.random() * 4.0
+      return
+    }
+
+    if (p === 'magnet') {
+      st.active = { type: 'magnet', timeLeft: 3.5 }
+    } else if (p === 'punch') {
+      st.active = { type: 'punch', timeLeft: 6.0 }
+    } else if (p === 'overdrive') {
+      st.active = { type: 'overdrive', timeLeft: 4.5 }
+      bot.boost = 100
+    }
+  }
+
+  private triggerShockwave(origin: THREE.Vector3) {
+    this.audio.playDemo()
+    this.triggerCameraShake(0.9)
+    this.emitCartoonStarBurst(origin, 28, 0x00cfff)
+
+    for (const car of this.allCars) {
+      const d = car.pos.distanceTo(origin)
+      if (d > 0.5 && d < 44) {
+        const dir = car.pos.clone().sub(origin).normalize()
+        const force = (1 - d / 44) * 48
+        car.vel.add(dir.multiplyScalar(force))
+        car.vel.y += 18 * (1 - d / 44)
+      }
+    }
+
+    const ballD = this.ball.pos.distanceTo(origin)
+    if (ballD < 45) {
+      const dir = this.ball.pos.clone().sub(origin).normalize()
+      const force = (1 - ballD / 45) * 58
+      this.ball.vel.add(dir.multiplyScalar(force))
+      this.ball.vel.y += 16
+    }
+  }
+
+  private updateRumble(dt: number) {
+    if (this.rumblePowerup === null && !this.rumbleActive) {
+      this.rumbleTimer -= dt
+      if (this.rumbleTimer <= 0) {
+        const pool: RumblePowerup[] = ['magnet', 'shockwave', 'punch', 'overdrive']
+        this.rumblePowerup = pool[Math.floor(Math.random() * pool.length)]
+        this.updateRumbleHUD()
+        this.audio.playCoin()
+      } else {
+        this.updateRumbleHUD()
+      }
+    }
+
+    if (this.rumbleActive) {
+      this.rumbleActive.timeLeft -= dt
+      if (this.rumbleActive.type === 'magnet') {
+        const toCar = this.playerCar.pos.clone().sub(this.ball.pos)
+        const dist = toCar.length()
+        if (dist < 55 && dist > 2) {
+          toCar.normalize()
+          this.ball.vel.add(toCar.multiplyScalar(44 * dt))
+          this.emitCartoonStarBurst(this.ball.pos.clone().addScaledVector(toCar, 0.5), 1, 0x00cfff)
+        }
+      } else if (this.rumbleActive.type === 'overdrive') {
+        this.playerBoost = 100
+        this.playerCar.speed = Math.max(this.playerCar.speed, 1.45)
+      }
+
+      if (this.rumbleActive.timeLeft <= 0) {
+        this.rumbleActive = null
+        this.rumbleTimer = 10.0
+        this.updateRumbleHUD()
+      }
+    }
+
+    for (const bot of this.allCars) {
+      if (bot === this.playerCar) continue
+      let st = this.botRumbleStates.get(bot)
+      if (!st) {
+        st = { powerup: null, timer: 7.0 + Math.random() * 5.0, active: null }
+        this.botRumbleStates.set(bot, st)
+      }
+
+      if (st.powerup === null && !st.active) {
+        st.timer -= dt
+        if (st.timer <= 0) {
+          const pool: RumblePowerup[] = ['magnet', 'shockwave', 'punch', 'overdrive']
+          st.powerup = pool[Math.floor(Math.random() * pool.length)]
+        }
+      }
+
+      if (st.powerup && !st.active) {
+        const d = bot.pos.distanceTo(this.ball.pos)
+        if (st.powerup === 'magnet' && d < 40) {
+          this.activateBotRumble(bot, st)
+        } else if (st.powerup === 'shockwave' && d < 18) {
+          this.activateBotRumble(bot, st)
+        } else if (st.powerup === 'punch' && d < 25) {
+          this.activateBotRumble(bot, st)
+        } else if (st.powerup === 'overdrive' && d > 35) {
+          this.activateBotRumble(bot, st)
+        }
+      }
+
+      if (st.active) {
+        st.active.timeLeft -= dt
+        if (st.active.type === 'magnet') {
+          const toCar = bot.pos.clone().sub(this.ball.pos)
+          const dist = toCar.length()
+          if (dist < 45 && dist > 2) {
+            toCar.normalize()
+            this.ball.vel.add(toCar.multiplyScalar(36 * dt))
+          }
+        }
+        if (st.active.timeLeft <= 0) {
+          st.active = null
+          st.timer = 11.0 + Math.random() * 4.0
+        }
+      }
+    }
+  }
+
+  private updateRumbleHUD() {
+    if (!this.hudRumbleCard || !this.hudRumbleIcon || !this.hudRumbleName) return
+    if (this.gameMode !== 'rumble') {
+      this.hudRumbleCard.style.display = 'none'
+      return
+    }
+
+    this.hudRumbleCard.style.display = 'flex'
+
+    if (this.rumbleActive) {
+      const icons: Record<RumblePowerup, string> = {
+        magnet: '🧲',
+        shockwave: '💨',
+        punch: '🔥',
+        overdrive: '⚡'
+      }
+      const names: Record<RumblePowerup, string> = {
+        magnet: 'ÍMÃ ATIVO',
+        shockwave: 'CHOQUE!',
+        punch: 'SUPER SOCO!',
+        overdrive: 'OVERDRIVE!'
+      }
+      this.hudRumbleIcon.textContent = icons[this.rumbleActive.type]
+      this.hudRumbleName.textContent = `${names[this.rumbleActive.type]} (${this.rumbleActive.timeLeft.toFixed(1)}s)`
+      this.hudRumbleCard.style.borderColor = '#00ff88'
+      this.hudRumbleCard.style.boxShadow = '0 0 25px rgba(0,255,136,0.7)'
+      return
+    }
+
+    if (this.rumblePowerup) {
+      const icons: Record<RumblePowerup, string> = {
+        magnet: '🧲',
+        shockwave: '💨',
+        punch: '🔥',
+        overdrive: '⚡'
+      }
+      const names: Record<RumblePowerup, string> = {
+        magnet: 'ÍMÃ DA BOLA',
+        shockwave: 'ONDA DE CHOQUE',
+        punch: 'SUPER SOCO',
+        overdrive: 'SUPER NITRO'
+      }
+      this.hudRumbleIcon.textContent = icons[this.rumblePowerup]
+      this.hudRumbleName.textContent = names[this.rumblePowerup]
+      this.hudRumbleCard.style.borderColor = '#ffd23f'
+      this.hudRumbleCard.style.boxShadow = '0 0 25px rgba(255,210,63,0.7)'
+      if (this.hudRumbleHint) this.hudRumbleHint.textContent = 'APERTE [R] OU CLIQUE!'
+    } else {
+      this.hudRumbleIcon.textContent = '⏳'
+      this.hudRumbleName.textContent = `RECARGA: ${Math.ceil(this.rumbleTimer)}s`
+      this.hudRumbleCard.style.borderColor = 'rgba(255,255,255,0.25)'
+      this.hudRumbleCard.style.boxShadow = 'none'
+      if (this.hudRumbleHint) this.hudRumbleHint.textContent = 'AGUARDE POWER-UP'
+    }
   }
 
   private resetKickoff() {
@@ -3646,6 +4102,9 @@ private resolveCarCarCollision() {
 
     const isDraw = this.scorePlayer === this.scoreBot
     const isWin = this.scorePlayer > this.scoreBot
+
+    // Registra pontuação no Supabase / Leaderboard ELO local
+    dbService.recordMatchResult('Jogador 1', isWin, this.scorePlayer)
 
     this.hudGoalTitle.textContent = isDraw ? '🤝 EMPATE!' : isWin ? '🏆 VITORIA!' : '💥 DERROTA!'
     this.hudGoalTitle.style.color = isDraw ? '#facc15' : isWin ? '#22c55e' : '#ef4444'

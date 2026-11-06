@@ -3,8 +3,9 @@
 //  Com Garagem 3D, Seleção de Carros Reais e Customização de Times
 // ============================================================
 import { Game } from './game'
-import type { TurboSoccerGame, TurboTuning, TurboTheme, TurboMatchFormat } from './turbosoccer'
+import type { TurboSoccerGame, TurboTuning, TurboTheme, TurboMatchFormat, GoalExplosionType, TurboGameMode } from './turbosoccer'
 import type { NetworkManager } from './network'
+import { publishPublicRoom, updatePublicRoomPlayerCount, removePublicRoom, renderPublicRooms, setupLobbyListener } from './publicLobby'
 import { TeamKey, FieldTheme } from './assets'
 import { initVirtualJoystick, setTouchControlsVisible } from './input'
 import { setAudioMuted, isAudioMuted } from './audio'
@@ -25,6 +26,8 @@ let selectedTurboTheme: TurboTheme = 'classic'
 let selectedTurboLevel: 'easy' | 'medium' | 'hard' = 'medium'
 let selectedTurboFormat: TurboMatchFormat = '1v1'
 let selectedBBFormat: '1v1' | '2v2' = '1v1'
+let selectedGoalExplosion: GoalExplosionType = (localStorage.getItem('arena_kick_goal_explosion') as GoalExplosionType) || 'toon'
+let selectedTurboMode: TurboGameMode = 'standard'
 let garagePreview: { setCar(id: string): void; dispose(): void } | null = null
 let selectedTeamP1: TeamKey = 'brazil'
 let selectedTheme: FieldTheme = 'classic'
@@ -74,6 +77,17 @@ if (btnAudio) {
   })
 }
 
+function refreshLobby() {
+  const container = document.getElementById('online-rooms-container')
+  if (container) {
+    renderPublicRooms(container, (code) => {
+      const input = document.getElementById('online-join-code') as HTMLInputElement
+      if (input) input.value = code
+      document.getElementById('btn-online-join')?.click()
+    })
+  }
+}
+
 function showScreen(id: keyof typeof screens) {
   if (id === 'menu') {
     if (currentGame) {
@@ -84,6 +98,9 @@ function showScreen(id: keyof typeof screens) {
       currentTurboGame.destroy()
       currentTurboGame = null
     }
+  }
+  if (id === 'online') {
+    refreshLobby()
   }
   Object.values(screens).forEach((s) => s.classList.add('hidden'))
   screens[id].classList.remove('hidden')
@@ -206,6 +223,32 @@ document.querySelectorAll('.bb-format-btn').forEach((btn) => {
   })
 })
 
+// SELEÇÃO DE MODO DE JOGO (CLÁSSICO, RUMBLE, HOCKEY NO GELO)
+document.querySelectorAll('.turbo-mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.turbo-mode-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedTurboMode = ((btn as HTMLElement).dataset.turboMode as TurboGameMode) || 'standard'
+    showToast(`🎲 Modo: ${btn.textContent?.trim()}`)
+  })
+})
+
+// SELEÇÃO DE EXPLOSÃO DE GOL (GOAL EXPLOSION)
+document.querySelectorAll('.turbo-explosion-btn').forEach((btn) => {
+  const exp = (btn as HTMLElement).dataset.explosion as GoalExplosionType
+  if (exp === selectedGoalExplosion) {
+    document.querySelectorAll('.turbo-explosion-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+  }
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.turbo-explosion-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedGoalExplosion = exp || 'toon'
+    localStorage.setItem('arena_kick_goal_explosion', selectedGoalExplosion)
+    showToast(`💥 Explosão: ${btn.textContent?.trim()}`)
+  })
+})
+
 function readTurboTuning(): TurboTuning {
   const val = (id: string, fallback: number) => {
     const el = document.getElementById(id) as HTMLInputElement | null
@@ -218,7 +261,9 @@ function readTurboTuning(): TurboTuning {
     ballBounce: val('tune-bounce', 0.68),
     theme: selectedTurboTheme,
     botLevel: selectedTurboLevel,
-    matchFormat: selectedTurboFormat
+    matchFormat: selectedTurboFormat,
+    goalExplosion: selectedGoalExplosion,
+    gameMode: selectedTurboMode
   }
 }
 
@@ -312,6 +357,9 @@ function setOnlineStatus(which: 'host' | 'join' | 'global', msg: string, color =
 
 function resetOnlineUI() {
   if (netManager) {
+    if (netManager.isHost() && netManager.myId) {
+      removePublicRoom(netManager.myId)
+    }
     netManager.onConnected = undefined
     netManager.onDisconnected = undefined
     netManager.onError = undefined
@@ -328,6 +376,7 @@ function resetOnlineUI() {
   setOnlineStatus('global', '')
   const joinInput = document.getElementById('online-join-code') as HTMLInputElement | null
   if (joinInput) joinInput.value = ''
+  refreshLobby()
 }
 
 function generateRoomCode() {
@@ -424,10 +473,14 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     netManager.onPlayerCountChange = (count) => {
       if (countBadge) countBadge.textContent = `👥 ${count} Jogadores Conectados`
       setOnlineStatus('host', `✅ ${count} jogador(es) na sala. Pode aguardar mais amigos ou iniciar!`, '#00ff88')
+      updatePublicRoomPlayerCount(code, count)
+      refreshLobby()
     }
 
     launchBtn?.addEventListener('click', () => {
       if (!netManager || !netManager.isHost()) return
+      removePublicRoom(code)
+      refreshLobby()
       const count = netManager.getPlayerCount()
       const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
       netManager.send({
@@ -456,6 +509,21 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     const wrap = document.getElementById('online-host-code-wrap') as HTMLElement
     wrap.style.display = 'flex'
     setOnlineStatus('host', 'Aguardando amigos entrarem com o link ou código...', '#00cfff')
+
+    // Publica no Lobby Público em tempo real
+    const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
+    const maxP = selectedOnlineGame === 'turbo' ? (chosenFormat === '4v4' ? 8 : chosenFormat === '3v3' ? 6 : chosenFormat === '2v2' ? 4 : 2) : (chosenFormat === '2v2' ? 4 : 2)
+    publishPublicRoom({
+      hostId: code,
+      code,
+      hostName: 'Jogador 1',
+      gameType: selectedOnlineGame,
+      format: chosenFormat,
+      playerCount: 1,
+      maxPlayers: maxP,
+      createdAt: Date.now()
+    })
+    refreshLobby()
   } catch (err) {
     console.error('[Online] Falha ao criar sala:', err)
     setOnlineStatus('host', 'Falha ao criar sala. Tente novamente.', '#ff2d78')
@@ -772,3 +840,13 @@ if (roomParam) {
     document.getElementById('btn-online-join')?.click()
   }, 600)
 }
+
+// ── LOBBY PÚBLICO (SALA PÚBLICA LISTADA) ──────────────────────
+document.getElementById('btn-refresh-rooms')?.addEventListener('click', () => {
+  refreshLobby()
+  showToast('🔄 Lista de salas atualizada!')
+})
+
+setupLobbyListener(() => {
+  refreshLobby()
+})
