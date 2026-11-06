@@ -6,56 +6,71 @@
   <title>🔥 ARENA KICK — Futebol Arcade Extremo & Turbo 3D</title>
   <link rel="icon" type="image/jpeg" href="/images/logo-arena-kick.jpg" />
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#ff8a2b" />
+  <meta name="theme-color" content="#ff7a00" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Arena Kick" />
   <link rel="apple-touch-icon" href="/images/logo-arena-kick.jpg" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Luckiest+Guy&family=Baloo+2:wght@500;600;700;800&display=swap');
-    
+
     * { margin:0; padding:0; box-sizing:border-box; }
-    
+
     :root {
-      --ink: #0b1120;
-      --paper: #f8fafc;
-      --card-bg: #162038;
-      --card-bg-light: #1e294b;
-      --card-border: #0b1120;
+      --ink: #070b16;
+      --card-bg: rgba(18, 26, 47, 0.92);
+      --card-border: rgba(255, 255, 255, 0.12);
+      --card-glow: rgba(0, 207, 255, 0.25);
       --neon-orange: #ff7a00;
       --neon-cyan: #00d2ff;
       --neon-green: #22c55e;
       --neon-yellow: #ffd23f;
       --neon-pink: #ff3377;
       --neon-purple: #a855f7;
+      --text-muted: #94a3b8;
     }
 
     html, body {
       width: 100vw;
       height: 100vh;
       overflow: hidden;
-      background: radial-gradient(circle at 50% 20%, #172554 0%, #0c1326 60%, #060913 100%) !important;
+      background: radial-gradient(ellipse at 50% 0%, #172554 0%, #0a0f21 55%, #050811 100%) !important;
       background-attachment: fixed !important;
       font-family: 'Baloo 2', sans-serif !important;
       color: #fff;
       user-select: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
 
+    /* BACKGROUND ATMOSPHERE WITH STADIUM LIGHT BEAMS */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle at 20% 15%, rgba(0, 210, 255, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 80% 25%, rgba(255, 122, 0, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 50% 85%, rgba(168, 85, 247, 0.10) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* TELAS (SCREENS) - ROLAGEM SUAVE E NUNCA CORTA NADA */
     .screen {
       position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: flex-start;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
       z-index: 10;
-      transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
       overflow-y: auto;
+      overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
-      padding: 16px 12px 32px;
-      gap: 14px;
+      padding: 18px 16px 36px;
+      gap: 16px;
+      transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .screen.hidden {
@@ -64,24 +79,25 @@
       transform: scale(0.97);
     }
 
-    /* BOTÕES GLOBAIS ESTILO CARTOON ARCADE */
+    /* BOTÕES GLOBAIS ESTILO ARCADE AAA */
     .btn, button {
       font-family: 'Luckiest Guy', cursive !important;
       border: 3px solid var(--ink) !important;
       border-radius: 16px !important;
       box-shadow: 0 5px 0 var(--ink) !important;
       letter-spacing: 1px !important;
-      text-shadow: 1px 1px 0 rgba(0,0,0,0.35);
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.45);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      transition: transform .08s ease, box-shadow .08s ease, filter .12s ease !important;
+      gap: 8px;
+      transition: transform .09s ease, box-shadow .09s ease, filter .15s ease !important;
+      white-space: nowrap;
     }
 
     .btn:hover, button:hover {
-      filter: brightness(1.08);
+      filter: brightness(1.1);
       transform: translateY(-2px);
       box-shadow: 0 7px 0 var(--ink) !important;
     }
@@ -92,60 +108,56 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #22c55e, #16a34a) !important;
-      color: #04250e !important;
+      background: linear-gradient(135deg, #22c55e, #15803d) !important;
+      color: #022c11 !important;
       padding: 12px 28px;
       font-size: 14px;
+      text-shadow: none !important;
     }
 
     .btn-secondary {
-      background: var(--card-bg-light) !important;
+      background: rgba(30, 41, 69, 0.9) !important;
       color: #fff !important;
-      padding: 10px 22px;
+      padding: 10px 20px;
       font-size: 13px;
     }
 
     .btn-orange {
       background: linear-gradient(135deg, #ff8a2b, #ea580c) !important;
       color: #fff !important;
-      padding: 12px 32px;
+      padding: 14px 34px;
       font-size: 15px;
     }
 
-    /* CARDS GERAIS */
-    .arcade-card, .mode-card, .online-panel, .tune-panel {
-      background: var(--card-bg) !important;
-      border: 3px solid var(--ink) !important;
-      border-radius: 20px !important;
-      box-shadow: 0 7px 0 var(--ink) !important;
-      transition: transform .18s ease, box-shadow .18s ease !important;
-    }
-
-    /* LOGO E CABEÇALHO */
-    .logo-container {
-      text-align: center;
+    /* TOPO COM LOGO E RANK PROFILE */
+    .menu-header {
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-top: 8px;
+      gap: 6px;
+      margin-top: 6px;
       margin-bottom: 2px;
       z-index: 2;
     }
 
     .official-logo {
       max-width: 440px;
-      width: min(84vw, 440px);
+      width: min(86vw, 440px);
       height: auto;
       border: 4px solid var(--ink);
-      border-radius: 22px;
-      box-shadow: 0 8px 0 var(--ink);
+      border-radius: 24px;
+      box-shadow: 0 8px 0 var(--ink), 0 0 35px rgba(0, 207, 255, 0.25);
       animation: logoFloat 4s ease-in-out infinite;
       cursor: pointer;
+      transition: transform 0.25s ease;
+    }
+    .official-logo:hover {
+      transform: scale(1.02);
     }
 
     @keyframes logoFloat {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-5px); }
+      50% { transform: translateY(-6px); }
     }
 
     .logo-slogan {
@@ -154,99 +166,111 @@
       color: var(--neon-yellow) !important;
       text-shadow: 2px 2px 0 var(--ink);
       letter-spacing: 2px;
-      margin-top: 8px;
     }
 
     .rank-pill {
-      background: #0f172a;
+      background: rgba(11, 17, 32, 0.95);
       border: 2px solid var(--neon-yellow);
       border-radius: 20px;
-      padding: 4px 14px;
+      padding: 5px 16px;
       font-family: 'Luckiest Guy', cursive;
       font-size: 12px;
       color: #ffd23f;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      margin-top: 6px;
-      box-shadow: 0 4px 0 var(--ink);
+      gap: 8px;
+      box-shadow: 0 4px 0 var(--ink), 0 0 16px rgba(255, 210, 63, 0.2);
     }
 
-    /* GRID DO MENU PRINCIPAL (2x2 ELEGANTE & LIMPO) */
+    /* ══════════════════════════════════════════════════════════
+       MENU PRINCIPAL (GRID 2x2 MODERNO COM CARDS HEROICOS)
+       ══════════════════════════════════════════════════════════ */
     .mode-selector {
       display: grid;
-      grid-template-columns: repeat(2, minmax(280px, 360px));
-      gap: 16px;
+      grid-template-columns: repeat(2, minmax(320px, 420px));
+      gap: 18px;
       justify-content: center;
       width: 100%;
-      max-width: 780px;
-      margin-top: 6px;
+      max-width: 880px;
       z-index: 2;
     }
 
-    @media (max-width: 660px) {
+    @media (max-width: 720px) {
       .mode-selector {
-        grid-template-columns: minmax(280px, 420px);
+        grid-template-columns: minmax(290px, 480px);
       }
     }
 
     .arcade-card {
-      overflow: hidden;
+      background: var(--card-bg);
+      border: 3px solid var(--ink);
+      border-radius: 22px;
+      box-shadow: 0 8px 0 var(--ink);
       cursor: pointer;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+      backdrop-filter: blur(12px);
     }
 
     .arcade-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 10px 0 var(--ink) !important;
+      transform: translateY(-5px);
+      box-shadow: 0 12px 0 var(--ink);
     }
 
     .card-cover {
-      height: 105px;
+      height: 125px;
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
     }
 
     .cover-turbo {
-      background: linear-gradient(135deg, #c2410c, #7c2d12);
+      background: radial-gradient(circle at 50% 65%, rgba(255, 122, 0, 0.6) 0%, rgba(15, 23, 42, 0.95) 80%),
+                  linear-gradient(135deg, #1e1b4b, #7c2d12);
     }
     .cover-bot {
-      background: linear-gradient(135deg, #0369a1, #0f172a);
+      background: radial-gradient(circle at 50% 65%, rgba(0, 210, 255, 0.5) 0%, rgba(15, 23, 42, 0.95) 80%),
+                  linear-gradient(135deg, #022c22, #082f49);
     }
     .cover-local {
-      background: linear-gradient(135deg, #be185d, #4c0519);
+      background: radial-gradient(circle at 50% 65%, rgba(255, 51, 119, 0.5) 0%, rgba(15, 23, 42, 0.95) 80%),
+                  linear-gradient(135deg, #3b0764, #701a75);
     }
     .cover-online {
-      background: linear-gradient(135deg, #047857, #064e3b);
+      background: radial-gradient(circle at 50% 65%, rgba(34, 197, 94, 0.5) 0%, rgba(15, 23, 42, 0.95) 80%),
+                  linear-gradient(135deg, #064e3b, #0c4a6e);
     }
 
     .card-badge {
       position: absolute;
-      top: 8px;
-      left: 10px;
+      top: 10px;
+      left: 12px;
       font-family: 'Luckiest Guy', cursive;
-      font-size: 10px;
-      padding: 3px 9px;
-      border-radius: 10px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      padding: 4px 12px;
+      border-radius: 12px;
       border: 2px solid var(--ink);
       color: #fff;
+      box-shadow: 0 3px 0 var(--ink);
     }
 
     .card-art-hero {
-      font-size: 44px;
-      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
-      transition: transform 0.2s ease;
+      font-size: 52px;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
+      transition: transform 0.25s ease;
     }
-
     .arcade-card:hover .card-art-hero {
-      transform: scale(1.12);
+      transform: scale(1.15) rotate(-3deg);
     }
 
     .card-content {
-      padding: 12px 14px;
+      padding: 14px 18px;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -255,43 +279,174 @@
 
     .card-title {
       font-family: 'Luckiest Guy', cursive;
-      font-size: 16px;
-      color: #fff;
+      font-size: 18px;
       letter-spacing: 1px;
     }
-
     .arcade-card.turbo-card .card-title { color: var(--neon-orange); }
     .arcade-card.bot-card .card-title   { color: var(--neon-cyan); }
     .arcade-card.local-card .card-title { color: var(--neon-pink); }
     .arcade-card.online-card .card-title { color: var(--neon-green); }
 
     .card-desc {
-      font-size: 11.5px;
+      font-size: 12px;
       color: #cbd5e1;
-      line-height: 1.35;
+      line-height: 1.45;
     }
 
     .card-tags {
       display: flex;
-      gap: 4px;
-      margin-top: 2px;
+      gap: 6px;
+      margin-top: 4px;
       flex-wrap: wrap;
     }
-
     .card-tag {
-      font-size: 9px;
-      padding: 2px 7px;
-      border-radius: 6px;
-      background: rgba(15, 23, 42, 0.7);
-      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 8px;
+      background: rgba(11, 17, 32, 0.75);
+      border: 1px solid rgba(255,255,255,0.14);
       color: #94a3b8;
     }
 
     .card-btn {
-      margin-top: 6px;
-      padding: 8px;
-      font-size: 12px;
+      margin-top: 8px;
+      padding: 10px;
+      font-size: 13px;
       width: 100%;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       GARAGEM 3D — DASHBOARD ELEGANTE DIVIDIDO (SPLIT CONSOLE)
+       ══════════════════════════════════════════════════════════ */
+    .garage-container {
+      width: min(1080px, 96vw);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 860px) {
+      .garage-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .garage-showcase {
+      background: var(--card-bg);
+      border: 3px solid var(--ink);
+      border-radius: 22px;
+      padding: 14px;
+      box-shadow: 0 8px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #garage-preview-stage {
+      position: relative;
+      width: 100%;
+      height: 280px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 3px solid var(--ink);
+      background: radial-gradient(circle at 50% 120%, rgba(0,210,255,0.25), #0a0f21 78%);
+      box-shadow: inset 0 0 40px rgba(0,0,0,0.6);
+    }
+
+    #garage-preview-label {
+      position: absolute;
+      left: 14px;
+      bottom: 12px;
+      font-family: 'Luckiest Guy', cursive;
+      font-size: 18px;
+      color: var(--neon-cyan);
+      text-shadow: 2px 2px 0 #000;
+      letter-spacing: 1px;
+    }
+
+    /* GALERIA DE CARROS (GRID 4x2 SEM CORTES) */
+    .cars-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .car-card {
+      background: rgba(30, 41, 69, 0.7);
+      border: 3px solid var(--ink);
+      border-radius: 14px;
+      padding: 8px 6px;
+      cursor: pointer;
+      text-align: center;
+      box-shadow: 0 4px 0 var(--ink);
+      transition: all 0.14s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .car-card:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.15);
+      background: rgba(30, 41, 69, 1);
+    }
+
+    .car-card.active {
+      background: var(--neon-yellow) !important;
+      color: var(--ink) !important;
+      border-color: var(--ink) !important;
+      transform: translateY(2px) !important;
+      box-shadow: 0 2px 0 var(--ink) !important;
+    }
+    .car-card.active .mode-name { color: var(--ink) !important; }
+    .car-card.active .mode-desc { color: #334155 !important; }
+
+    .mode-icon { font-size: 26px; line-height: 1; margin-bottom: 2px; }
+    .mode-name {
+      font-family: 'Luckiest Guy', cursive;
+      font-size: 11px;
+      color: #fff;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+    .mode-desc {
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    /* DECK DE CONFIGURAÇÕES DE JOGO (LADO DIREITO) */
+    .garage-deck {
+      background: var(--card-bg);
+      border: 3px solid var(--ink);
+      border-radius: 22px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .setting-section-title {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pills-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill-btn {
+      padding: 8px 14px !important;
+      font-size: 12px !important;
+      border-radius: 12px !important;
     }
 
     /* ESTADO ATIVO DOS BOTÕES DE SELEÇÃO */
@@ -304,86 +459,72 @@
       border-color: var(--ink) !important;
       box-shadow: 0 4px 0 var(--ink) !important;
       transform: translateY(1px) !important;
+      text-shadow: none !important;
     }
 
-    /* CARDS DA GARAGEM 3D */
-    .car-card {
-      background: var(--card-bg-light);
-      border: 3px solid var(--ink);
-      border-radius: 16px;
-      padding: 10px 14px;
-      cursor: pointer;
-      text-align: center;
-      min-width: 135px;
-      box-shadow: 0 5px 0 var(--ink);
-      transition: all 0.16s ease;
-    }
-    .car-card:hover {
-      transform: translateY(-3px);
-      filter: brightness(1.1);
-    }
-    .car-card.active {
-      background: var(--neon-yellow) !important;
-      color: var(--ink) !important;
-      border-color: var(--ink) !important;
-      transform: translateY(2px) !important;
-      box-shadow: 0 2px 0 var(--ink) !important;
-    }
-    .car-card.active .mode-name { color: var(--ink) !important; }
-    .car-card.active .mode-desc { color: #334155 !important; }
-
-    .mode-icon { font-size: 30px; display: block; margin-bottom: 3px; }
-    .mode-name {
-      font-family: 'Luckiest Guy', cursive;
-      font-size: 13px;
-      color: #fff;
-      letter-spacing: 0.5px;
-    }
-    .mode-desc {
-      font-size: 10px;
-      color: #94a3b8;
-      margin-top: 2px;
-    }
-
-    /* AJUSTES DE CORRIDA */
+    /* AJUSTES AVANÇADOS (ACORDEÃO COMPACTO) */
     .tune-panel {
-      width: min(720px, 94vw);
-      padding: 14px 18px;
-      margin-top: 4px;
-    }
-    .tune-title {
-      font-family: 'Luckiest Guy', cursive;
-      font-size: 13px;
-      color: var(--neon-cyan);
-      margin-bottom: 10px;
-      text-align: center;
-      letter-spacing: 1px;
+      background: rgba(18, 26, 47, 0.95);
+      border: 3px solid var(--ink);
+      border-radius: 18px;
+      padding: 10px 14px;
+      box-shadow: 0 6px 0 var(--ink);
     }
     .tune-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 10px 24px;
+      gap: 8px 18px;
+      margin-top: 10px;
     }
     @media (max-width: 580px) { .tune-grid { grid-template-columns: 1fr; } }
     .tune-item {
       display: grid;
-      grid-template-columns: 1fr 120px 42px;
+      grid-template-columns: 1fr 100px 38px;
       align-items: center;
-      gap: 8px;
-      font-size: 12px;
+      gap: 6px;
+      font-size: 11px;
       color: #e2e8f0;
-      font-weight: 600;
+      font-weight: 700;
     }
     .tune-item b {
       color: var(--neon-yellow);
       font-family: 'Luckiest Guy', cursive;
       text-align: right;
     }
+    input[type="range"] { accent-color: var(--neon-orange); height: 18px; cursor: pointer; }
 
-    /* TELA ONLINE */
+    /* BARRA DE AÇÕES INFERIOR */
+    .action-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       TELA MULTIPLAYER ONLINE (DESIGN ESPORTS MODERNO)
+       ══════════════════════════════════════════════════════════ */
+    .online-deck {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      width: min(840px, 94vw);
+    }
+
+    @media (max-width: 680px) {
+      .online-deck {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .online-panel {
-      padding: 16px 20px;
-      width: min(340px, 92vw);
+      background: var(--card-bg);
+      border: 3px solid var(--ink);
+      border-radius: 22px;
+      box-shadow: 0 8px 0 var(--ink);
+      padding: 18px 20px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -391,29 +532,30 @@
     }
     .online-panel-title {
       font-family: 'Luckiest Guy', cursive;
-      font-size: 15px;
-      letter-spacing: 1.5px;
+      font-size: 16px;
       color: var(--neon-yellow);
+      letter-spacing: 1px;
     }
     .online-code {
       font-family: 'Luckiest Guy', cursive;
-      font-size: 26px;
+      font-size: 28px;
       letter-spacing: 3px;
       color: var(--neon-yellow);
       background: #0b1120;
-      padding: 6px 14px;
-      border-radius: 12px;
+      padding: 8px 16px;
+      border-radius: 14px;
       border: 2px dashed rgba(255, 210, 63, 0.6);
       text-align: center;
+      width: 100%;
     }
     .online-input {
       background: #0b1120;
       border: 3px solid var(--ink);
-      border-radius: 12px;
+      border-radius: 14px;
       color: #fff;
-      padding: 8px 12px;
+      padding: 10px 14px;
       font-family: 'Luckiest Guy', cursive;
-      font-size: 15px;
+      font-size: 16px;
       letter-spacing: 2px;
       text-align: center;
       width: 100%;
@@ -429,10 +571,10 @@
       top: 18px; left: 50%;
       transform: translateX(-50%) translateY(-20px);
       background: #ffd23f;
-      color: #0f172a;
+      color: #0b1120;
       border: 3px solid var(--ink);
-      padding: 8px 22px;
-      border-radius: 16px;
+      padding: 8px 24px;
+      border-radius: 18px;
       font-family: 'Luckiest Guy', cursive;
       font-size: 13px;
       box-shadow: 0 6px 0 var(--ink);
@@ -446,20 +588,21 @@
       transform: translateX(-50%) translateY(0);
     }
 
-    /* SCROLLBAR */
-    ::-webkit-scrollbar { width: 10px; }
-    ::-webkit-scrollbar-track { background: rgba(11, 17, 32, 0.6); }
-    ::-webkit-scrollbar-thumb { background: var(--neon-yellow); border: 2px solid var(--ink); border-radius: 8px; }
+    /* SCROLLBAR ELEGANTE */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(11, 17, 32, 0.5); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.25); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--neon-yellow); }
 
-    /* TELAS ESPECÍFICAS */
-    #screen-game { padding: 0; background: #0a0f1d !important; justify-content: flex-start; }
+    /* JOGO 2D & HUD */
+    #screen-game { padding: 0; background: #080c18 !important; justify-content: flex-start; }
     #hud {
-      width: 100%; max-width: 940px; display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 20px; background: #162038; border-bottom: 3px solid var(--ink); box-shadow: 0 5px 0 var(--ink);
+      width: 100%; max-width: 960px; display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 20px; background: rgba(18, 26, 47, 0.95); border-bottom: 3px solid var(--ink); box-shadow: 0 5px 0 var(--ink);
       flex-shrink: 0; z-index: 20;
     }
     .hud-team { display: flex; align-items: center; gap: 8px; }
-    .hud-team-name { font-family: 'Luckiest Guy', cursive; font-size: clamp(12px, 2vw, 16px); }
+    .hud-team-name { font-family: 'Luckiest Guy', cursive; font-size: clamp(13px, 2vw, 17px); }
     .hud-score-wrap { display: flex; align-items: center; gap: 6px; }
     .hud-score { font-family: 'Luckiest Guy', cursive; font-size: clamp(28px, 5vw, 44px); color: #fff; text-shadow: 2px 2px 0 var(--ink); }
     .hud-score-sep { font-size: 18px; color: rgba(255,255,255,0.4); }
@@ -468,22 +611,22 @@
     .hud-timer-value.urgent { color: var(--neon-pink); animation: pulse-u 0.5s infinite alternate; }
     @keyframes pulse-u { from { opacity: 1; } to { opacity: 0.35; } }
 
-    #game-canvas { display: block; max-width: 940px; width: 100%; border: 4px solid var(--ink); border-radius: 16px; box-shadow: 0 8px 0 var(--ink); margin-top: 10px; }
+    #game-canvas { display: block; max-width: 960px; width: 100%; border: 4px solid var(--ink); border-radius: 18px; box-shadow: 0 8px 0 var(--ink); margin-top: 10px; }
     
     #power-bar-wrap { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 8px; z-index: 30; }
     #power-bar-wrap.visible { display: flex; }
     .pb-label { font-size: 11px; color: #fff; font-family: 'Luckiest Guy', cursive; text-shadow: 1px 1px 0 var(--ink); }
-    .pb-track { width: 180px; height: 12px; background: #0f172a; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; }
+    .pb-track { width: 180px; height: 12px; background: #070b16; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; }
     .pb-fill { height: 100%; width: 0%; border-radius: 6px; background: var(--neon-yellow); }
 
     /* OVERLAYS */
     #pause-overlay {
-      position: absolute; inset: 0; background: rgba(11, 17, 32, 0.85); backdrop-filter: blur(8px);
+      position: absolute; inset: 0; background: rgba(7, 11, 22, 0.88); backdrop-filter: blur(8px);
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
       z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.25s;
     }
     #pause-overlay.visible { opacity: 1; pointer-events: all; }
-    .pause-title { font-family: 'Luckiest Guy', cursive; font-size: 46px; color: var(--neon-yellow); text-shadow: 3px 3px 0 var(--ink); }
+    .pause-title { font-family: 'Luckiest Guy', cursive; font-size: 48px; color: var(--neon-yellow); text-shadow: 3px 3px 0 var(--ink); }
 
     #goal-overlay {
       position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -507,24 +650,26 @@
 
 <div id="toast"></div>
 
-<!-- MENU PRINCIPAL -->
+<!-- ══════════════════════════════════════════════════════════
+     MENU PRINCIPAL
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen" id="screen-menu">
-  <div class="logo-container">
+  <div class="menu-header">
     <img src="/images/logo-arena-kick.jpg" alt="ARENA KICK" class="official-logo" id="main-logo-img" />
     <div class="logo-slogan">ENTRE NA ARENA. SEU JOGO COMEÇA AQUI.</div>
     <div class="rank-pill" id="player-rank-display">🥉 BRONZE · 1000 MMR</div>
   </div>
 
   <div class="mode-selector">
-    <!-- Turbo Soccer 3D (DESTAQUE) -->
+    <!-- Turbo Soccer 3D -->
     <div class="arcade-card turbo-card" id="btn-turbo-3d">
       <div class="card-cover cover-turbo">
-        <span class="card-badge" style="background:#ff7a00;">★ 3D DESTAQUE</span>
+        <span class="card-badge" style="background:var(--neon-orange);">★ 3D DESTAQUE</span>
         <div class="card-art-hero">🏎️⚽💨</div>
       </div>
       <div class="card-content">
         <div class="card-title">TURBO SOCCER 3D</div>
-        <div class="card-desc">Futebol 3D estilo Rocket League com acrobacias, pulo duplo, nitro veloz e estádio cel-shading.</div>
+        <div class="card-desc">Futebol 3D estilo Rocket League com acrobacias aéreas, pulos duplos, nitro veloz, modo rumble e estádio cel-shading.</div>
         <div class="card-tags">
           <span class="card-tag">🚀 1v1 até 4v4</span>
           <span class="card-tag">🏎️ 8 Carros</span>
@@ -542,13 +687,13 @@
       </div>
       <div class="card-content">
         <div class="card-title">BEATBALL VS BOT</div>
-        <div class="card-desc">Futebol tático 2D contra Inteligência Artificial com física realista, efeito de curva e super chutes.</div>
+        <div class="card-desc">Futebol tático 2D contra Inteligência Artificial balanceada com física realista, efeito de curva e super chutes.</div>
         <div class="card-tags">
           <span class="card-tag">🧠 3 Dificuldades</span>
           <span class="card-tag">👥 1v1 ou 2v2</span>
           <span class="card-tag">⚡ Super Chute</span>
         </div>
-        <button class="btn btn-secondary card-btn" style="border-color:var(--neon-cyan); color:var(--neon-cyan);">JOGAR CONTRA IA ▶</button>
+        <button class="btn btn-secondary card-btn" style="border-color:var(--neon-cyan); color:var(--neon-cyan);">ENFRENTAR IA ▶</button>
       </div>
     </div>
 
@@ -560,7 +705,7 @@
       </div>
       <div class="card-content">
         <div class="card-title">BEATBALL 2P LOCAL</div>
-        <div class="card-desc">Duelo clássico competitivo para dois jogadores no mesmo teclado ou controles USB / Bluetooth.</div>
+        <div class="card-desc">Duelo clássico competitivo para dois jogadores locais no mesmo teclado ou controles USB / Bluetooth.</div>
         <div class="card-tags">
           <span class="card-tag">👥 2 Jogadores</span>
           <span class="card-tag">⚡ Super Dash</span>
@@ -570,7 +715,7 @@
       </div>
     </div>
 
-    <!-- BeatBall Online & Turbo Online -->
+    <!-- Multiplayer Online -->
     <div class="arcade-card online-card" id="btn-online-1v1">
       <div class="card-cover cover-online">
         <span class="card-badge" style="background:#059669;">🌐 MULTIPLAYER</span>
@@ -578,7 +723,7 @@
       </div>
       <div class="card-content">
         <div class="card-title">MULTIPLAYER ONLINE</div>
-        <div class="card-desc">Jogue com amigos pela internet via conexão direta WebRTC. Até 8 jogadores reais + Modo Espectador!</div>
+        <div class="card-desc">Jogue com amigos pela internet via conexão direta WebRTC. Até 8 jogadores reais ou assista ao vivo como Espectador!</div>
         <div class="card-tags">
           <span class="card-tag">🌐 Sem Servidor</span>
           <span class="card-tag">👁️ Espectador</span>
@@ -589,193 +734,199 @@
     </div>
   </div>
 
-  <div style="font-size:11px; color:#64748b; letter-spacing:1px; margin-top:2px;">
+  <div style="font-size:11px; color:var(--text-muted); letter-spacing:1px; margin-top:4px;">
     PLATAFORMA ARENA KICK · THREE.JS 3D + MATTER.JS 2D · 60 FPS ARCADE
   </div>
 </div>
 
-<!-- SELEÇÃO DE CONFIGURAÇÃO (BEATBALL) -->
+<!-- ══════════════════════════════════════════════════════════
+     SELEÇÃO DE CONFIGURAÇÃO (BEATBALL)
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-game-select">
   <div style="font-family:'Luckiest Guy',cursive; font-size:26px; color:var(--neon-cyan); text-shadow:2px 2px 0 var(--ink);" id="select-mode-title">BEATBALL VS BOT</div>
-  <div style="color:#94a3b8; font-size:12px; letter-spacing:1px;">PERSONALIZE SUA PARTIDA 2D</div>
+  <div style="color:var(--text-muted); font-size:12px; letter-spacing:1px;">PERSONALIZE SUA PARTIDA 2D</div>
 
-  <div class="arcade-card" style="width:min(620px,94vw); padding:16px 20px; gap:12px; cursor:default;">
+  <div style="width:min(660px,94vw); background:var(--card-bg); border:3px solid var(--ink); border-radius:22px; padding:18px 22px; box-shadow:0 8px 0 var(--ink); display:flex; flex-direction:column; gap:12px;">
     <!-- FORMATO DA PARTIDA -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-yellow);">⚔️ FORMATO DA DISPUTA:</div>
-    <div style="display:flex; gap:10px; flex-wrap:wrap;" class="bb-format-row">
-      <button class="btn btn-secondary bb-format-btn active" data-format="1v1" style="border-color:var(--neon-green); color:var(--neon-green);">⚔️ 1 VS 1 (DUELO)</button>
-      <button class="btn btn-secondary bb-format-btn" data-format="2v2" style="border-color:var(--neon-yellow); color:var(--neon-yellow);">👥 2 VS 2 (ATÉ 4 JOGADORES)</button>
+    <div class="setting-section-title" style="color:var(--neon-yellow);">⚔️ FORMATO DA DISPUTA:</div>
+    <div class="pills-row bb-format-row">
+      <button class="btn btn-secondary pill-btn bb-format-btn active" data-format="1v1" style="border-color:var(--neon-green); color:var(--neon-green);">⚔️ 1 VS 1 (DUELO)</button>
+      <button class="btn btn-secondary pill-btn bb-format-btn" data-format="2v2" style="border-color:var(--neon-yellow); color:var(--neon-yellow);">👥 2 VS 2 (ATÉ 4 JOGADORES)</button>
     </div>
 
     <!-- DIFICULDADE -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-green); margin-top:4px;">🤖 NÍVEL DA INTELIGÊNCIA ARTIFICIAL:</div>
-    <div style="display:flex; gap:10px; flex-wrap:wrap;" class="diff-row">
-      <button class="btn btn-secondary diff-btn active" data-diff="easy" style="border-color:var(--neon-green); color:var(--neon-green);">🟢 FÁCIL</button>
-      <button class="btn btn-secondary diff-btn" data-diff="medium" style="border-color:var(--neon-yellow); color:var(--neon-yellow);">🟡 MÉDIO</button>
-      <button class="btn btn-secondary diff-btn" data-diff="hard" style="border-color:var(--neon-pink); color:var(--neon-pink);">🔴 BRUTAL</button>
+    <div class="setting-section-title diff-row" style="color:var(--neon-green); margin-top:4px;">🤖 NÍVEL DA INTELIGÊNCIA ARTIFICIAL:</div>
+    <div class="pills-row diff-row">
+      <button class="btn btn-secondary pill-btn diff-btn active" data-diff="easy" style="border-color:var(--neon-green); color:var(--neon-green);">🟢 FÁCIL</button>
+      <button class="btn btn-secondary pill-btn diff-btn" data-diff="medium" style="border-color:var(--neon-yellow); color:var(--neon-yellow);">🟡 MÉDIO</button>
+      <button class="btn btn-secondary pill-btn diff-btn" data-diff="hard" style="border-color:var(--neon-pink); color:var(--neon-pink);">🔴 BRUTAL</button>
     </div>
 
     <!-- SELEÇÃO DE TIME -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-cyan); margin-top:4px;">🛡️ SEU TIME:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;" id="team-selector-row">
-      <button class="btn btn-secondary team-btn active" data-team="brazil" style="border-color:#00ff88; color:#00ff88;">🇧🇷 BRASIL</button>
-      <button class="btn btn-secondary team-btn" data-team="usa" style="border-color:#00cfff; color:#00cfff;">🇺🇸 EUA</button>
-      <button class="btn btn-secondary team-btn" data-team="france" style="border-color:#38a0ff; color:#38a0ff;">🇫🇷 FRANÇA</button>
-      <button class="btn btn-secondary team-btn" data-team="argentina" style="border-color:#ffe600; color:#ffe600;">🇦🇷 ARGENTINA</button>
-      <button class="btn btn-secondary team-btn" data-team="barcelona" style="border-color:#ff2d78; color:#ff2d78;">🔴🔵 BARÇA</button>
+    <div class="setting-section-title" style="color:var(--neon-cyan); margin-top:4px;">🛡️ SEU TIME:</div>
+    <div class="pills-row" id="team-selector-row">
+      <button class="btn btn-secondary pill-btn team-btn active" data-team="brazil" style="border-color:#00ff88; color:#00ff88;">🇧🇷 BRASIL</button>
+      <button class="btn btn-secondary pill-btn team-btn" data-team="usa" style="border-color:#00cfff; color:#00cfff;">🇺🇸 EUA</button>
+      <button class="btn btn-secondary pill-btn team-btn" data-team="france" style="border-color:#38a0ff; color:#38a0ff;">🇫🇷 FRANÇA</button>
+      <button class="btn btn-secondary pill-btn team-btn" data-team="argentina" style="border-color:#ffe600; color:#ffe600;">🇦🇷 ARGENTINA</button>
+      <button class="btn btn-secondary pill-btn team-btn" data-team="barcelona" style="border-color:#ff2d78; color:#ff2d78;">🔴🔵 BARÇA</button>
     </div>
 
     <!-- SELEÇÃO DE CAMPO -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-yellow); margin-top:4px;">🏟️ CENÁRIO DO ESTÁDIO:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;" id="theme-selector-row">
-      <button class="btn btn-secondary theme-btn active" data-theme="classic" style="border-color:#00ff88; color:#00ff88;">🏟️ ESTÁDIO VERDE</button>
-      <button class="btn btn-secondary theme-btn" data-theme="cyber" style="border-color:#00cfff; color:#00cfff;">⚡ CYBER NEON</button>
-      <button class="btn btn-secondary theme-btn" data-theme="futsal" style="border-color:#ff6b00; color:#ff6b00;">⚽ FUTSAL MADEIRA</button>
+    <div class="setting-section-title" style="color:var(--neon-yellow); margin-top:4px;">🏟️ CENÁRIO DO ESTÁDIO:</div>
+    <div class="pills-row" id="theme-selector-row">
+      <button class="btn btn-secondary pill-btn theme-btn active" data-theme="classic" style="border-color:#00ff88; color:#00ff88;">🏟️ ESTÁDIO VERDE</button>
+      <button class="btn btn-secondary pill-btn theme-btn" data-theme="cyber" style="border-color:#00cfff; color:#00cfff;">⚡ CYBER NEON</button>
+      <button class="btn btn-secondary pill-btn theme-btn" data-theme="futsal" style="border-color:#ff6b00; color:#ff6b00;">⚽ FUTSAL MADEIRA</button>
     </div>
   </div>
 
-  <div style="display:flex; gap:12px; margin-top:6px; flex-wrap:wrap; justify-content:center;">
+  <div class="action-bar">
     <button class="btn btn-primary" id="btn-start-game" style="font-size:15px; padding:12px 32px;">▶ ENTRAR EM CAMPO</button>
     <button class="btn btn-secondary" id="btn-training-bb" style="border-color:var(--neon-cyan); color:var(--neon-cyan);">🎯 TREINO LIVRE</button>
     <button class="btn btn-secondary" id="btn-back-to-menu">← MENU</button>
   </div>
 </div>
 
-<!-- GARAGEM 3D — SELEÇÃO DE CARROS (TURBO SOCCER) -->
+<!-- ══════════════════════════════════════════════════════════
+     GARAGEM 3D — SELEÇÃO DE CARROS (TURBO SOCCER)
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-garage-3d">
   <div style="font-family:'Luckiest Guy',cursive; font-size:26px; color:var(--neon-orange); text-shadow:2px 2px 0 var(--ink);">🏎️ GARAGEM TURBO SOCCER 3D</div>
-  <div style="color:#94a3b8; font-size:12px; letter-spacing:1px;">ESCOLHA SEU VEÍCULO E REGRAS DA PARTIDA</div>
+  <div style="color:var(--text-muted); font-size:12px; letter-spacing:1px; margin-top:-6px;">ESCOLHA SEU VEÍCULO E CONFIGURAÇÕES DA PARTIDA</div>
 
-  <!-- PRÉVIA 3D AO VIVO -->
-  <div id="garage-preview-stage" style="position:relative; width:min(720px,94vw); height:220px;
-    border-radius:18px; overflow:hidden; border:3px solid var(--ink);
-    background:radial-gradient(circle at 50% 120%, rgba(0,207,255,0.22), #0b1120 75%);
-    box-shadow:0 7px 0 var(--ink);">
-    <div id="garage-preview-canvas" style="position:absolute;inset:0;"></div>
-    <div id="garage-preview-label" style="position:absolute;left:16px;bottom:12px;font-family:'Luckiest Guy',cursive;
-      font-size:16px;color:var(--neon-cyan);text-shadow:2px 2px 0 #000;">OCTANE TURBO</div>
-    <div style="position:absolute;right:16px;top:12px;font-family:'Luckiest Guy',cursive;font-size:11px;color:#94a3b8;">PRÉVIA 3D AO VIVO</div>
+  <div class="garage-container">
+    <!-- COLUNA ESQUERDA: SHOWCASE 3D & CARROS -->
+    <div class="garage-showcase">
+      <div id="garage-preview-stage">
+        <div id="garage-preview-canvas" style="position:absolute;inset:0;"></div>
+        <div id="garage-preview-label">OCTANE TURBO</div>
+        <div style="position:absolute;right:14px;top:10px;font-family:'Luckiest Guy',cursive;font-size:11px;color:var(--text-muted);">TURNTABLE 3D AO VIVO</div>
+      </div>
+
+      <!-- SELEÇÃO DOS 8 VEÍCULOS (GRID 4x2 NUNCA CORTA) -->
+      <div class="cars-grid">
+        <!-- Octane Turbo -->
+        <div class="car-card active" data-car="octane-cartoon">
+          <span class="mode-icon">🏎️</span>
+          <div class="mode-name">Octane</div>
+          <div class="mode-desc">Rocket Classic</div>
+        </div>
+        <!-- Cartoon Red -->
+        <div class="car-card" data-car="cartoon-red">
+          <span class="mode-icon">🔥</span>
+          <div class="mode-name">Red Racer</div>
+          <div class="mode-desc">Kenney Speed</div>
+        </div>
+        <!-- Cartoon Yellow -->
+        <div class="car-card" data-car="cartoon-yellow">
+          <span class="mode-icon">🚕</span>
+          <div class="mode-name">Cruiser</div>
+          <div class="mode-desc">Controle Suave</div>
+        </div>
+        <!-- Cartoon Green -->
+        <div class="car-card" data-car="cartoon-green">
+          <span class="mode-icon">🚙</span>
+          <div class="mode-name">Beast</div>
+          <div class="mode-desc">Tração Forte</div>
+        </div>
+        <!-- ToyCar -->
+        <div class="car-card" data-car="toycar">
+          <span class="mode-icon">🚗</span>
+          <div class="mode-name">ToyCar</div>
+          <div class="mode-desc">Chassi Largo</div>
+        </div>
+        <!-- Ferrari GT -->
+        <div class="car-card" data-car="ferrari">
+          <span class="mode-icon">🏎️</span>
+          <div class="mode-name">Ferrari GT</div>
+          <div class="mode-desc">Aerodinâmico</div>
+        </div>
+        <!-- Milk Truck -->
+        <div class="car-card" data-car="milktruck">
+          <span class="mode-icon">🚚</span>
+          <div class="mode-name">Milk Truck</div>
+          <div class="mode-desc">Força Bruta</div>
+        </div>
+        <!-- Moto Nitro -->
+        <div class="car-card" data-car="cartoon-moto">
+          <span class="mode-icon">🏍️</span>
+          <div class="mode-name">Moto Nitro</div>
+          <div class="mode-desc">Ágil & Toon</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUNA DIREITA: REGRAS E MODO DE DISPUTA -->
+    <div class="garage-deck">
+      <!-- FORMATO DA ARENA -->
+      <div class="setting-section-title" style="color:var(--neon-orange);">⚔️ FORMATO DA ARENA:</div>
+      <div class="pills-row turbo-format-row">
+        <button class="btn btn-secondary pill-btn turbo-format-btn active" data-turbo-format="1v1" style="border-color:#00ff88; color:#00ff88;">⚔️ 1v1 (DUELO)</button>
+        <button class="btn btn-secondary pill-btn turbo-format-btn" data-turbo-format="2v2" style="border-color:#00cfff; color:#00cfff;">👥 2v2 (DUPLAS)</button>
+        <button class="btn btn-secondary pill-btn turbo-format-btn" data-turbo-format="3v3" style="border-color:#ffd23f; color:#ffd23f;">⚡ 3v3 (TRIOS)</button>
+        <button class="btn btn-secondary pill-btn turbo-format-btn" data-turbo-format="4v4" style="border-color:#ff4d7d; color:#ff4d7d;">🔥 4v4 (ATÉ 8)</button>
+      </div>
+
+      <!-- NÍVEL DOS BOTS -->
+      <div class="setting-section-title" style="color:var(--neon-yellow);">🤖 DIFICULDADE DOS BOTS:</div>
+      <div class="pills-row">
+        <button class="btn btn-secondary pill-btn turbo-diff-btn" data-turbo-level="easy" style="border-color:#00ff88; color:#00ff88;">😌 FÁCIL</button>
+        <button class="btn btn-secondary pill-btn turbo-diff-btn active" data-turbo-level="medium" style="border-color:#00cfff; color:#00cfff;">😎 MÉDIO</button>
+        <button class="btn btn-secondary pill-btn turbo-diff-btn" data-turbo-level="hard" style="border-color:#ff2d78; color:#ff2d78;">😈 BRUTAL</button>
+      </div>
+
+      <!-- CENÁRIO DO ESTÁDIO -->
+      <div class="setting-section-title" style="color:var(--neon-cyan);">🏟️ CENÁRIO DO ESTÁDIO:</div>
+      <div class="pills-row">
+        <button class="btn btn-secondary pill-btn turbo-theme-btn active" data-turbo-theme="classic" style="border-color:#00ff88; color:#00ff88;">☀️ DIURNO</button>
+        <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="cyber" style="border-color:#00cfff; color:#00cfff;">🌙 NOTURNO</button>
+        <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="futsal" style="border-color:#ff6b00; color:#ff6b00;">🥅 FUTSAL</button>
+        <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="snowday" style="border-color:#38bdf8; color:#38bdf8;">🏒 GELO</button>
+      </div>
+
+      <!-- MODO DE JOGO -->
+      <div class="setting-section-title" style="color:var(--neon-green);">🎲 MODO DE JOGO:</div>
+      <div class="pills-row">
+        <button class="btn btn-secondary pill-btn turbo-mode-btn active" data-turbo-mode="standard" style="border-color:#00ff88; color:#00ff88;">⚽ FUTEBOL CLÁSSICO</button>
+        <button class="btn btn-secondary pill-btn turbo-mode-btn" data-turbo-mode="rumble" style="border-color:#ffd23f; color:#ffd23f;">🧲 RUMBLE (POWER-UPS)</button>
+        <button class="btn btn-secondary pill-btn turbo-mode-btn" data-turbo-mode="snowday" style="border-color:#38bdf8; color:#38bdf8;">🏒 HOCKEY NO GELO</button>
+      </div>
+
+      <!-- EXPLOSÃO DE GOL -->
+      <div class="setting-section-title" style="color:var(--neon-pink);">💥 EXPLOSÃO DE GOL:</div>
+      <div class="pills-row">
+        <button class="btn btn-secondary pill-btn turbo-explosion-btn active" data-explosion="toon" style="border-color:#ff6600; color:#ff6600;">🔥 TOON FIRE</button>
+        <button class="btn btn-secondary pill-btn turbo-explosion-btn" data-explosion="supernova" style="border-color:#c084fc; color:#c084fc;">🌌 SUPERNOVA</button>
+        <button class="btn btn-secondary pill-btn turbo-explosion-btn" data-explosion="lightning" style="border-color:#00e5ff; color:#00e5ff;">⚡ RAIO EMP</button>
+        <button class="btn btn-secondary pill-btn turbo-explosion-btn" data-explosion="confetti" style="border-color:#22c55e; color:#22c55e;">🎉 CONFETE</button>
+      </div>
+
+      <!-- AJUSTES DE FÍSICA AVANÇADA (RETRÁTIL) -->
+      <details class="tune-panel" style="margin-top:6px;">
+        <summary style="font-family:'Luckiest Guy',cursive; font-size:12px; color:var(--neon-cyan); cursor:pointer; text-align:center;">
+          ⚙️ AJUSTES DE DIREÇÃO & FÍSICA (CLIQUE PARA ABRIR)
+        </summary>
+        <div class="tune-grid">
+          <label class="tune-item"><span>Velocidade</span><input type="range" id="tune-speed" min="0.6" max="1.8" step="0.1" value="1" /><b id="tune-speed-val">1.0x</b></label>
+          <label class="tune-item"><span>Giro / Manobra</span><input type="range" id="tune-turn" min="0.6" max="1.6" step="0.1" value="1" /><b id="tune-turn-val">1.0x</b></label>
+          <label class="tune-item"><span>Força do Pulo</span><input type="range" id="tune-jump" min="8" max="24" step="1" value="14" /><b id="tune-jump-val">14</b></label>
+          <label class="tune-item"><span>Quique da Bola</span><input type="range" id="tune-bounce" min="0.3" max="0.95" step="0.05" value="0.68" /><b id="tune-bounce-val">0.68</b></label>
+        </div>
+      </details>
+    </div>
   </div>
 
-  <!-- GALERIA DE CARROS (COMPACTA & ROLÁVEL) -->
-  <div style="display:flex; gap:10px; overflow-x:auto; width:min(720px,94vw); padding:4px 2px 10px;">
-    <!-- Octane Turbo -->
-    <div class="car-card active" data-car="octane-cartoon">
-      <span class="mode-icon">🏎️</span>
-      <div class="mode-name">Octane Turbo</div>
-      <div class="mode-desc">Rocket Classic</div>
-    </div>
-    <!-- Cartoon Red -->
-    <div class="car-card" data-car="cartoon-red">
-      <span class="mode-icon">🔥</span>
-      <div class="mode-name">Cartoon Red</div>
-      <div class="mode-desc">Kenney Speed</div>
-    </div>
-    <!-- Cartoon Yellow -->
-    <div class="car-card" data-car="cartoon-yellow">
-      <span class="mode-icon">🚕</span>
-      <div class="mode-name">Cartoon Yellow</div>
-      <div class="mode-desc">Kenney Cruiser</div>
-    </div>
-    <!-- Cartoon Green -->
-    <div class="car-card" data-car="cartoon-green">
-      <span class="mode-icon">🚙</span>
-      <div class="mode-name">Cartoon Green</div>
-      <div class="mode-desc">Kenney Beast</div>
-    </div>
-    <!-- ToyCar -->
-    <div class="car-card" data-car="toycar">
-      <span class="mode-icon">🚗</span>
-      <div class="mode-name">ToyCar 3D</div>
-      <div class="mode-desc">Chassi Largo</div>
-    </div>
-    <!-- Ferrari GT -->
-    <div class="car-card" data-car="ferrari">
-      <span class="mode-icon">🏎️</span>
-      <div class="mode-name">Ferrari GT</div>
-      <div class="mode-desc">Aerodinâmica Fina</div>
-    </div>
-    <!-- Milk Truck -->
-    <div class="car-card" data-car="milktruck">
-      <span class="mode-icon">🚚</span>
-      <div class="mode-name">Milk Truck</div>
-      <div class="mode-desc">Força Bruta</div>
-    </div>
-    <!-- Moto Nitro -->
-    <div class="car-card" data-car="cartoon-moto">
-      <span class="mode-icon">🏍️</span>
-      <div class="mode-name">Moto Nitro</div>
-      <div class="mode-desc">Agilidade Toon</div>
-    </div>
-  </div>
-
-  <!-- CONFIGURAÇÕES DA PARTIDA (AGRUPADAS & LIMPAS) -->
-  <div class="arcade-card" style="width:min(720px,94vw); padding:16px 20px; gap:10px; cursor:default;">
-    <!-- FORMATO -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-orange);">⚔️ FORMATO DA ARENA:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;" class="turbo-format-row">
-      <button class="btn btn-secondary turbo-format-btn active" data-turbo-format="1v1" style="border-color:#00ff88; color:#00ff88; font-size:12px;">⚔️ 1v1 (DUELO)</button>
-      <button class="btn btn-secondary turbo-format-btn" data-turbo-format="2v2" style="border-color:#00cfff; color:#00cfff; font-size:12px;">👥 2v2 (DUPLAS)</button>
-      <button class="btn btn-secondary turbo-format-btn" data-turbo-format="3v3" style="border-color:#ffd23f; color:#ffd23f; font-size:12px;">⚡ 3v3 (TRIOS)</button>
-      <button class="btn btn-secondary turbo-format-btn" data-turbo-format="4v4" style="border-color:#ff4d7d; color:#ff4d7d; font-size:12px;">🔥 4v4 (ATÉ 8 CARROS)</button>
-    </div>
-
-    <!-- NÍVEL DO BOT -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-yellow); margin-top:4px;">🤖 NÍVEL DOS BOTS:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn btn-secondary turbo-diff-btn" data-turbo-level="easy" style="border-color:#00ff88; color:#00ff88; font-size:12px;">😌 FÁCIL</button>
-      <button class="btn btn-secondary turbo-diff-btn active" data-turbo-level="medium" style="border-color:#00cfff; color:#00cfff; font-size:12px;">😎 MÉDIO</button>
-      <button class="btn btn-secondary turbo-diff-btn" data-turbo-level="hard" style="border-color:#ff2d78; color:#ff2d78; font-size:12px;">😈 DIFÍCIL</button>
-    </div>
-
-    <!-- CENÁRIO -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-cyan); margin-top:4px;">🏟️ CENÁRIO DO ESTÁDIO:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn btn-secondary turbo-theme-btn active" data-turbo-theme="classic" style="border-color:#00ff88; color:#00ff88; font-size:12px;">☀️ DIURNO</button>
-      <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="cyber" style="border-color:#00cfff; color:#00cfff; font-size:12px;">🌙 NOTURNO</button>
-      <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="futsal" style="border-color:#ff6b00; color:#ff6b00; font-size:12px;">🥅 FUTSAL</button>
-      <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="snowday" style="border-color:#38bdf8; color:#38bdf8; font-size:12px;">🏒 GELO</button>
-    </div>
-
-    <!-- MODO DE JOGO -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-green); margin-top:4px;">🎲 MODO DE JOGO:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn btn-secondary turbo-mode-btn active" data-turbo-mode="standard" style="border-color:#00ff88; color:#00ff88; font-size:12px;">⚽ FUTEBOL CLÁSSICO</button>
-      <button class="btn btn-secondary turbo-mode-btn" data-turbo-mode="rumble" style="border-color:#ffd23f; color:#ffd23f; font-size:12px;">🧲 RUMBLE (POWER-UPS)</button>
-      <button class="btn btn-secondary turbo-mode-btn" data-turbo-mode="snowday" style="border-color:#38bdf8; color:#38bdf8; font-size:12px;">🏒 HOCKEY NO GELO</button>
-    </div>
-
-    <!-- EXPLOSÃO DE GOL -->
-    <div style="font-size:12px; font-weight:700; color:var(--neon-pink); margin-top:4px;">💥 EXPLOSÃO DE GOL:</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn btn-secondary turbo-explosion-btn active" data-explosion="toon" style="border-color:#ff6600; color:#ff6600; font-size:12px;">🔥 TOON FIRE</button>
-      <button class="btn btn-secondary turbo-explosion-btn" data-explosion="supernova" style="border-color:#c084fc; color:#c084fc; font-size:12px;">🌌 SUPERNOVA</button>
-      <button class="btn btn-secondary turbo-explosion-btn" data-explosion="lightning" style="border-color:#00e5ff; color:#00e5ff; font-size:12px;">⚡ RAIO EMP</button>
-      <button class="btn btn-secondary turbo-explosion-btn" data-explosion="confetti" style="border-color:#22c55e; color:#22c55e; font-size:12px;">🎉 CONFETE</button>
-    </div>
-  </div>
-
-  <!-- AJUSTES DE FÍSICA (ACORDEÃO COMPACTO) -->
-  <details class="tune-panel" style="background:#162038; border:3px solid var(--ink); border-radius:18px;">
-    <summary style="font-family:'Luckiest Guy',cursive; font-size:13px; color:var(--neon-cyan); cursor:pointer; text-align:center; padding:4px;">
-      ⚙️ AJUSTES AVANÇADOS DE DIREÇÃO & FÍSICA (CLIQUE PARA ABRIR)
-    </summary>
-    <div class="tune-grid" style="margin-top:12px;">
-      <label class="tune-item"><span>Velocidade</span><input type="range" id="tune-speed" min="0.6" max="1.8" step="0.1" value="1" /><b id="tune-speed-val">1.0x</b></label>
-      <label class="tune-item"><span>Giro / Manobra</span><input type="range" id="tune-turn" min="0.6" max="1.6" step="0.1" value="1" /><b id="tune-turn-val">1.0x</b></label>
-      <label class="tune-item"><span>Força do Pulo</span><input type="range" id="tune-jump" min="8" max="24" step="1" value="14" /><b id="tune-jump-val">14</b></label>
-      <label class="tune-item"><span>Quique da Bola</span><input type="range" id="tune-bounce" min="0.3" max="0.95" step="0.05" value="0.68" /><b id="tune-bounce-val">0.68</b></label>
-    </div>
-  </details>
-
-  <div style="display:flex; gap:12px; margin-top:8px; flex-wrap:wrap; justify-content:center;">
-    <button class="btn btn-orange" id="btn-start-turbo-match" style="font-size:15px; padding:12px 36px;">⚡ ACELERAR PARA O ESTÁDIO</button>
+  <div class="action-bar">
+    <button class="btn btn-orange" id="btn-start-turbo-match">⚡ ACELERAR PARA O ESTÁDIO</button>
     <button class="btn btn-secondary" id="btn-training-turbo" style="border-color:var(--neon-cyan); color:var(--neon-cyan);">🎯 TREINO LIVRE</button>
     <button class="btn btn-secondary" id="btn-back-garage-menu">← MENU</button>
   </div>
 </div>
 
-<!-- JOGO 2D (BEATBALL) -->
+<!-- ══════════════════════════════════════════════════════════
+     JOGO 2D (BEATBALL)
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-game">
   <div id="hud">
     <div class="hud-team">
@@ -794,7 +945,7 @@
     <div class="hud-team">
       <span class="hud-team-name" id="hud-p2-name" style="color:var(--neon-pink);">BOT IA</span>
       <span style="font-size:20px;">🔴</span>
-      <button id="btn-audio-toggle" style="background:#0b1120; border:2px solid var(--ink); color:white; border-radius:14px; padding:4px 10px; font-size:12px; cursor:pointer; margin-left:6px;" title="Som">🔊</button>
+      <button id="btn-audio-toggle" style="background:#070b16; border:2px solid var(--ink); color:white; border-radius:14px; padding:4px 10px; font-size:12px; cursor:pointer; margin-left:6px;" title="Som">🔊</button>
     </div>
   </div>
 
@@ -817,17 +968,21 @@
   </div>
 </div>
 
-<!-- JOGO 3D (TURBO SOCCER) -->
+<!-- ══════════════════════════════════════════════════════════
+     JOGO 3D (TURBO SOCCER)
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-turbo3d">
   <div id="turbo3d-container"></div>
   <button id="btn-exit-turbo" style="display:none;"></button>
 </div>
 
-<!-- VITÓRIA -->
+<!-- ══════════════════════════════════════════════════════════
+     VITÓRIA
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-victory">
   <div class="victory-trophy">🏆</div>
   <div class="victory-title" id="victory-title">VITÓRIA!</div>
-  <div style="font-size:14px; color:#94a3b8; letter-spacing:1px;" id="victory-winner"></div>
+  <div style="font-size:14px; color:var(--text-muted); letter-spacing:1px;" id="victory-winner"></div>
   <div style="font-family:'Luckiest Guy',cursive; font-size:54px; color:var(--neon-yellow); text-shadow:3px 3px 0 var(--ink);" id="victory-score">0 × 0</div>
   <div style="display:flex; gap:12px; margin-top:12px;">
     <button class="btn btn-primary" id="btn-play-again">🔄 JOGAR NOVAMENTE</button>
@@ -835,12 +990,14 @@
   </div>
 </div>
 
-<!-- MULTIPLAYER ONLINE COM MODO ESPECTADOR -->
+<!-- ══════════════════════════════════════════════════════════
+     MULTIPLAYER ONLINE (COM MODO ESPECTADOR & LOBBY PÚBLICO)
+     ══════════════════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-online">
   <div style="font-family:'Luckiest Guy',cursive; font-size:clamp(22px,4vw,32px); color:var(--neon-green); text-shadow:2px 2px 0 var(--ink);">
     🌐 MULTIPLAYER ONLINE (ATÉ 8 JOGADORES)
   </div>
-  <div style="font-size:12px; color:#94a3b8; text-align:center;">
+  <div style="font-size:12px; color:var(--text-muted); text-align:center; margin-top:-6px;">
     CONEXÃO DIRETA WEBRTC P2P · JOGADORES REAIS + BOTS · MODO ESPECTADOR AO VIVO
   </div>
 
@@ -850,7 +1007,7 @@
   </div>
 
   <!-- FORMATO DE VAGAS -->
-  <div style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-top:4px;">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-top:2px;">
     <div style="font-size:11px; font-weight:700; color:var(--neon-yellow);">VAGAS NA ARENA:</div>
     <div id="online-format-bb" style="display:flex; gap:8px;">
       <button class="btn btn-secondary online-format-btn active" data-format="1v1" style="border-color:#00ff88; color:#00ff88; font-size:11px; padding:6px 14px;">⚔️ 1v1 (2 Jogadores)</button>
@@ -864,19 +1021,19 @@
     </div>
   </div>
 
-  <div style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center; align-items:stretch;">
+  <div class="online-deck">
     <!-- CRIAR SALA -->
     <div class="online-panel">
-      <div class="online-panel-title">CRIAR SALA</div>
-      <button class="btn btn-primary" id="btn-online-host" style="width:100%;">🚀 CRIAR SALA</button>
+      <div class="online-panel-title">🚀 CRIAR SALA (HOST)</div>
+      <button class="btn btn-primary" id="btn-online-host" style="width:100%;">CRIAR NOVA SALA</button>
       <div id="online-host-code-wrap" style="display:none; flex-direction:column; gap:8px; align-items:center; width:100%;">
-        <div style="font-size:11px; color:#94a3b8;">CÓDIGO DA SALA</div>
+        <div style="font-size:11px; color:var(--text-muted);">CÓDIGO DE CONVITE</div>
         <div class="online-code" id="online-host-code">------</div>
         <div style="display:flex; gap:8px; width:100%;">
           <button class="btn btn-secondary" id="btn-online-copy" style="padding:8px; font-size:11px; flex:1;">📋 COPIAR</button>
           <button class="btn btn-secondary" id="btn-online-copy-link" style="padding:8px; font-size:11px; flex:1; border-color:#00cfff; color:#00cfff;">🔗 LINK</button>
         </div>
-        <div id="online-player-count-badge" style="font-size:12px; font-weight:800; color:#00ff88; margin-top:4px;">👥 1 Jogador Conectado</div>
+        <div id="online-player-count-badge" style="font-size:13px; font-weight:800; color:#00ff88; margin-top:4px;">👥 1 Jogador Conectado</div>
         <button class="btn btn-orange" id="btn-online-launch" style="width:100%; font-size:13px; margin-top:4px;">▶ INICIAR PARTIDA COM TODOS</button>
       </div>
       <div class="online-status" id="online-host-status" style="font-size:11px; min-height:16px;"></div>
@@ -884,26 +1041,26 @@
 
     <!-- ENTRAR EM SALA & MODO ESPECTADOR -->
     <div class="online-panel">
-      <div class="online-panel-title">ENTRAR EM SALA</div>
+      <div class="online-panel-title">🔗 ENTRAR EM SALA</div>
       <input class="online-input" id="online-join-code" placeholder="CÓDIGO (EX: ARENA-ABCD)" maxlength="12" autocomplete="off" spellcheck="false" />
-      <button class="btn btn-primary" id="btn-online-join" style="width:100%;">🔗 ENTRAR COMO JOGADOR</button>
+      <button class="btn btn-primary" id="btn-online-join" style="width:100%;">ENTRAR COMO JOGADOR</button>
       <button class="btn btn-secondary" id="btn-online-spectate" style="width:100%; border-color:#a855f7 !important; color:#c084fc !important;">👁️ ENTRAR COMO ESPECTADOR</button>
       <div class="online-status" id="online-join-status" style="font-size:11px; min-height:16px;"></div>
     </div>
   </div>
 
   <!-- LISTA DE SALAS PÚBLICAS -->
-  <div style="width:min(700px,94vw); background:#162038; border:3px solid var(--ink); border-radius:18px; padding:12px 18px; box-shadow:0 7px 0 var(--ink);">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <div style="font-family:'Luckiest Guy',cursive; font-size:13px; color:var(--neon-green); letter-spacing:1px; display:flex; align-items:center; gap:6px;">
+  <div style="width:min(840px,94vw); background:var(--card-bg); border:3px solid var(--ink); border-radius:20px; padding:14px 20px; box-shadow:0 8px 0 var(--ink);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-family:'Luckiest Guy',cursive; font-size:14px; color:var(--neon-green); letter-spacing:1px; display:flex; align-items:center; gap:6px;">
         <span>🌐</span> SALAS PÚBLICAS DISPONÍVEIS
       </div>
-      <button class="btn btn-secondary" id="btn-refresh-rooms" style="padding:4px 12px; font-size:10px; border-color:#00cfff; color:#00cfff;">
+      <button class="btn btn-secondary" id="btn-refresh-rooms" style="padding:5px 14px; font-size:11px; border-color:#00cfff; color:#00cfff;">
         🔄 ATUALIZAR
       </button>
     </div>
-    <div id="online-rooms-container" style="display:flex; flex-direction:column; gap:8px; max-height:160px; overflow-y:auto;">
-      <div style="color:#64748b; font-size:11px; text-align:center; padding:10px;">Nenhuma sala pública encontrada no momento. Crie uma para aparecer aqui!</div>
+    <div id="online-rooms-container" style="display:flex; flex-direction:column; gap:8px; max-height:170px; overflow-y:auto;">
+      <div style="color:var(--text-muted); font-size:12px; text-align:center; padding:12px;">Nenhuma sala pública encontrada no momento. Crie uma para aparecer aqui!</div>
     </div>
   </div>
 
