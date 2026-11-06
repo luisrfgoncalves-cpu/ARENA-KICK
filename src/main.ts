@@ -29,6 +29,8 @@ let garagePreview: { setCar(id: string): void; dispose(): void } | null = null
 let selectedTeamP1: TeamKey = 'brazil'
 let selectedTheme: FieldTheme = 'classic'
 let selectedOnlineGame: 'beatball' | 'turbo' = 'beatball'
+let selectedOnlineBBFormat: '1v1' | '2v2' = '1v1'
+let selectedOnlineTurboFormat: TurboMatchFormat = '1v1'
 
 const screens = {
   menu: document.getElementById('screen-menu')!,
@@ -368,7 +370,32 @@ document.querySelectorAll('.online-game-btn').forEach((btn) => {
     document.querySelectorAll('.online-game-btn').forEach((b) => b.classList.remove('active'))
     btn.classList.add('active')
     selectedOnlineGame = ((btn as HTMLElement).dataset.game as 'beatball' | 'turbo') || 'beatball'
+    const bbRow = document.getElementById('online-format-bb')
+    const turboRow = document.getElementById('online-format-turbo')
+    if (bbRow && turboRow) {
+      bbRow.style.display = selectedOnlineGame === 'beatball' ? 'flex' : 'none'
+      turboRow.style.display = selectedOnlineGame === 'turbo' ? 'flex' : 'none'
+    }
     showToast(`Jogo online: ${selectedOnlineGame === 'beatball' ? '⚽ BeatBall 2D' : '🏎️ Turbo Soccer 3D'}`)
+  })
+})
+
+// ── SELEÇÃO DE FORMATO ONLINE (VAGAS TOTAIS) ─────────────────
+document.querySelectorAll('#online-format-bb .online-format-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#online-format-bb .online-format-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedOnlineBBFormat = ((btn as HTMLElement).dataset.format as '1v1' | '2v2') || '1v1'
+    showToast(`Vagas BeatBall: ${btn.textContent?.trim()}`)
+  })
+})
+
+document.querySelectorAll('#online-format-turbo .online-format-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#online-format-turbo .online-format-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedOnlineTurboFormat = ((btn as HTMLElement).dataset.format as TurboMatchFormat) || '1v1'
+    showToast(`Vagas Turbo Soccer: ${btn.textContent?.trim()}`)
   })
 })
 
@@ -391,17 +418,22 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     launchBtn?.addEventListener('click', () => {
       if (!netManager || !netManager.isHost()) return
       const count = netManager.getPlayerCount()
+      const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
       netManager.send({
         t: performance.now(),
         event: 'start_game',
         gameType: selectedOnlineGame,
+        format: chosenFormat,
         totalPlayers: count
       })
-      showToast(`Iniciando partida com ${count} jogadores!`)
+      showToast(`Iniciando ${chosenFormat} (${count} pessoas)!`)
       if (selectedOnlineGame === 'turbo') {
+        const tuning = readTurboTuning()
+        tuning.matchFormat = selectedOnlineTurboFormat
         showScreen('turbo3d')
-        startTurboSoccer(selectedCar, readTurboTuning())
+        startTurboSoccer(selectedCar, tuning)
       } else {
+        selectedBBFormat = selectedOnlineBBFormat
         startOnlineMatch()
       }
     })
@@ -468,11 +500,15 @@ document.getElementById('btn-online-join')!.addEventListener('click', async () =
 
     netManager.onDataReceived = (payload) => {
       if (payload.event === 'start_game') {
-        showToast('Partida iniciada pelo Host!')
+        const fmt = payload.format || '1v1'
+        showToast(`Partida ${fmt} iniciada pelo Host!`)
         if (payload.gameType === 'turbo') {
+          const tuning = readTurboTuning()
+          if (payload.format) tuning.matchFormat = payload.format as TurboMatchFormat
           showScreen('turbo3d')
-          startTurboSoccer(selectedCar, readTurboTuning())
+          startTurboSoccer(selectedCar, tuning)
         } else {
+          if (payload.format) selectedBBFormat = payload.format as '1v1' | '2v2'
           startOnlineMatch()
         }
       }

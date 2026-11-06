@@ -33,6 +33,7 @@ export interface NetSyncPayload {
   assignedSlot?: number
   totalPlayers?: number
   gameType?: 'beatball' | 'turbo'
+  format?: '1v1' | '2v2' | '3v3' | '4v4'
   whoScored?: 'p1' | 'p2'
 }
 
