@@ -28,6 +28,7 @@ let selectedBBFormat: '1v1' | '2v2' = '1v1'
 let garagePreview: { setCar(id: string): void; dispose(): void } | null = null
 let selectedTeamP1: TeamKey = 'brazil'
 let selectedTheme: FieldTheme = 'classic'
+let selectedOnlineGame: 'beatball' | 'turbo' = 'beatball'
 
 const screens = {
   menu: document.getElementById('screen-menu')!,
@@ -361,6 +362,16 @@ document.getElementById('btn-online-back')!.addEventListener('click', () => {
   showScreen('menu')
 })
 
+// ── SELEÇÃO DE JOGO ONLINE (BEATBALL OU TURBO SOCCER) ────────
+document.querySelectorAll('.online-game-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.online-game-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedOnlineGame = ((btn as HTMLElement).dataset.game as 'beatball' | 'turbo') || 'beatball'
+    showToast(`Jogo online: ${selectedOnlineGame === 'beatball' ? '⚽ BeatBall 2D' : '🏎️ Turbo Soccer 3D'}`)
+  })
+})
+
 document.getElementById('btn-online-host')!.addEventListener('click', async () => {
   if (onlineBusy || netManager) return
   onlineBusy = true
@@ -369,10 +380,31 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     netManager = await createOnlineNetwork()
     const code = generateRoomCode()
 
-    netManager.onConnected = () => {
-      setOnlineStatus('host', 'Jogador conectado! Iniciando...', '#00ff88')
-      startOnlineMatch()
+    const countBadge = document.getElementById('online-player-count-badge')
+    const launchBtn = document.getElementById('btn-online-launch')
+
+    netManager.onPlayerCountChange = (count) => {
+      if (countBadge) countBadge.textContent = `👥 ${count} Jogadores Conectados`
+      setOnlineStatus('host', `✅ ${count} jogador(es) na sala. Pode aguardar mais amigos ou iniciar!`, '#00ff88')
     }
+
+    launchBtn?.addEventListener('click', () => {
+      if (!netManager || !netManager.isHost()) return
+      const count = netManager.getPlayerCount()
+      netManager.send({
+        t: performance.now(),
+        event: 'start_game',
+        gameType: selectedOnlineGame,
+        totalPlayers: count
+      })
+      showToast(`Iniciando partida com ${count} jogadores!`)
+      if (selectedOnlineGame === 'turbo') {
+        showScreen('turbo3d')
+        startTurboSoccer(selectedCar, readTurboTuning())
+      } else {
+        startOnlineMatch()
+      }
+    })
 
     await netManager.init(code)
 
@@ -380,7 +412,7 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     codeEl.textContent = code
     const wrap = document.getElementById('online-host-code-wrap') as HTMLElement
     wrap.style.display = 'flex'
-    setOnlineStatus('host', 'Aguardando adversário entrar com o código...', '#00cfff')
+    setOnlineStatus('host', 'Aguardando amigos entrarem com o link ou código...', '#00cfff')
   } catch (err) {
     console.error('[Online] Falha ao criar sala:', err)
     setOnlineStatus('host', 'Falha ao criar sala. Tente novamente.', '#ff2d78')
@@ -429,13 +461,29 @@ document.getElementById('btn-online-join')!.addEventListener('click', async () =
   }
 
   onlineBusy = true
-  setOnlineStatus('join', 'Conectando...', '#00cfff')
+  setOnlineStatus('join', 'Conectando à sala...', '#00cfff')
   try {
     netManager = await createOnlineNetwork()
     await netManager.init()
+
+    netManager.onDataReceived = (payload) => {
+      if (payload.event === 'start_game') {
+        showToast('Partida iniciada pelo Host!')
+        if (payload.gameType === 'turbo') {
+          showScreen('turbo3d')
+          startTurboSoccer(selectedCar, readTurboTuning())
+        } else {
+          startOnlineMatch()
+        }
+      }
+    }
+
+    netManager.onPlayerCountChange = (count) => {
+      setOnlineStatus('join', `Conectado! ${count} jogadores na sala. Aguardando o host iniciar...`, '#00ff88')
+    }
+
     await netManager.joinRoom(code)
-    setOnlineStatus('join', 'Conectado! Iniciando...', '#00ff88')
-    startOnlineMatch()
+    setOnlineStatus('join', 'Conectado com sucesso! Aguardando o Host clicar em Iniciar...', '#00ff88')
   } catch (err) {
     console.error('[Online] Falha ao entrar:', err)
     setOnlineStatus('join', 'Não foi possível conectar. Confira o código.', '#ff2d78')

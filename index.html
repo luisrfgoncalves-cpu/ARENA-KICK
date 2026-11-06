@@ -1008,11 +1008,16 @@
   </div>
 </div>
 
-<!-- ONLINE 1V1 (P2P) -->
+<!-- MULTIPLAYER ONLINE (P2P STAR TOPOLOGY) -->
 <div class="screen hidden" id="screen-online">
-  <div style="font-family:'Orbitron',sans-serif; font-size:clamp(24px,4vw,34px); font-weight:900; color:var(--neon-green);">🌐 ONLINE 1V1</div>
+  <div style="font-family:'Orbitron',sans-serif; font-size:clamp(22px,4vw,32px); font-weight:900; color:var(--neon-green);">🌐 MULTIPLAYER ONLINE (ATÉ 8 JOGADORES)</div>
   <div style="font-size:12px; color:rgba(255,255,255,0.5); letter-spacing:2px; text-align:center;">
-    CONEXÃO DIRETA P2P · SEM SERVIDOR · SEM CADASTRO
+    CONEXÃO DIRETA P2P · JOGADORES REAIS + BOTS · SEM SERVIDOR · SEM CADASTRO
+  </div>
+
+  <div style="display:flex; gap:10px; margin-top:2px;">
+    <button class="btn btn-secondary online-game-btn active" data-game="beatball" style="border-color:#00ff88; color:#00ff88; font-size:12px;">⚽ BeatBall 2D (até 4)</button>
+    <button class="btn btn-secondary online-game-btn" data-game="turbo" style="border-color:#ff6600; color:#ff6600; font-size:12px;">🏎️ Turbo Soccer 3D (até 8)</button>
   </div>
 
   <div style="display:flex; gap:22px; flex-wrap:wrap; justify-content:center; align-items:stretch;">
@@ -1025,6 +1030,8 @@
         <div class="online-code" id="online-host-code">------</div>
         <button class="btn btn-secondary" id="btn-online-copy" style="padding:8px 18px; font-size:11px;">📋 COPIAR CÓDIGO</button>
         <button class="btn btn-secondary" id="btn-online-copy-link" style="padding:8px 18px; font-size:11px; background:rgba(0,207,255,0.2); border:1px solid #00cfff; color:#00cfff;">🔗 COPIAR LINK DE CONVITE</button>
+        <div id="online-player-count-badge" style="font-size:12px; font-weight:700; color:#00ff88; margin-top:6px;">👥 1 Jogador Conectado</div>
+        <button class="btn btn-primary" id="btn-online-launch" style="padding:10px 24px; font-size:12px; background:linear-gradient(45deg,#00ff88,#00cfff); color:#0a0e17; font-weight:900;">▶ INICIAR PARTIDA COM TODOS</button>
       </div>
       <div class="online-status" id="online-host-status"></div>
     </div>
