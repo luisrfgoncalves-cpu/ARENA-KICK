@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>🔥 ARENA KICK — Futebol Arcade Extremo & Turbo 3D</title>
+  <link rel="icon" type="image/jpeg" href="/images/logo-arena-kick.jpg" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@400;600;800&family=Luckiest+Guy&family=Baloo+2:wght@400;600;700;800&display=swap');
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root {
+      --neon-green: #00ff88;
+      --neon-blue: #00cfff;
+      --neon-pink: #ff2d78;
+      --neon-yellow: #ffe600;
+      --neon-orange: #ff6b00;
+      --dark-bg: #050a14;
+      --card-bg: rgba(0,15,40,0.85);
+    }
+    body {
+      background: var(--dark-bg);
+      font-family: 'Exo 2', sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      user-select: none;
+    }
+    .screen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 10; transition: opacity 0.35s ease, transform 0.35s ease; gap: 20px;
+    }
+    .screen.hidden { opacity: 0; pointer-events: none; transform: scale(0.96); }
+
+    /* TELAS DE SELEÇÃO: ROLAGEM SEGURA EM TELAS PEQUENAS */
+    #screen-game-select, #screen-garage-3d, #screen-victory, #screen-online {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 20px 12px;
+    }
+    @media (max-height: 720px), (max-width: 640px) {
+      #screen-game-select, #screen-garage-3d, #screen-victory, #screen-online {
+        justify-content: flex-start;
+      }
+    }
+
+    /* MENU */
+    #screen-menu {
+      background: radial-gradient(ellipse at 50% 10%, rgba(0,255,136,0.12) 0%, transparent 55%),
+                  radial-gradient(ellipse at 85% 90%, rgba(0,207,255,0.12) 0%, transparent 60%),
+                  radial-gradient(ellipse at 15% 90%, rgba(255,45,120,0.12) 0%, transparent 60%);
+      padding: 20px 10px;
+      overflow-y: auto;
+      justify-content: flex-start;
+      gap: 16px;
+    }
+    .logo-container {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 14px;
+      margin-bottom: 2px;
+      z-index: 2;
+    }
+    .official-logo {
+      max-width: 480px;
+      width: min(88vw, 480px);
+      height: auto;
+      border-radius: 18px;
+      filter: drop-shadow(0 0 25px rgba(0,255,136,0.45)) drop-shadow(0 0 50px rgba(0,207,255,0.3));
+      animation: logoFloat 4s ease-in-out infinite;
+      cursor: pointer;
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .official-logo:hover {
+      transform: scale(1.03);
+      filter: drop-shadow(0 0 35px rgba(0,255,136,0.7)) drop-shadow(0 0 70px rgba(0,207,255,0.5));
+    }
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-7px); }
+    }
+    .logo-slogan {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(10px, 1.8vw, 13px);
+      font-weight: 800;
+      letter-spacing: 3.5px;
+      color: #f1f5f9;
+      text-transform: uppercase;
+      margin-top: 10px;
+      text-shadow: 0 0 10px rgba(0,207,255,0.7), 0 0 22px rgba(255,45,120,0.45);
+      text-align: center;
+    }
+
+    /* CARTÕES DE JOGOS ILUSTRADOS (ESTRUTURA MODULAR ARCADE) */
+    .mode-selector {
+      display: flex;
+      gap: 22px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 1050px;
+      padding: 8px 12px;
+      z-index: 2;
+    }
+    .arcade-card {
+      background: var(--card-bg);
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      width: 290px;
+      cursor: pointer;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(14px);
+      transition: all 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    }
+    .arcade-card:hover {
+      transform: translateY(-8px) scale(1.025);
+    }
+    .arcade-card.turbo-card {
+      border-color: rgba(255, 107, 0, 0.4);
+    }
+    .arcade-card.turbo-card:hover {
+      border-color: var(--neon-orange);
+      box-shadow: 0 18px 45px rgba(255, 107, 0, 0.45);
+    }
+    .arcade-card.bot-card {
+      border-color: rgba(0, 207, 255, 0.4);
+    }
+    .arcade-card.bot-card:hover {
+      border-color: var(--neon-blue);
+      box-shadow: 0 18px 45px rgba(0, 207, 255, 0.45);
+    }
+    .arcade-card.local-card {
+      border-color: rgba(255, 45, 120, 0.4);
+    }
+    .arcade-card.local-card:hover {
+      border-color: var(--neon-pink);
+      box-shadow: 0 18px 45px rgba(255, 45, 120, 0.45);
+    }
+    .arcade-card.online-card {
+      border-color: rgba(0, 255, 136, 0.4);
+    }
+    .arcade-card.online-card:hover {
+      border-color: var(--neon-green);
+      box-shadow: 0 18px 45px rgba(0, 255, 136, 0.45);
+    }
+
+    .card-cover {
+      height: 135px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .cover-turbo {
+      background: radial-gradient(circle at 50% 65%, rgba(255,107,0,0.55) 0%, rgba(15,23,42,0.92) 80%),
+                  linear-gradient(135deg, #1e1b4b, #431407);
+    }
+    .cover-bot {
+      background: radial-gradient(circle at 50% 65%, rgba(0,207,255,0.45) 0%, rgba(15,23,42,0.92) 80%),
+                  linear-gradient(135deg, #022c22, #082f49);
+    }
+    .cover-local {
+      background: radial-gradient(circle at 50% 65%, rgba(255,45,120,0.45) 0%, rgba(15,23,42,0.92) 80%),
+                  linear-gradient(135deg, #2e1065, #500724);
+    }
+    .cover-online {
+      background: radial-gradient(circle at 50% 65%, rgba(0,255,136,0.45) 0%, rgba(15,23,42,0.92) 80%),
+                  linear-gradient(135deg, #052e16, #082f49);
+    }
+
+    .card-badge {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+    .badge-orange { background: rgba(255, 107, 0, 0.25); color: #ff8533; border: 1px solid rgba(255, 107, 0, 0.6); }
+    .badge-cyan   { background: rgba(0, 207, 255, 0.25); color: #38bdf8; border: 1px solid rgba(0, 207, 255, 0.6); }
+    .badge-pink   { background: rgba(255, 45, 120, 0.25); color: #fb7185; border: 1px solid rgba(255, 45, 120, 0.6); }
+    .badge-green  { background: rgba(0, 255, 136, 0.25); color: #34d399; border: 1px solid rgba(0, 255, 136, 0.6); }
+
+    .card-art-hero {
+      font-size: 46px;
+      filter: drop-shadow(0 6px 16px rgba(0,0,0,0.6));
+      transition: transform 0.25s ease;
+    }
+    .arcade-card:hover .card-art-hero {
+      transform: scale(1.15) rotate(-3deg);
+    }
+
+    .card-content {
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      flex-grow: 1;
+    }
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: white;
+    }
+    .arcade-card.turbo-card .card-title { color: var(--neon-orange); }
+    .arcade-card.bot-card .card-title   { color: var(--neon-blue); }
+    .arcade-card.local-card .card-title { color: var(--neon-pink); }
+    .arcade-card.online-card .card-title { color: var(--neon-green); }
+
+    .card-desc {
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.72);
+      line-height: 1.45;
+    }
+
+    .card-tags {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+    .card-tag {
+      font-size: 9.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.75);
+      letter-spacing: 0.5px;
+    }
+
+    .card-btn {
+      margin-top: 8px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s;
+    }
+    .btn-turbo-style {
+      background: linear-gradient(135deg, var(--neon-orange), #ff2200);
+      color: white;
+      box-shadow: 0 4px 14px rgba(255, 107, 0, 0.4);
+    }
+    .btn-bot-style {
+      background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+      color: #021a10;
+      box-shadow: 0 4px 14px rgba(0, 255, 136, 0.35);
+    }
+    .btn-local-style {
+      background: linear-gradient(135deg, var(--neon-pink), #8b5cf6);
+      color: white;
+      box-shadow: 0 4px 14px rgba(255, 45, 120, 0.4);
+    }
+    .btn-online-style {
+      background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+      color: #021a10;
+      box-shadow: 0 4px 14px rgba(0, 255, 136, 0.35);
+    }
+
+    /* TELA ONLINE 1V1 */
+    .online-panel {
+      background: var(--card-bg);
+      border: 2px solid rgba(0, 255, 136, 0.3);
+      border-radius: 18px;
+      padding: 22px 26px;
+      width: min(320px, 88vw);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: center;
+      backdrop-filter: blur(12px);
+    }
+    .online-panel-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--neon-green);
+    }
+    .online-code {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      color: var(--neon-yellow);
+      background: rgba(0, 0, 0, 0.45);
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px dashed rgba(255, 230, 0, 0.5);
+      word-break: break-all;
+      text-align: center;
+    }
+    .online-input {
+      background: rgba(0, 0, 0, 0.45);
+      border: 2px solid rgba(0, 207, 255, 0.45);
+      border-radius: 10px;
+      color: white;
+      padding: 10px 14px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 15px;
+      letter-spacing: 2px;
+      text-align: center;
+      width: 100%;
+      outline: none;
+      text-transform: uppercase;
+    }
+    .online-input:focus { border-color: var(--neon-blue); }
+    .online-status {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      letter-spacing: 1px;
+      text-align: center;
+      min-height: 16px;
+    }
+
+    /* GARAGEM & OUTROS CARDS (COMPATIBILIDADE) */
+    .mode-card {
+      background: var(--card-bg);
+      border: 2px solid rgba(0,255,136,0.25);
+      border-radius: 18px;
+      padding: 18px 22px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      text-align: center;
+      min-width: 160px;
+      backdrop-filter: blur(10px);
+    }
+    .mode-card:hover {
+      border-color: var(--neon-green);
+      transform: translateY(-6px) scale(1.03);
+      box-shadow: 0 16px 40px rgba(0,255,136,0.3);
+    }
+    .mode-icon { font-size: 38px; display: block; margin-bottom: 6px; }
+    .mode-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--neon-green);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .mode-desc { font-size: 10.5px; color: rgba(255,255,255,0.6); margin-top: 4px; }
+
+    /* BOTÕES */
+    .btn {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 12px 28px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--neon-green), #00aa55); color: #000; box-shadow: 0 6px 20px rgba(0,255,136,0.35); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,255,136,0.5); }
+    .btn-secondary { background: transparent; border: 2px solid var(--neon-blue); color: var(--neon-blue); }
+    .btn-secondary:hover { background: rgba(0,207,255,0.12); transform: translateY(-2px); }
+    .btn-orange { background: linear-gradient(135deg, var(--neon-orange), #cc4400); color: white; box-shadow: 0 6px 20px rgba(255,107,0,0.35); }
+    .btn-orange:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,107,0,0.5); }
+
+    /* ESTADO DE SELEÇÃO DOS BOTÕES (DIFICULDADE / TIME / CENÁRIO / CARRO) */
+    .diff-btn.active, .team-btn.active, .theme-btn.active, .turbo-theme-btn.active, .turbo-diff-btn.active {
+      background: rgba(255, 255, 255, 0.14);
+      box-shadow: inset 0 0 0 2px currentColor, 0 6px 18px rgba(0, 0, 0, 0.35);
+      transform: translateY(-2px);
+      font-weight: 800;
+    }
+    .diff-btn, .team-btn, .theme-btn, .car-card {
+      transition: all 0.2s ease;
+    }
+    .car-card.active {
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), 0 14px 34px rgba(0, 0, 0, 0.45);
+      transform: translateY(-4px);
+    }
+    .btn:focus-visible, .card-btn:focus-visible, .mode-card:focus-visible {
+      outline: 2px solid var(--neon-blue);
+      outline-offset: 3px;
+    }
+
+    /* AJUSTES DE CORRIDA (PRÉ-PARTIDA 3D) */
+    .tune-panel {
+      width: min(720px, 92vw);
+      background: rgba(0,15,40,0.7);
+      border: 2px solid rgba(0,207,255,0.28);
+      border-radius: 16px;
+      padding: 12px 18px 14px;
+      margin-top: 10px;
+      backdrop-filter: blur(10px);
+    }
+    .tune-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px; font-weight: 800; letter-spacing: 2px;
+      color: var(--neon-blue); margin-bottom: 8px; text-align: center;
+    }
+    .tune-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 8px 22px;
+    }
+    @media (max-width: 560px) { .tune-grid { grid-template-columns: 1fr; } }
+    .tune-item {
+      display: grid; grid-template-columns: 1fr 110px 44px;
+      align-items: center; gap: 10px;
+      font-size: 11px; color: rgba(255,255,255,0.75); letter-spacing: 1px;
+    }
+    .tune-item b { color: var(--neon-green); font-family: 'Orbitron', sans-serif; font-size: 11px; text-align: right; }
+    .tune-item input[type="range"] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 5px;
+      border-radius: 4px; background: rgba(255,255,255,0.16); outline: none; cursor: pointer;
+    }
+    .tune-item input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+      background: var(--neon-blue); box-shadow: 0 0 10px rgba(0,207,255,0.8); cursor: pointer;
+    }
+    .tune-item input[type="range"]::-moz-range-thumb {
+      width: 15px; height: 15px; border: none; border-radius: 50%;
+      background: var(--neon-blue); box-shadow: 0 0 10px rgba(0,207,255,0.8); cursor: pointer;
+    }
+
+    /* TELA DE JOGO 2D BEATBALL */
+    #screen-game { flex-direction: column; background: #060d1a; padding: 0; }
+    #hud {
+      width: 100%; max-width: 940px; display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 24px; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(0,255,136,0.2); flex-shrink: 0; z-index: 20;
+    }
+    .hud-team { display: flex; align-items: center; gap: 10px; }
+    .hud-team-name { font-family: 'Orbitron', sans-serif; font-size: clamp(11px, 2vw, 15px); font-weight: 700; letter-spacing: 2px; }
+    .hud-score-wrap { display: flex; align-items: center; gap: 6px; }
+    .hud-score { font-family: 'Orbitron', sans-serif; font-size: clamp(26px, 5vw, 46px); font-weight: 900; color: white; }
+    .hud-score-sep { font-size: 18px; color: rgba(255,255,255,0.3); }
+    .hud-timer-label { font-size: 9px; letter-spacing: 3px; color: rgba(255,255,255,0.4); text-transform: uppercase; text-align: center; }
+    .hud-timer-value { font-family: 'Orbitron', sans-serif; font-size: clamp(16px, 3vw, 24px); font-weight: 700; color: var(--neon-blue); text-align: center; }
+    .hud-timer-value.urgent { color: var(--neon-pink); animation: pulse-u 0.5s infinite alternate; }
+    @keyframes pulse-u { from { opacity: 1; } to { opacity: 0.35; } }
+
+    #game-canvas { display: block; max-width: 940px; width: 100%; border-radius: 4px; box-shadow: 0 0 40px rgba(0,207,255,0.15); }
+
+    /* TELA 3D TURBO SOCCER */
+    #screen-turbo3d { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #turbo3d-container { width: 100%; height: 100%; position: absolute; inset: 0; }
+    #turbo-hud {
+      position: absolute; top: 16px; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0 32px; z-index: 30; pointer-events: none;
+    }
+    .turbo-badge {
+      background: rgba(0,10,30,0.8);
+      border: 2px solid var(--neon-orange);
+      padding: 8px 20px;
+      border-radius: 30px;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 2px;
+      color: var(--neon-orange);
+      box-shadow: 0 0 20px rgba(255,107,0,0.4);
+    }
+    .turbo-controls-hint {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,10,30,0.85); border: 1px solid rgba(255,255,255,0.2);
+      padding: 8px 20px; border-radius: 30px; font-size: 12px; letter-spacing: 1px;
+      color: rgba(255,255,255,0.8); pointer-events: none; text-align: center;
+    }
+
+    /* OVERLAYS */
+    #pause-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+      z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    #pause-overlay.visible { opacity: 1; pointer-events: all; }
+    .pause-title { font-family: 'Orbitron', sans-serif; font-size: 42px; font-weight: 900; color: var(--neon-yellow); }
+
+    #goal-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 60; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+    }
+    #goal-overlay.show { opacity: 1; }
+    .goal-text {
+      font-family: 'Orbitron', sans-serif; font-size: clamp(50px, 10vw, 100px); font-weight: 900;
+      background: linear-gradient(135deg, var(--neon-yellow), var(--neon-orange), var(--neon-pink));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 35px rgba(255,230,0,0.8));
+    }
+
+    /* VITÓRIA */
+    #screen-victory { gap: 18px; background: radial-gradient(ellipse at 50% 50%, rgba(255,230,0,0.12) 0%, transparent 70%); }
+    .victory-trophy { font-size: 80px; }
+    .victory-title {
+      font-family: 'Orbitron', sans-serif; font-size: clamp(26px, 5vw, 52px); font-weight: 900;
+      background: linear-gradient(135deg, var(--neon-yellow), var(--neon-green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    /* POWER BAR */
+    #power-bar-wrap { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 8px; z-index: 30; pointer-events: none; }
+    #power-bar-wrap.visible { display: flex; }
+    .pb-label { font-size: 10px; color: var(--neon-pink); letter-spacing: 2px; font-family: 'Orbitron', sans-serif; font-weight: 700; }
+    .pb-track { width: 180px; height: 7px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+    .pb-fill { height: 100%; width: 0%; border-radius: 4px; background: linear-gradient(90deg, var(--neon-yellow), var(--neon-orange), var(--neon-pink)); }
+
+    /* TOAST */
+    #toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-10px);
+      background: rgba(0,15,40,0.95); border: 1px solid var(--neon-green); color: white;
+      padding: 10px 24px; border-radius: 50px; font-size: 12px; letter-spacing: 1px;
+      z-index: 999; opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ══════════════════════════════════════════════════════════
+       CARTOON ARCADE SKIN — camada global de estilo
+       Contorno grosso, cores chapadas, formas arredondadas.
+       ══════════════════════════════════════════════════════════ */
+    :root {
+      --neon-green: #35e06a;
+      --neon-blue: #22b7ff;
+      --neon-pink: #ff4d7d;
+      --neon-yellow: #ffd23f;
+      --neon-orange: #ff8a2b;
+      --dark-bg: #1b2a4a;
+      --card-bg: #22345c;
+      --ink: #141426;
+      --paper: #fff6e2;
+    }
+    html, body {
+      background:
+        radial-gradient(circle at 18% 10%, rgba(255,255,255,0.35) 0 60px, transparent 61px),
+        radial-gradient(circle at 84% 16%, rgba(255,255,255,0.22) 0 44px, transparent 45px),
+        radial-gradient(circle at 62% 6%, rgba(255,214,90,0.5) 0 90px, transparent 91px),
+        linear-gradient(180deg, #2f6bd6 0%, #3f83e6 42%, #6fc8f5 100%) !important;
+      background-attachment: fixed !important;
+      color: #fff;
+    }
+    body, .screen, button, input, select, textarea,
+    .btn, .mode-name, .mode-desc, .tune-title, .tune-item,
+    label, span, b, small, p, div {
+      font-family: 'Baloo 2', 'Exo 2', sans-serif !important;
+    }
+    .btn, button {
+      font-family: 'Luckiest Guy', 'Baloo 2', cursive !important;
+      border: 3px solid var(--ink) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 5px 0 var(--ink) !important;
+      letter-spacing: 1px !important;
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.25);
+      transition: transform .08s ease, box-shadow .08s ease, filter .12s ease !important;
+    }
+    .btn:hover, button:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 0 var(--ink) !important;
+    }
+    .btn:active, button:active {
+      transform: translateY(4px) !important;
+      box-shadow: 0 1px 0 var(--ink) !important;
+    }
+    .arcade-card, .mode-card, .tune-panel {
+      background: var(--card-bg) !important;
+      border: 3px solid var(--ink) !important;
+      border-radius: 22px !important;
+      box-shadow: 0 8px 0 rgba(20,20,38,0.55) !important;
+      backdrop-filter: none !important;
+    }
+    .arcade-card:hover, .mode-card:hover { transform: translateY(-4px) rotate(-0.4deg); }
+    .mode-name, .tune-title, .logo-slogan, .screen > div:first-of-type {
+      font-family: 'Luckiest Guy', 'Baloo 2', cursive !important;
+      letter-spacing: 1.5px !important;
+      text-shadow: 3px 3px 0 var(--ink) !important;
+    }
+    .logo-slogan { color: var(--neon-yellow) !important; }
+    .mode-desc { color: #d5e3ff !important; }
+    .official-logo {
+      border: 4px solid var(--ink);
+      border-radius: 24px;
+      filter: drop-shadow(7px 7px 0 var(--ink)) !important;
+    }
+    .diff-btn, .team-btn, .theme-btn, .turbo-theme-btn, .turbo-diff-btn,
+    .car-card {
+      border-width: 3px !important;
+      border-style: solid !important;
+      box-shadow: 0 4px 0 var(--ink) !important;
+    }
+    .diff-btn.active, .team-btn.active, .theme-btn.active,
+    .turbo-theme-btn.active, .turbo-diff-btn.active, .car-card.active {
+      background: var(--neon-yellow) !important;
+      color: var(--ink) !important;
+      border-color: var(--ink) !important;
+      box-shadow: 0 4px 0 var(--ink) !important;
+      transform: translateY(1px) !important;
+      text-shadow: none !important;
+    }
+    #screen-menu { background: transparent !important; }
+    #toast {
+      background: var(--paper) !important;
+      color: var(--ink) !important;
+      border: 3px solid var(--ink) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 5px 0 var(--ink) !important;
+      font-weight: 800 !important;
+    }
+    [id^="hud-"], #turbo-score-p, #turbo-score-b, #turbo-timer,
+    #turbo-speed, #turbo-boost-val, #turbo-goal-title,
+    #turbo-countdown-text, #turbo-ctrl-mode {
+      font-family: 'Luckiest Guy', 'Baloo 2', cursive !important;
+      text-shadow: 2px 2px 0 var(--ink) !important;
+    }
+    /* HUD 2D e placa de jogo */
+    #hud {
+      background: var(--card-bg) !important;
+      border-bottom: 3px solid var(--ink) !important;
+      backdrop-filter: none !important;
+      box-shadow: 0 5px 0 var(--ink) !important;
+    }
+    .hud-score, .hud-team-name, .hud-timer-value, .hud-timer-label {
+      font-family: 'Luckiest Guy', 'Baloo 2', cursive !important;
+      letter-spacing: 1px !important;
+      text-shadow: 2px 2px 0 var(--ink) !important;
+    }
+    .hud-timer-label { color: #cfe0ff !important; }
+    .hud-timer-value { color: var(--neon-yellow) !important; }
+    #game-canvas {
+      border: 4px solid var(--ink) !important;
+      border-radius: 18px !important;
+      box-shadow: 0 8px 0 var(--ink) !important;
+    }
+    #screen-game { background: #14203a !important; }
+    /* Textos de gol / pausa / vitória */
+    .goal-text {
+      background: none !important;
+      -webkit-text-fill-color: var(--neon-yellow) !important;
+      color: var(--neon-yellow) !important;
+      -webkit-text-stroke: 5px var(--ink);
+      filter: none !important;
+      text-shadow: 6px 6px 0 var(--ink) !important;
+      font-family: 'Luckiest Guy', 'Baloo 2', cursive !important;
+    }
+    .pause-title, .victory-title {
+      font-family: 'Luckiest Guy', 'Baloo 2', cursive !important;
+      background: none !important;
+      -webkit-text-fill-color: var(--neon-yellow) !important;
+      color: var(--neon-yellow) !important;
+      -webkit-text-stroke: 4px var(--ink);
+      text-shadow: 4px 4px 0 var(--ink) !important;
+      letter-spacing: 2px !important;
+    }
+    #screen-victory { background: transparent !important; }
+    .turbo-badge, .turbo-controls-hint {
+      background: var(--card-bg) !important;
+      border: 3px solid var(--ink) !important;
+      color: #fff !important;
+      box-shadow: 0 5px 0 var(--ink) !important;
+    }
+    .pb-track { background: rgba(20,20,38,0.35) !important; border: 2px solid var(--ink); border-radius: 8px !important; height: 12px !important; }
+    .pb-fill { background: var(--neon-yellow) !important; border-radius: 6px !important; }
+    .pb-label { font-family: 'Luckiest Guy', 'Baloo 2', cursive !important; color: #fff !important; text-shadow: 2px 2px 0 var(--ink); }
+    #turbo-touch-controls button, [id^="tt-"], .joystick-base, .joystick-stick {
+      border-radius: 50% !important;
+    }
+    input[type="range"] { accent-color: var(--neon-orange); height: 22px; }
+    ::-webkit-scrollbar { width: 12px; }
+    ::-webkit-scrollbar-track { background: rgba(20,20,38,0.25); border-radius: 8px; }
+    ::-webkit-scrollbar-thumb { background: var(--neon-yellow); border: 3px solid var(--ink); border-radius: 8px; }
+  </style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- MENU PRINCIPAL -->
+<div class="screen" id="screen-menu">
+  <div class="logo-container">
+    <img src="/images/logo-arena-kick.jpg" alt="ARENA KICK" class="official-logo" id="main-logo-img" />
+    <div class="logo-slogan">ENTRE NA ARENA. SEU JOGO COMEÇA AQUI.</div>
+  </div>
+
+  <div class="mode-selector">
+    <!-- Turbo Soccer 3D (DESTAQUE PRINCIPAL) -->
+    <div class="arcade-card turbo-card" id="btn-turbo-3d">
+      <div class="card-cover cover-turbo">
+        <span class="card-badge badge-orange">★ 3D ARCADE</span>
+        <div class="card-art-hero">🏎️⚽💨</div>
+      </div>
+      <div class="card-content">
+        <div class="card-title">TURBO SOCCER 3D</div>
+        <div class="card-desc">Futebol estilo Rocket League com saltos duplos, nitro veloz, estádio 3D e carros cartoon.</div>
+        <div class="card-tags">
+          <span class="card-tag">🚀 Nitro & Pulos</span>
+          <span class="card-tag">🏎️ Garagem 3D</span>
+          <span class="card-tag">🏟️ Cel-Shading</span>
+        </div>
+        <button class="card-btn btn-turbo-style">JOGAR AGORA ▶</button>
+      </div>
+    </div>
+
+    <!-- BeatBall vs Bot -->
+    <div class="arcade-card bot-card" id="btn-vs-bot">
+      <div class="card-cover cover-bot">
+        <span class="card-badge badge-cyan">🤖 1P ARCADE</span>
+        <div class="card-art-hero">⚽🤖⚡</div>
+      </div>
+      <div class="card-content">
+        <div class="card-title">BEATBALL VS BOT</div>
+        <div class="card-desc">Futebol tático 2D de alta velocidade contra Inteligência Artificial com física real e super chutes.</div>
+        <div class="card-tags">
+          <span class="card-tag">🧠 3 Dificuldades</span>
+          <span class="card-tag">⚡ Super Chute</span>
+          <span class="card-tag">⚙️ Matter.js</span>
+        </div>
+        <button class="card-btn btn-bot-style">JOGAR AGORA ▶</button>
+      </div>
+    </div>
+
+    <!-- BeatBall 2P -->
+    <div class="arcade-card local-card" id="btn-local-2p">
+      <div class="card-cover cover-local">
+        <span class="card-badge badge-pink">⚔️ 2P LOCAL</span>
+        <div class="card-art-hero">🟢💥🔴</div>
+      </div>
+      <div class="card-content">
+        <div class="card-title">BEATBALL 2P LOCAL</div>
+        <div class="card-desc">Duelo clássico competitivo para dois jogadores locais no mesmo teclado ou controles.</div>
+        <div class="card-tags">
+          <span class="card-tag">👥 Duelo 1v1</span>
+          <span class="card-tag">⚡ Super Dash</span>
+          <span class="card-tag">🏟️ 3 Estádios</span>
+        </div>
+        <button class="card-btn btn-local-style">JOGAR AGORA ▶</button>
+      </div>
+    </div>
+
+    <!-- BeatBall Online 1v1 -->
+    <div class="arcade-card online-card" id="btn-online-1v1">
+      <div class="card-cover cover-online">
+        <span class="card-badge badge-green">🌐 ONLINE 1V1</span>
+        <div class="card-art-hero">🌍⚽🔗</div>
+      </div>
+      <div class="card-content">
+        <div class="card-title">BEATBALL ONLINE</div>
+        <div class="card-desc">Desafie um amigo pela internet com conexão direta P2P. Sem servidor, sem cadastro.</div>
+        <div class="card-tags">
+          <span class="card-tag">🌐 P2P Direto</span>
+          <span class="card-tag">🔑 Código de Sala</span>
+          <span class="card-tag">📡 Baixa Latência</span>
+        </div>
+        <button class="card-btn btn-online-style">JOGAR ONLINE ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="font-size:11px; color:rgba(255,255,255,0.4); letter-spacing:2px; margin-top:4px; font-family:'Orbitron',sans-serif;">
+    PLATAFORMA ARENA KICK · 60 FPS · THREE.JS 3D + MATTER.JS 2D
+  </div>
+</div>
+
+<!-- SELEÇÃO DE DIFICULDADE & TIME (BEATBALL) -->
+<div class="screen hidden" id="screen-game-select">
+  <div style="font-family:'Orbitron',sans-serif; font-size:26px; font-weight:900;" id="select-mode-title">BEATBALL VS BOT</div>
+  <div style="color:rgba(255,255,255,0.45); font-size:12px; letter-spacing:2px;">PERSONALIZE SUA PARTIDA</div>
+
+  <!-- DIFICULDADE -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-green); letter-spacing:2px; margin-top:4px;">INTENSIDADE DA IA:</div>
+  <div style="display:flex; gap:12px;" class="diff-row">
+    <button class="btn btn-secondary diff-btn active" data-diff="easy" style="border-color:var(--neon-green); color:var(--neon-green);">🟢 FÁCIL</button>
+    <button class="btn btn-secondary diff-btn" data-diff="medium" style="border-color:var(--neon-yellow); color:var(--neon-yellow);">🟡 MÉDIO</button>
+    <button class="btn btn-secondary diff-btn" data-diff="hard" style="border-color:var(--neon-pink); color:var(--neon-pink);">🔴 BRUTAL</button>
+  </div>
+
+  <!-- SELEÇÃO DE TIME -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-blue); letter-spacing:2px; margin-top:6px;">SEU TIME (DISCO):</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;" id="team-selector-row">
+    <button class="btn btn-secondary team-btn active" data-team="brazil" style="border-color:#00ff88; color:#00ff88;">🇧🇷 BRASIL</button>
+    <button class="btn btn-secondary team-btn" data-team="usa" style="border-color:#00cfff; color:#00cfff;">🇺🇸 EUA</button>
+    <button class="btn btn-secondary team-btn" data-team="france" style="border-color:#38a0ff; color:#38a0ff;">🇫🇷 FRANÇA</button>
+    <button class="btn btn-secondary team-btn" data-team="argentina" style="border-color:#ffe600; color:#ffe600;">🇦🇷 ARGENTINA</button>
+    <button class="btn btn-secondary team-btn" data-team="barcelona" style="border-color:#ff2d78; color:#ff2d78;">🔴🔵 BARÇA</button>
+  </div>
+
+  <!-- SELEÇÃO DE CAMPO / CENÁRIO -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-yellow); letter-spacing:2px; margin-top:6px;">CENÁRIO DO CAMPO:</div>
+  <div style="display:flex; gap:10px;" id="theme-selector-row">
+    <button class="btn btn-secondary theme-btn active" data-theme="classic" style="border-color:#00ff88; color:#00ff88;">🏟️ ESTÁDIO VERDE</button>
+    <button class="btn btn-secondary theme-btn" data-theme="cyber" style="border-color:#00cfff; color:#00cfff;">⚡ CYBER NEON</button>
+    <button class="btn btn-secondary theme-btn" data-theme="futsal" style="border-color:#ff6b00; color:#ff6b00;">⚽ FUTSAL MADEIRA</button>
+  </div>
+
+  <div style="display:flex; gap:14px; margin-top:10px;">
+    <button class="btn btn-primary" id="btn-start-game">▶ ENTRAR EM CAMPO</button>
+    <button class="btn btn-secondary" id="btn-back-to-menu">← MENU</button>
+  </div>
+
+  <div style="font-size:11px; color:rgba(255,255,255,0.4); text-align:center; line-height:1.6; margin-top:4px;">
+    🟢 <b>J1 / Xbox:</b> Analógico ou W A S D mover · ESPAÇO / A dash · X super chute<br>
+    🔴 <b>J2 (2P):</b> ↑ ↓ ← → mover · ENTER ou SHIFT DIREITO dash · N ou / super chute
+  </div>
+</div>
+
+<!-- GARAGEM 3D — SELEÇÃO DE CARROS (TURBO SOCCER) -->
+<div class="screen hidden" id="screen-garage-3d">
+  <div style="font-family:'Orbitron',sans-serif; font-size:26px; font-weight:900; color:var(--neon-orange);">🏎️ GARAGEM TURBO SOCCER 3D</div>
+  <div style="color:rgba(255,255,255,0.45); font-size:12px; letter-spacing:2px;">ESCOLHA SEU VEÍCULO DE ALTA FIDELIDADE</div>
+
+  <!-- PRÉVIA 3D AO VIVO -->
+  <div id="garage-preview-stage" style="position:relative;width:min(680px,94vw);height:230px;margin:8px 0 4px;
+    border-radius:20px;overflow:hidden;border:2px solid rgba(0,207,255,0.35);
+    background:radial-gradient(circle at 50% 120%, rgba(0,207,255,0.18), rgba(8,15,30,0.92) 70%);
+    box-shadow:inset 0 0 60px rgba(0,0,0,0.55),0 10px 30px rgba(0,0,0,0.4);">
+    <div id="garage-preview-canvas" style="position:absolute;inset:0;"></div>
+    <div id="garage-preview-label" style="position:absolute;left:16px;bottom:12px;font-family:'Orbitron',sans-serif;
+      font-size:13px;font-weight:900;letter-spacing:2px;color:#00cfff;text-shadow:0 2px 8px #000;">OCTANE TURBO</div>
+    <div style="position:absolute;right:16px;top:12px;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.45);">PRÉVIA 3D AO VIVO</div>
+  </div>
+
+  <div style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center; max-width:880px; margin-top:8px;">
+    <!-- Octane Turbo -->
+    <div class="mode-card car-card active" data-car="octane-cartoon" style="border-color:var(--neon-orange); min-width:160px;">
+      <span class="mode-icon">🏎️</span>
+      <div class="mode-name" style="color:var(--neon-orange);">Octane Turbo</div>
+      <div class="mode-desc">Ícone Rocket League · Chassi Ágil</div>
+    </div>
+    <!-- Kenney Red Racer -->
+    <div class="mode-card car-card" data-car="cartoon-red" style="border-color:rgba(255,107,0,0.3); min-width:160px;">
+      <span class="mode-icon">🔥</span>
+      <div class="mode-name" style="color:var(--neon-orange);">Cartoon Red</div>
+      <div class="mode-desc">Kenney Toon · Rápido e vibrante</div>
+    </div>
+    <!-- Kenney Yellow Cruiser -->
+    <div class="mode-card car-card" data-car="cartoon-yellow" style="border-color:rgba(255,230,0,0.3); min-width:160px;">
+      <span class="mode-icon">🚕</span>
+      <div class="mode-name" style="color:var(--neon-yellow);">Cartoon Yellow</div>
+      <div class="mode-desc">Kenney Toon · Controle suave</div>
+    </div>
+    <!-- Kenney Green Beast -->
+    <div class="mode-card car-card" data-car="cartoon-green" style="border-color:rgba(0,255,136,0.3); min-width:160px;">
+      <span class="mode-icon">🚙</span>
+      <div class="mode-name" style="color:var(--neon-green);">Cartoon Green</div>
+      <div class="mode-desc">Kenney Toon · Tração forte</div>
+    </div>
+    <!-- ToyCar -->
+    <div class="mode-card car-card" data-car="toycar" style="border-color:rgba(0,207,255,0.3); min-width:160px;">
+      <span class="mode-icon">🚗</span>
+      <div class="mode-name" style="color:var(--neon-blue);">ToyCar 3D</div>
+      <div class="mode-desc">Estilo Brinquedo · Chassi largo</div>
+    </div>
+    <!-- Ferrari GT Toon -->
+    <div class="mode-card car-card" data-car="ferrari" style="border-color:rgba(255,0,50,0.3); min-width:160px;">
+      <span class="mode-icon">🏎️</span>
+      <div class="mode-name" style="color:#ff2244;">Ferrari GT</div>
+      <div class="mode-desc">Superesportivo · Aerodinâmica fina</div>
+    </div>
+    <!-- Milk Truck Retro -->
+    <div class="mode-card car-card" data-car="milktruck" style="border-color:rgba(255,200,0,0.3); min-width:160px;">
+      <span class="mode-icon">🚚</span>
+      <div class="mode-name" style="color:#f59e0b;">Milk Truck</div>
+      <div class="mode-desc">Caminhão Retrô · Força bruta</div>
+    </div>
+    <!-- Moto Nitro Kenney -->
+    <div class="mode-card car-card" data-car="cartoon-moto" style="border-color:rgba(0,255,136,0.3); min-width:160px;">
+      <span class="mode-icon">🏍️</span>
+      <div class="mode-name" style="color:#10b981;">Moto Nitro</div>
+      <div class="mode-desc">Kenney Toon · Agilidade extrema</div>
+    </div>
+  </div>
+
+  <!-- DIFICULDADE DO BOT 3D -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-yellow); letter-spacing:2px; margin-top:6px;">🤖 NÍVEL DO BOT:</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+    <button class="btn btn-secondary turbo-diff-btn" data-turbo-level="easy" style="border-color:#00ff88; color:#00ff88;">😌 FÁCIL</button>
+    <button class="btn btn-secondary turbo-diff-btn active" data-turbo-level="medium" style="border-color:#00cfff; color:#00cfff;">😎 MÉDIO</button>
+    <button class="btn btn-secondary turbo-diff-btn" data-turbo-level="hard" style="border-color:#ff2d78; color:#ff2d78;">😈 DIFÍCIL</button>
+  </div>
+
+  <!-- CENÁRIO DO ESTÁDIO 3D -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-yellow); letter-spacing:2px; margin-top:6px;">🏟️ CENÁRIO DO ESTÁDIO:</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+    <button class="btn btn-secondary turbo-theme-btn active" data-turbo-theme="classic" style="border-color:#00ff88; color:#00ff88;">☀️ DIURNO</button>
+    <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="cyber" style="border-color:#00cfff; color:#00cfff;">🌙 NOTURNO</button>
+    <button class="btn btn-secondary turbo-theme-btn" data-turbo-theme="futsal" style="border-color:#ff6b00; color:#ff6b00;">🥅 FUTSAL</button>
+  </div>
+
+  <!-- AJUSTES DE CORRIDA (PRÉ-PARTIDA) -->
+  <div class="tune-panel">
+    <div class="tune-title">⚙️ AJUSTES DE CORRIDA</div>
+    <div class="tune-grid">
+      <label class="tune-item"><span>Velocidade</span><input type="range" id="tune-speed" min="0.6" max="1.8" step="0.1" value="1" /><b id="tune-speed-val">1.0x</b></label>
+      <label class="tune-item"><span>Giro / Manobra</span><input type="range" id="tune-turn" min="0.6" max="1.6" step="0.1" value="1" /><b id="tune-turn-val">1.0x</b></label>
+      <label class="tune-item"><span>Força do Pulo</span><input type="range" id="tune-jump" min="8" max="24" step="1" value="14" /><b id="tune-jump-val">14</b></label>
+      <label class="tune-item"><span>Quique da Bola</span><input type="range" id="tune-bounce" min="0.3" max="0.95" step="0.05" value="0.68" /><b id="tune-bounce-val">0.68</b></label>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:14px; margin-top:14px;">
+    <button class="btn btn-orange" id="btn-start-turbo-match" style="font-size:14px; padding:14px 36px;">⚡ ACELERAR PARA O ESTÁDIO</button>
+    <button class="btn btn-secondary" id="btn-back-garage-menu">← MENU</button>
+  </div>
+
+  <div style="font-size:11px; color:rgba(255,255,255,0.4); letter-spacing:1px; margin-top:6px;">
+    🎮 TOTALMENTE COMPATÍVEL COM CONTROLE DO XBOX (RT ACELERAR · LT FREIO · STICK ESQUERDO DIREÇÃO · STICK DIREITO CÂMERA 360°)
+  </div>
+</div>
+
+<!-- JOGO 2D (BEATBALL) -->
+<div class="screen hidden" id="screen-game">
+  <div id="hud">
+    <div class="hud-team">
+      <span style="font-size:18px;">🟢</span>
+      <span class="hud-team-name" style="color:var(--neon-green);" id="hud-p1-name">JOGADOR 1</span>
+    </div>
+    <div class="hud-score-wrap">
+      <span class="hud-score" id="hud-score-p1">0</span>
+      <span class="hud-score-sep">×</span>
+      <span class="hud-score" id="hud-score-p2">0</span>
+    </div>
+    <div>
+      <div class="hud-timer-label">TEMPO</div>
+      <div class="hud-timer-value" id="hud-timer">3:00</div>
+    </div>
+    <div class="hud-team">
+      <span class="hud-team-name" id="hud-p2-name" style="color:var(--neon-pink);">BOT IA</span>
+      <span style="font-size:18px;">🔴</span>
+      <button id="btn-audio-toggle" style="background:transparent; border:1px solid rgba(255,255,255,0.25); color:white; border-radius:20px; padding:4px 10px; font-size:13px; cursor:pointer; margin-left:8px;" title="Ligar/Desligar Música">🔊</button>
+    </div>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <div id="power-bar-wrap">
+    <span class="pb-label">SUPER CHUTE</span>
+    <div class="pb-track"><div class="pb-fill" id="pb-fill"></div></div>
+  </div>
+
+  <div id="pause-overlay">
+    <div class="pause-title">⏸ PAUSA</div>
+    <button class="btn btn-primary" id="btn-resume">▶ CONTINUAR</button>
+    <button class="btn btn-secondary" id="btn-pause-menu">🏠 MENU PRINCIPAL</button>
+  </div>
+
+  <div id="goal-overlay">
+    <div class="goal-text">GOL! ⚽</div>
+    <div style="font-family:'Orbitron',sans-serif; font-size:15px; color:white; margin-top:8px; letter-spacing:2px;" id="goal-scorer"></div>
+  </div>
+</div>
+
+<!-- JOGO 3D (TURBO SOCCER) — HUD injetado dinamicamente por turbosoccer.ts -->
+<div class="screen hidden" id="screen-turbo3d">
+  <div id="turbo3d-container" style="position:relative;width:100%;height:100%;"></div>
+  <!-- btn-exit-turbo é necessário para o main.ts (listener de saída externo) mas fica escondido já que o HUD interno já tem o botão de sair -->
+  <button id="btn-exit-turbo" style="display:none;"></button>
+</div>
+
+<!-- VITÓRIA -->
+<div class="screen hidden" id="screen-victory">
+  <div class="victory-trophy">🏆</div>
+  <div class="victory-title" id="victory-title">VITÓRIA!</div>
+  <div style="font-size:13px; color:rgba(255,255,255,0.5); letter-spacing:2px;" id="victory-winner"></div>
+  <div style="font-family:'Orbitron',sans-serif; font-size:48px; font-weight:900;" id="victory-score">0 × 0</div>
+  <div style="display:flex; gap:14px; margin-top:12px;">
+    <button class="btn btn-primary" id="btn-play-again">🔄 JOGAR NOVAMENTE</button>
+    <button class="btn btn-secondary" id="btn-victory-menu">🏠 MENU</button>
+  </div>
+</div>
+
+<!-- ONLINE 1V1 (P2P) -->
+<div class="screen hidden" id="screen-online">
+  <div style="font-family:'Orbitron',sans-serif; font-size:clamp(24px,4vw,34px); font-weight:900; color:var(--neon-green);">🌐 ONLINE 1V1</div>
+  <div style="font-size:12px; color:rgba(255,255,255,0.5); letter-spacing:2px; text-align:center;">
+    CONEXÃO DIRETA P2P · SEM SERVIDOR · SEM CADASTRO
+  </div>
+
+  <div style="display:flex; gap:22px; flex-wrap:wrap; justify-content:center; align-items:stretch;">
+    <!-- CRIAR SALA -->
+    <div class="online-panel">
+      <div class="online-panel-title">CRIAR SALA</div>
+      <button class="btn btn-primary" id="btn-online-host">🚀 CRIAR SALA</button>
+      <div id="online-host-code-wrap" style="display:none; flex-direction:column; gap:8px; align-items:center; width:100%;">
+        <div style="font-size:10px; letter-spacing:2px; color:rgba(255,255,255,0.5);">CÓDIGO DA SALA</div>
+        <div class="online-code" id="online-host-code">------</div>
+        <button class="btn btn-secondary" id="btn-online-copy" style="padding:8px 18px; font-size:11px;">📋 COPIAR CÓDIGO</button>
+        <button class="btn btn-secondary" id="btn-online-copy-link" style="padding:8px 18px; font-size:11px; background:rgba(0,207,255,0.2); border:1px solid #00cfff; color:#00cfff;">🔗 COPIAR LINK DE CONVITE</button>
+      </div>
+      <div class="online-status" id="online-host-status"></div>
+    </div>
+
+    <!-- ENTRAR EM SALA -->
+    <div class="online-panel">
+      <div class="online-panel-title">ENTRAR EM SALA</div>
+      <input class="online-input" id="online-join-code" placeholder="CÓDIGO DA SALA" maxlength="12" autocomplete="off" spellcheck="false" />
+      <button class="btn btn-primary" id="btn-online-join">🔗 ENTRAR NA SALA</button>
+      <div class="online-status" id="online-join-status"></div>
+    </div>
+  </div>
+
+  <div class="online-status" id="online-global-status" style="min-height:18px; color:rgba(255,230,0,0.85);"></div>
+  <button class="btn btn-secondary" id="btn-online-back">← VOLTAR AO MENU</button>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

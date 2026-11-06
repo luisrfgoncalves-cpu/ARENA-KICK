@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Production build output
+dist/
+
+# Local env files
+.env.local
+.env.*.local
+*.local
+
+# Temporary / Scratch
+assets-unused/
+__obst.ts.txt
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
