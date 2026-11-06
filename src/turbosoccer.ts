@@ -154,6 +154,7 @@ export class TurboSoccerGame {
   private kickoffCountdown  = 3.5 // 3.. 2.. 1.. VAI!
   private isKickoffActive   = true
   private matchEnded        = false
+  private isTraining        = false
   private jumpHeld          = false
   private flipActionHeld    = false
   private aerialBoostHeld   = false
@@ -428,6 +429,22 @@ export class TurboSoccerGame {
 
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys[e.code] = false
+  }
+
+  public setTrainingMode(enabled: boolean) {
+    this.isTraining = enabled
+    if (enabled) {
+      this.matchTimer = 999999
+      if (this.hudTimer) this.hudTimer.textContent = 'TREINO'
+      this.playerCar.boost = 100
+      for (const car of this.allCars) {
+        if (car !== this.playerCar) {
+          car.freeze()
+          car.group.visible = false
+        }
+      }
+      this.showQuickChat('🎯 MODO TREINO LIVRE: Nitro infinito e arena livre!')
+    }
   }
 
   public triggerBarrelRoll = () => {
@@ -2052,7 +2069,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         this.boostSfxHeld = true
         this.audio.playBoost()
       }
-      pc.boost = Math.max(0, pc.boost - 32 * dt)
+      if (this.isTraining) pc.boost = 100
+      else pc.boost = Math.max(0, pc.boost - 32 * dt)
       pc.showFlame(true)
       throttle = Math.max(throttle, 1.0) * 1.55
       this.emitTireSmoke(pc)
@@ -2389,6 +2407,16 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
       car.pos.y += car.velY * dt
       if (car.pos.y <= 0) {
+        // Wave Dash (Rocket League): contato no solo com flip ativo converte o ângulo em burst de aceleração!
+        if (car.flipTimer > 0 && Math.abs(car.flipDirZ) > 0.1) {
+          const waveDashBurst = car.flipDirZ * 0.42
+          car.speed = Math.max(-0.6, Math.min(1.75 * this.studioParams.playerSpeedMult, car.speed + waveDashBurst))
+          this.audio.playDash()
+          this.emitTireSmoke(car, true)
+          if (car === this.playerCar) {
+            this.showQuickChat('⚡ WAVE DASH!')
+          }
+        }
         car.pos.y      = 0
         car.velY       = 0
         car.velX       = 0

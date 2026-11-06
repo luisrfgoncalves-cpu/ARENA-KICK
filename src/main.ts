@@ -240,6 +240,17 @@ document.getElementById('btn-start-turbo-match')!.addEventListener('click', () =
   startTurboSoccer3D(selectedCar, readTurboTuning())
 })
 
+document.getElementById('btn-training-turbo')?.addEventListener('click', () => {
+  closeGaragePreview()
+  const tuning = readTurboTuning()
+  tuning.matchFormat = '1v1'
+  startTurboSoccer3D(selectedCar, tuning)
+  setTimeout(() => {
+    currentTurboGame?.setTrainingMode(true)
+  }, 300)
+  showToast('🎯 Treino Livre Ativado: Arena livre e Nitro Infinito!')
+})
+
 document.getElementById('btn-back-garage-menu')!.addEventListener('click', () => {
   closeGaragePreview()
   showScreen('menu')
@@ -562,6 +573,11 @@ document.querySelectorAll('.theme-btn').forEach((btn) => {
 
 document.getElementById('btn-back-to-menu')!.addEventListener('click', () => showScreen('menu'))
 document.getElementById('btn-start-game')!.addEventListener('click', () => startBeatBall())
+document.getElementById('btn-training-bb')?.addEventListener('click', () => {
+  startBeatBall('bot')
+  currentGame?.setTrainingMode(true)
+  showToast('🎯 Treino Livre Ativado: Pratique condução e curvas!')
+})
 
 // ── PAUSE E REVANCHE ─────────────────────────────────────────
 document.getElementById('btn-resume')!.addEventListener('click', () => {
