@@ -88,6 +88,28 @@ function refreshLobby() {
   }
 }
 
+function updateRankDisplay() {
+  const el = document.getElementById('player-rank-display')
+  if (!el) return
+  try {
+    const lbRaw = localStorage.getItem('arena_kick_leaderboard')
+    const lb: Array<{ player_name: string; rating: number }> = lbRaw ? JSON.parse(lbRaw) : []
+    const myEntry = lb.find((e) => e.player_name === 'Jogador 1')
+    const myMMR = myEntry?.rating ?? 1000
+    let label = 'BRONZE'
+    let emoji = '🥉'
+    let color = '#cd7f32'
+    if (myMMR >= 1600) { label = 'CAMPEÃO'; emoji = '🏆'; color = '#a855f7' }
+    else if (myMMR >= 1400) { label = 'PLATINA'; emoji = '💎'; color = '#38bdf8' }
+    else if (myMMR >= 1250) { label = 'OURO'; emoji = '🥇'; color = '#ffd23f' }
+    else if (myMMR >= 1100) { label = 'PRATA'; emoji = '🥈'; color = '#94a3b8' }
+
+    el.innerHTML = `${emoji} <span style="color:${color};font-weight:900;">${label}</span> · ${myMMR} MMR`
+  } catch {
+    el.innerHTML = '🥉 BRONZE · 1000 MMR'
+  }
+}
+
 function showScreen(id: keyof typeof screens) {
   if (id === 'menu') {
     if (currentGame) {
@@ -102,6 +124,7 @@ function showScreen(id: keyof typeof screens) {
   if (id === 'online') {
     refreshLobby()
   }
+  updateRankDisplay()
   Object.values(screens).forEach((s) => s.classList.add('hidden'))
   screens[id].classList.remove('hidden')
   // Joystick de toque só aparece na tela do BeatBall 2D
@@ -495,7 +518,7 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
         const tuning = readTurboTuning()
         tuning.matchFormat = selectedOnlineTurboFormat
         showScreen('turbo3d')
-        startTurboSoccer(selectedCar, tuning)
+        startTurboSoccer3D(selectedCar, tuning)
       } else {
         selectedBBFormat = selectedOnlineBBFormat
         startOnlineMatch()
@@ -562,7 +585,7 @@ document.getElementById('btn-online-copy-link')?.addEventListener('click', async
   }
 })
 
-document.getElementById('btn-online-join')!.addEventListener('click', async () => {
+async function handleJoinRoom(asSpectator = false) {
   if (onlineBusy || netManager) return
   const input = document.getElementById('online-join-code') as HTMLInputElement
   const code = input.value.trim().toUpperCase()
@@ -572,7 +595,7 @@ document.getElementById('btn-online-join')!.addEventListener('click', async () =
   }
 
   onlineBusy = true
-  setOnlineStatus('join', 'Conectando à sala...', '#00cfff')
+  setOnlineStatus('join', asSpectator ? 'Entrando como espectador...' : 'Conectando à sala...', '#a855f7')
   try {
     netManager = await createOnlineNetwork()
     await netManager.init()
@@ -580,12 +603,13 @@ document.getElementById('btn-online-join')!.addEventListener('click', async () =
     netManager.onDataReceived = (payload) => {
       if (payload.event === 'start_game') {
         const fmt = payload.format || '1v1'
-        showToast(`Partida ${fmt} iniciada pelo Host!`)
+        showToast(asSpectator ? `👁️ Transmitindo partida ${fmt} ao vivo!` : `Partida ${fmt} iniciada pelo Host!`)
         if (payload.gameType === 'turbo') {
           const tuning = readTurboTuning()
           if (payload.format) tuning.matchFormat = payload.format as TurboMatchFormat
+          if (asSpectator) tuning.spectatorMode = true
           showScreen('turbo3d')
-          startTurboSoccer(selectedCar, tuning)
+          startTurboSoccer3D(selectedCar, tuning)
         } else {
           if (payload.format) selectedBBFormat = payload.format as '1v1' | '2v2'
           startOnlineMatch()
@@ -594,11 +618,11 @@ document.getElementById('btn-online-join')!.addEventListener('click', async () =
     }
 
     netManager.onPlayerCountChange = (count) => {
-      setOnlineStatus('join', `Conectado! ${count} jogadores na sala. Aguardando o host iniciar...`, '#00ff88')
+      setOnlineStatus('join', asSpectator ? `👁️ Conectado como Espectador (${count} na sala). Aguardando início...` : `Conectado! ${count} jogadores na sala. Aguardando o host iniciar...`, '#00ff88')
     }
 
-    await netManager.joinRoom(code)
-    setOnlineStatus('join', 'Conectado com sucesso! Aguardando o Host clicar em Iniciar...', '#00ff88')
+    await netManager.joinRoom(code, asSpectator)
+    setOnlineStatus('join', asSpectator ? '👁️ Modo Espectador ativo! A transmissão iniciará assim que o Host começar.' : 'Conectado com sucesso! Aguardando o Host clicar em Iniciar...', '#a855f7')
   } catch (err) {
     console.error('[Online] Falha ao entrar:', err)
     setOnlineStatus('join', 'Não foi possível conectar. Confira o código.', '#ff2d78')
@@ -610,7 +634,10 @@ document.getElementById('btn-online-join')!.addEventListener('click', async () =
   } finally {
     onlineBusy = false
   }
-})
+}
+
+document.getElementById('btn-online-join')!.addEventListener('click', () => handleJoinRoom(false))
+document.getElementById('btn-online-spectate')?.addEventListener('click', () => handleJoinRoom(true))
 
 // ── SELEÇÃO DE DIFICULDADE (BEATBALL) ────────────────────────
 document.querySelectorAll('.diff-btn').forEach((btn) => {

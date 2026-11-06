@@ -35,6 +35,7 @@ export interface NetSyncPayload {
   gameType?: 'beatball' | 'turbo'
   format?: '1v1' | '2v2' | '3v3' | '4v4'
   whoScored?: 'p1' | 'p2'
+  isSpectator?: boolean
 }
 
 export class NetworkManager {
@@ -44,6 +45,7 @@ export class NetworkManager {
   private isHostPlayer = false
   public myId = ''
   public mySlot = 0 // 0 = Host (P1), 1 = P2, 2 = P3, ..., 7 = P8
+  public isSpectator = false
 
   public onConnected?: (isHost: boolean) => void
   public onDataReceived?: (data: NetSyncPayload) => void
@@ -74,7 +76,7 @@ export class NetworkManager {
     })
   }
 
-  joinRoom(hostRoomId: string): Promise<void> {
+  joinRoom(hostRoomId: string, asSpectator = false): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.peer) {
         reject(new Error('Peer not initialized'))
@@ -82,6 +84,7 @@ export class NetworkManager {
       }
 
       this.isHostPlayer = false
+      this.isSpectator = asSpectator
       const connection = this.peer.connect(hostRoomId, {
         reliable: false // modo UDP ultra-rápido para gameplay em tempo real
       })
@@ -94,6 +97,14 @@ export class NetworkManager {
         clearTimeout(timeout)
         this.hostConn = connection
         this.setupClientConnection(connection)
+        if (asSpectator) {
+          connection.send({
+            t: performance.now(),
+            event: 'slot_assign',
+            isSpectator: true,
+            assignedSlot: -1
+          } as NetSyncPayload)
+        }
         resolve()
       })
 

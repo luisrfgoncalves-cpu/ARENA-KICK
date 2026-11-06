@@ -79,6 +79,16 @@ interface SmokePuff {
   maxLife: number
 }
 
+// ── SISTEMA DE RANK / ELO ──────────────────────────────────────
+export type RankTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'champion'
+function getRankFromMMR(mmr: number): { tier: RankTier; label: string; emoji: string; color: string } {
+  if (mmr >= 1600) return { tier: 'champion', label: 'CAMPEÃO', emoji: '🏆', color: '#a855f7' }
+  if (mmr >= 1400) return { tier: 'platinum', label: 'PLATINA',  emoji: '💎', color: '#38bdf8' }
+  if (mmr >= 1250) return { tier: 'gold',     label: 'OURO',     emoji: '🥇', color: '#ffd23f' }
+  if (mmr >= 1100) return { tier: 'silver',   label: 'PRATA',    emoji: '🥈', color: '#94a3b8' }
+  return { tier: 'bronze', label: 'BRONZE', emoji: '🥉', color: '#cd7f32' }
+}
+
 export type TurboTheme = 'classic' | 'cyber' | 'futsal' | 'snowday'
 
 export type TurboBotLevel = 'easy' | 'medium' | 'hard'
@@ -97,6 +107,7 @@ export interface TurboTuning {
   matchFormat?: TurboMatchFormat
   goalExplosion?: GoalExplosionType
   gameMode?: TurboGameMode
+  spectatorMode?: boolean
 }
 
 // ============================================================
@@ -255,6 +266,7 @@ export class TurboSoccerGame {
   private botLevel: TurboBotLevel = 'medium'
   private goalExplosion: GoalExplosionType = 'toon'
   private gameMode: TurboGameMode = 'standard'
+  private spectatorMode = false
 
   // Rumble
   private rumblePowerup: RumblePowerup | null = null
@@ -289,6 +301,7 @@ export class TurboSoccerGame {
     this.matchFormat = tuning?.matchFormat ?? '1v1'
     this.goalExplosion = tuning?.goalExplosion ?? 'toon'
     this.gameMode = tuning?.gameMode ?? 'standard'
+    this.spectatorMode = tuning?.spectatorMode ?? false
     if (this.gameMode === 'snowday') {
       this.theme = 'snowday'
     }
@@ -1923,6 +1936,46 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     this.hudRumbleName   = document.getElementById('turbo-rumble-name') || undefined
     this.hudRumbleHint   = document.getElementById('turbo-rumble-hint') || undefined
 
+    // ── RANK BADGE NO HUD (canto superior esquerdo) ──
+    try {
+      const lbRaw = localStorage.getItem('arena_kick_leaderboard')
+      const lb: Array<{ player_name: string; rating: number }> = lbRaw ? JSON.parse(lbRaw) : []
+      const myEntry = lb.find((e) => e.player_name === 'Jogador 1')
+      const myMMR = myEntry?.rating ?? 1000
+      const rank = getRankFromMMR(myMMR)
+
+      const rankBadge = document.createElement('div')
+      rankBadge.id = 'turbo-rank-badge'
+      rankBadge.style.cssText = `
+        position:absolute;top:18px;left:22px;display:flex;align-items:center;gap:8px;
+        background:#22345c;border:3px solid ${rank.color};border-radius:20px;
+        padding:6px 16px;box-shadow:0 5px 0 #141426;z-index:30;pointer-events:none;
+      `
+      rankBadge.innerHTML = `
+        <span style="font-size:18px;line-height:1;">${rank.emoji}</span>
+        <div style="display:flex;flex-direction:column;line-height:1.1;">
+          <span style="font-family:'Luckiest Guy',cursive;font-size:11px;color:${rank.color};letter-spacing:1px;">${rank.label}</span>
+          <span style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:1px;">${myMMR} MMR</span>
+        </div>
+      `
+      hud.appendChild(rankBadge)
+    } catch {
+      // Rank badge é opcional — ignora se localStorage indisponível
+    }
+
+    if (this.spectatorMode) {
+      const specBadge = document.createElement('div')
+      specBadge.id = 'turbo-spectator-badge'
+      specBadge.style.cssText = `
+        position:absolute;top:76px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;
+        background:#a855f7;border:3px solid #141426;border-radius:20px;padding:6px 20px;
+        color:white;font-family:'Luckiest Guy',cursive;font-size:13px;letter-spacing:2px;box-shadow:0 6px 0 #141426;
+        z-index:110;pointer-events:none;
+      `
+      specBadge.innerHTML = '👁️ MODO ESPECTADOR · TRANSMISSÃO AO VIVO'
+      hud.appendChild(specBadge)
+    }
+
     if (this.gameMode === 'rumble' && this.hudRumbleCard) {
       this.hudRumbleCard.style.display = 'flex'
       this.hudRumbleCard.addEventListener('click', () => this.activatePlayerRumble())
@@ -2036,7 +2089,9 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         this.goalCooldown -= dt
         for (const car of this.allCars) car.freeze()
       } else if (!this.matchEnded) {
-        this.updatePlayerInput(dt)
+        if (!this.spectatorMode) {
+          this.updatePlayerInput(dt)
+        }
         this.updateBotAI(dt)
         this.resolveCarCarCollision()
         this.updateBall(dt)
@@ -3021,8 +3076,24 @@ private resolveCarCarCollision() {
           const hitPt = new THREE.Vector3(mx, my, mz)
           this.triggerImpactFlash(hitPt)
           this.emitCartoonStarBurst(hitPt, 14, 0xffd23f)
-          this.triggerCameraShake(0.35)
-          this.audio.playPowerHit()
+
+          // ── SOM EM CAMADAS PELO IMPACTO CARRO-CARRO ──
+          const impactCarSpeed = approach
+          if (impactCarSpeed > 1.5) {
+            // ÉPICO: demolição em alta velocidade
+            this.audio.playDemo()
+            this.triggerCameraShake(1.0)
+            this.emitCartoonStarBurst(hitPt, 18, 0xff3300)
+          } else if (impactCarSpeed > 0.75) {
+            // MÉDIO: colisão forte
+            this.audio.playPowerHit()
+            this.triggerCameraShake(0.45)
+          } else {
+            // LEVE: batida suave
+            this.audio.playHit()
+            this.triggerCameraShake(0.2)
+          }
+
           this.emitTireSmoke(a)
           this.emitTireSmoke(b)
 
@@ -3160,7 +3231,7 @@ private resolveCarCarCollision() {
   private updateBotAI(dt: number) {
     // Roda a IA para todos os carros bot (blue team + orange aliados)
     for (const car of this.allCars) {
-      if (car === this.playerCar || car.isDemoed) continue
+      if ((car === this.playerCar && !this.spectatorMode) || car.isDemoed) continue
       this.runSingleBotAI(car, dt)
     }
   }
@@ -3449,7 +3520,21 @@ private resolveCarCarCollision() {
         b.vel.z = Math.cos(car.yaw) * powerF + nz * 10
         b.vel.y = Math.max(6.0, 10.0 + ny * 16)
         this.triggerCameraShake(0.55)
-        this.audio.playPowerHit()
+        // ── SOM EM CAMADAS PELO IMPACTO TOTAL ──
+        const impactSpeedBumper = b.vel.length() + carSpd
+        if (impactSpeedBumper > 55) {
+          // ÉPICO: velocidade demo — explosão + shake max + starburst
+          this.audio.playDemo()
+          this.triggerCameraShake(1.0)
+          this.emitCartoonStarBurst(b.pos, 18, 0xff3300)
+        } else if (impactSpeedBumper > 28) {
+          // MÉDIO: power hit com shake moderado
+          this.audio.playPowerHit()
+          this.triggerCameraShake(0.4)
+        } else {
+          // LEVE: som de hit suave
+          this.audio.playHit()
+        }
         this.triggerImpactFlash(b.pos)
         this.emitCartoonStarBurst(b.pos, 14, 0xffd23f)
         b.targetSquash.set(1.48, 0.48, 1.48) // Compressão violenta no impacto
@@ -3460,13 +3545,26 @@ private resolveCarCarCollision() {
         b.vel.z = nz * 10
         b.vel.y = Math.max(2.5, ny * 8)
       } else {
-        // Colisão padrão lateral/traseira
+        // Colisão padrão lateral/traseira — também tiered
         const impF = 18 + carSpd * 22
         b.vel.x = nx * impF + Math.sin(car.yaw) * carSpd * 12
         b.vel.z = nz * impF + Math.cos(car.yaw) * carSpd * 12
         b.vel.y = Math.max(b.vel.y, 5.0 + ny * 12)
-        this.audio.playHit()
-        this.triggerCameraShake(0.25)
+        const impactSpeedLateral = b.vel.length() + carSpd
+        if (impactSpeedLateral > 55) {
+          // ÉPICO
+          this.audio.playDemo()
+          this.triggerCameraShake(1.0)
+          this.emitCartoonStarBurst(b.pos, 18, 0xff3300)
+        } else if (impactSpeedLateral > 28) {
+          // MÉDIO
+          this.audio.playPowerHit()
+          this.triggerCameraShake(0.4)
+        } else {
+          // LEVE
+          this.audio.playHit()
+          this.triggerCameraShake(0.25)
+        }
       }
 
       // EFEITO DO SUPER SOCO / BOLA DE FOGO NO IMPACTO COM A BOLA
@@ -3501,6 +3599,17 @@ private resolveCarCarCollision() {
 
 
   private updateCamera(dt: number) {
+    if (this.spectatorMode) {
+      // CÂMERA DE TRANSMISSÃO TV AO VIVO: Acompanha a ação e a bola de forma cinematográfica
+      const targetPos = new THREE.Vector3(FIELD_W * 0.38, 22, this.ball.pos.z * 0.55)
+      const targetLook = this.ball.pos.clone().add(new THREE.Vector3(0, 1.2, 0))
+      this.camCurrentPos.lerp(targetPos, 4 * dt)
+      this.camCurrentLook.lerp(targetLook, 7 * dt)
+      this.camera.position.copy(this.camCurrentPos)
+      this.camera.lookAt(this.camCurrentLook)
+      return
+    }
+
     const pc = this.playerCar
     let targetPos: THREE.Vector3
     let targetLook: THREE.Vector3
