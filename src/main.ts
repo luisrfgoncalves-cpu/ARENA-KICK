@@ -3,7 +3,7 @@
 //  Com Garagem 3D, Seleção de Carros Reais e Customização de Times
 // ============================================================
 import { Game } from './game'
-import type { TurboSoccerGame, TurboTuning, TurboTheme } from './turbosoccer'
+import type { TurboSoccerGame, TurboTuning, TurboTheme, TurboMatchFormat } from './turbosoccer'
 import type { NetworkManager } from './network'
 import { TeamKey, FieldTheme } from './assets'
 import { initVirtualJoystick, setTouchControlsVisible } from './input'
@@ -23,6 +23,8 @@ let gameMode: 'bot' | '2p' = 'bot'
 let selectedCar = 'octane-cartoon'
 let selectedTurboTheme: TurboTheme = 'classic'
 let selectedTurboLevel: 'easy' | 'medium' | 'hard' = 'medium'
+let selectedTurboFormat: TurboMatchFormat = '1v1'
+let selectedBBFormat: '1v1' | '2v2' = '1v1'
 let garagePreview: { setCar(id: string): void; dispose(): void } | null = null
 let selectedTeamP1: TeamKey = 'brazil'
 let selectedTheme: FieldTheme = 'classic'
@@ -181,6 +183,26 @@ document.querySelectorAll('.turbo-theme-btn').forEach((btn) => {
   })
 })
 
+// SELEÇÃO DE FORMATO DO TURBO SOCCER (1v1, 2v2, 3v3, 4v4)
+document.querySelectorAll('.turbo-format-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.turbo-format-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedTurboFormat = ((btn as HTMLElement).dataset.turboFormat as TurboMatchFormat) || '1v1'
+    showToast(`🏎️ Formato: ${btn.textContent?.trim()}`)
+  })
+})
+
+// SELEÇÃO DE FORMATO DO BEATBALL (1v1 ou 2v2)
+document.querySelectorAll('.bb-format-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.bb-format-btn').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedBBFormat = ((btn as HTMLElement).dataset.format as '1v1' | '2v2') || '1v1'
+    showToast(`⚽ Formato: ${btn.textContent?.trim()}`)
+  })
+})
+
 function readTurboTuning(): TurboTuning {
   const val = (id: string, fallback: number) => {
     const el = document.getElementById(id) as HTMLInputElement | null
@@ -192,7 +214,8 @@ function readTurboTuning(): TurboTuning {
     jumpForce: val('tune-jump', 14),
     ballBounce: val('tune-bounce', 0.68),
     theme: selectedTurboTheme,
-    botLevel: selectedTurboLevel
+    botLevel: selectedTurboLevel,
+    matchFormat: selectedTurboFormat
   }
 }
 
@@ -539,6 +562,7 @@ function launchBeatBall(mode: 'bot' | '2p' | 'online', network?: NetworkManager)
   currentGame = new Game({
     canvas,
     mode,
+    format: selectedBBFormat,
     difficulty: selectedDiff,
     theme: selectedTheme,
     teamP1: selectedTeamP1,

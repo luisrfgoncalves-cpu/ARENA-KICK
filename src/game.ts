@@ -30,6 +30,7 @@ import { FieldTheme, TeamKey } from './assets'
 export interface GameConfig {
   canvas: HTMLCanvasElement
   mode: 'bot' | '2p' | 'online'
+  format?: '1v1' | '2v2'
   difficulty: 'easy' | 'medium' | 'hard'
   theme?: FieldTheme
   teamP1?: TeamKey
@@ -79,6 +80,9 @@ export class Game {
 
   private p1!: PlayerCtrl
   private p2!: PlayerCtrl
+  private p3: PlayerCtrl | null = null
+  private p4: PlayerCtrl | null = null
+  private is2v2 = false
   private ball!: Matter.Body
   private lastToucher: 'p1' | 'p2' | null = null
 
@@ -152,11 +156,17 @@ export class Game {
   private initPhysicsWorld() {
     this.engine = createWorld(this.arena)
     const { x, y, w, h } = this.arena
+    this.is2v2 = this.cfg.format === '2v2'
 
     // Criar Corpos
     this.ball = createBall(x + w * 0.5, y + h * 0.5, BALL_RADIUS)
-    const p1Body = createPlayer(x + w * 0.22, y + h * 0.5, PLAYER_RADIUS, LABEL.PLAYER1)
-    const p2Body = createPlayer(x + w * 0.78, y + h * 0.5, PLAYER_RADIUS, LABEL.PLAYER2)
+    const p1X = this.is2v2 ? x + w * 0.32 : x + w * 0.22
+    const p1Y = this.is2v2 ? y + h * 0.40 : y + h * 0.5
+    const p2X = this.is2v2 ? x + w * 0.68 : x + w * 0.22
+    const p2Y = this.is2v2 ? y + h * 0.40 : y + h * 0.5
+
+    const p1Body = createPlayer(p1X, p1Y, PLAYER_RADIUS, LABEL.PLAYER1)
+    const p2Body = createPlayer(this.is2v2 ? x + w * 0.68 : x + w * 0.78, p2Y, PLAYER_RADIUS, LABEL.PLAYER2)
 
     this.goalSensors = createGoalSensors(this.arena)
 
@@ -182,21 +192,54 @@ export class Game {
       carrying: false
     }
 
-    Matter.Composite.add(this.engine.world, [
+    const bodiesToAdd: Matter.Body[] = [
       this.ball,
       p1Body,
       p2Body,
       this.goalSensors.leftSensor,
       this.goalSensors.rightSensor
-    ])
+    ]
+
+    if (this.is2v2) {
+      const p3Body = createPlayer(x + w * 0.16, y + h * 0.50, PLAYER_RADIUS, LABEL.PLAYER3)
+      const p4Body = createPlayer(x + w * 0.84, y + h * 0.50, PLAYER_RADIUS, LABEL.PLAYER4)
+      this.p3 = {
+        body: p3Body,
+        dashCooldown: 0,
+        dashActive: false,
+        dashDur: 0,
+        dashDir: { x: 1, y: 0 },
+        powerCharging: false,
+        powerTime: 0,
+        carrying: false
+      }
+      this.p4 = {
+        body: p4Body,
+        dashCooldown: 0,
+        dashActive: false,
+        dashDur: 0,
+        dashDir: { x: -1, y: 0 },
+        powerCharging: false,
+        powerTime: 0,
+        carrying: false
+      }
+      bodiesToAdd.push(p3Body, p4Body)
+    }
+
+    Matter.Composite.add(this.engine.world, bodiesToAdd)
 
     // Eventos de Colisão
     Matter.Events.on(this.engine, 'collisionStart', (evt) => {
       for (const pair of evt.pairs) {
         const labels = [pair.bodyA.label, pair.bodyB.label]
-        if (labels.includes(LABEL.BALL) && (labels.includes(LABEL.PLAYER1) || labels.includes(LABEL.PLAYER2))) {
-          if (labels.includes(LABEL.PLAYER1)) this.lastToucher = 'p1'
-          if (labels.includes(LABEL.PLAYER2)) this.lastToucher = 'p2'
+        if (labels.includes(LABEL.BALL) && (
+          labels.includes(LABEL.PLAYER1) ||
+          labels.includes(LABEL.PLAYER2) ||
+          labels.includes(LABEL.PLAYER3) ||
+          labels.includes(LABEL.PLAYER4)
+        )) {
+          if (labels.includes(LABEL.PLAYER1) || labels.includes(LABEL.PLAYER3)) this.lastToucher = 'p1'
+          if (labels.includes(LABEL.PLAYER2) || labels.includes(LABEL.PLAYER4)) this.lastToucher = 'p2'
           this.audio.playHit()
           this.input.vibrate(100)
           this.particles.emitHit(this.ball.position.x, this.ball.position.y, this.ball.velocity.x, this.ball.velocity.y)
@@ -219,12 +262,32 @@ export class Game {
     this.p2.carrying = false
     this.p1.body.collisionFilter.mask = 0xFFFF
     this.p2.body.collisionFilter.mask = 0xFFFF
-    const { x, y, w, h } = this.arena
-    Matter.Body.setPosition(this.p1.body, { x: x + w * 0.22, y: y + h * 0.5 })
-    Matter.Body.setVelocity(this.p1.body, { x: 0, y: 0 })
+    if (this.p3) {
+      this.p3.carrying = false
+      this.p3.body.collisionFilter.mask = 0xFFFF
+    }
+    if (this.p4) {
+      this.p4.carrying = false
+      this.p4.body.collisionFilter.mask = 0xFFFF
+    }
 
-    Matter.Body.setPosition(this.p2.body, { x: x + w * 0.78, y: y + h * 0.5 })
-    Matter.Body.setVelocity(this.p2.body, { x: 0, y: 0 })
+    const { x, y, w, h } = this.arena
+    if (this.is2v2 && this.p3 && this.p4) {
+      Matter.Body.setPosition(this.p1.body, { x: x + w * 0.32, y: y + h * 0.38 })
+      Matter.Body.setVelocity(this.p1.body, { x: 0, y: 0 })
+      Matter.Body.setPosition(this.p3.body, { x: x + w * 0.16, y: y + h * 0.50 })
+      Matter.Body.setVelocity(this.p3.body, { x: 0, y: 0 })
+
+      Matter.Body.setPosition(this.p2.body, { x: x + w * 0.68, y: y + h * 0.38 })
+      Matter.Body.setVelocity(this.p2.body, { x: 0, y: 0 })
+      Matter.Body.setPosition(this.p4.body, { x: x + w * 0.84, y: y + h * 0.50 })
+      Matter.Body.setVelocity(this.p4.body, { x: 0, y: 0 })
+    } else {
+      Matter.Body.setPosition(this.p1.body, { x: x + w * 0.22, y: y + h * 0.5 })
+      Matter.Body.setVelocity(this.p1.body, { x: 0, y: 0 })
+      Matter.Body.setPosition(this.p2.body, { x: x + w * 0.78, y: y + h * 0.5 })
+      Matter.Body.setVelocity(this.p2.body, { x: 0, y: 0 })
+    }
 
     Matter.Body.setPosition(this.ball, { x: x + w * 0.5, y: y + h * 0.5 })
     Matter.Body.setVelocity(this.ball, {
@@ -306,7 +369,52 @@ export class Game {
       this.processPlayerMovement(this.p2, botInput, dt)
     }
 
-    // Step da FàƒÂ­sica Matter.js com PASSO FIXO (independente do FPS)
+    // 2v2: IA Defensores P3 (Time 1) e P4 (Time 2)
+    if (this.is2v2 && this.p3) {
+      const ballPos = this.ball.position
+      const { x, w, goalTop, goalBot } = this.arena
+      const targetX = ballPos.x < x + w * 0.5 ? Math.max(x + w * 0.12, ballPos.x - 28) : x + w * 0.20
+      const targetY = ballPos.x < x + w * 0.5 ? ballPos.y : Math.max(goalTop + 12, Math.min(goalBot - 12, ballPos.y))
+      const dx = targetX - this.p3.body.position.x
+      const dy = targetY - this.p3.body.position.y
+      const dLen = Math.hypot(dx, dy)
+      const distBall = Math.hypot(ballPos.x - this.p3.body.position.x, ballPos.y - this.p3.body.position.y)
+
+      const bot3Input: PlayerInput = {
+        up: dy < -8,
+        down: dy > 8,
+        left: dx < -8,
+        right: dx > 8,
+        dash: dLen > 90 && Math.random() < 0.04,
+        power: false,
+        shoot: distBall < PLAYER_RADIUS + BALL_RADIUS + 25
+      }
+      this.processPlayerMovement(this.p3, bot3Input, dt)
+    }
+
+    if (this.is2v2 && this.p4) {
+      const ballPos = this.ball.position
+      const { x, w, goalTop, goalBot } = this.arena
+      const targetX = ballPos.x > x + w * 0.5 ? Math.min(x + w * 0.88, ballPos.x + 28) : x + w * 0.80
+      const targetY = ballPos.x > x + w * 0.5 ? ballPos.y : Math.max(goalTop + 12, Math.min(goalBot - 12, ballPos.y))
+      const dx = targetX - this.p4.body.position.x
+      const dy = targetY - this.p4.body.position.y
+      const dLen = Math.hypot(dx, dy)
+      const distBall = Math.hypot(ballPos.x - this.p4.body.position.x, ballPos.y - this.p4.body.position.y)
+
+      const bot4Input: PlayerInput = {
+        up: dy < -8,
+        down: dy > 8,
+        left: dx < -8,
+        right: dx > 8,
+        dash: dLen > 90 && Math.random() < 0.04,
+        power: false,
+        shoot: distBall < PLAYER_RADIUS + BALL_RADIUS + 25
+      }
+      this.processPlayerMovement(this.p4, bot4Input, dt)
+    }
+
+    // Step da Física Matter.js com PASSO FIXO (independente do FPS)
     this.physicsAccumulator += dt
     let steps = 0
     while (this.physicsAccumulator >= FIXED_DT && steps < 5) {
@@ -319,9 +427,17 @@ export class Game {
     clampBodySpeed(this.ball, BALL_MAX_SPEED)
     clampBodySpeed(this.p1.body, PLAYER_SPEED * 1.5)
     clampBodySpeed(this.p2.body, PLAYER_SPEED * 1.5)
+    if (this.is2v2 && this.p3 && this.p4) {
+      clampBodySpeed(this.p3.body, PLAYER_SPEED * 1.5)
+      clampBodySpeed(this.p4.body, PLAYER_SPEED * 1.5)
+    }
 
     // Condução Orgânica de Bola (Estilo BeatBall original do Roblox - sem ímã/cola)
-    for (const p of [this.p1, this.p2]) {
+    const activePlayers = [this.p1, this.p2]
+    if (this.is2v2 && this.p3 && this.p4) {
+      activePlayers.push(this.p3, this.p4)
+    }
+    for (const p of activePlayers) {
       p.carrying = false
       p.body.collisionFilter.mask = 0xFFFF
       const diff = vsub(this.ball.position, p.body.position)
@@ -540,6 +656,14 @@ export class Game {
     this.p2.carrying = false
     this.p1.body.collisionFilter.mask = 0xFFFF
     this.p2.body.collisionFilter.mask = 0xFFFF
+    if (this.p3) {
+      this.p3.carrying = false
+      this.p3.body.collisionFilter.mask = 0xFFFF
+    }
+    if (this.p4) {
+      this.p4.carrying = false
+      this.p4.body.collisionFilter.mask = 0xFFFF
+    }
     if (scorer === 'p1') this.scoreP1++
     else this.scoreP2++
 
@@ -646,6 +770,27 @@ export class Game {
       this.p2.powerCharging ? this.p2.powerTime / POWER_CHARGE_T : 0,
       this.p2.carrying
     )
+
+    if (this.is2v2 && this.p3 && this.p4) {
+      this.renderer.drawPlayer(
+        this.p3.body,
+        PLAYER_RADIUS,
+        '#00cfff',
+        3,
+        this.p3.dashCooldown <= 0,
+        0,
+        this.p3.carrying
+      )
+      this.renderer.drawPlayer(
+        this.p4.body,
+        PLAYER_RADIUS,
+        '#ffd23f',
+        4,
+        this.p4.dashCooldown <= 0,
+        0,
+        this.p4.carrying
+      )
+    }
 
     if (this.phase === 'COUNTDOWN' && this.countdown > 0) {
       this.renderer.drawCountdown(String(this.countdown))

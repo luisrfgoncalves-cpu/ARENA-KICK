@@ -1,0 +1,26 @@
+{
+  "name": "Arena Kick - BeatBall & Turbo Soccer",
+  "short_name": "Arena Kick",
+  "description": "Arcade Soccer Games - BeatBall 2D & Turbo Soccer 3D",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0a0e17",
+  "theme_color": "#ffb703",
+  "icons": [
+    {
+      "src": "/images/logo-arena-kick.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/logo-arena-kick.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "sports", "arcade"]
+}
+

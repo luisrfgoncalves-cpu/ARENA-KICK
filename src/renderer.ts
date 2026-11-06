@@ -147,8 +147,8 @@ export class Renderer {
   }
 
   resize() {
-    const maxW = Math.min(window.innerWidth, 960)
-    const maxH = window.innerHeight - 70
+    const maxW = Math.min(window.innerWidth - 16, 1600)
+    const maxH = window.innerHeight - 60
     const ratio = 16 / 9
     let w = maxW
     let h = w / ratio

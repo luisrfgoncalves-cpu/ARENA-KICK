@@ -2,9 +2,15 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>🔥 ARENA KICK — Futebol Arcade Extremo & Turbo 3D</title>
   <link rel="icon" type="image/jpeg" href="/images/logo-arena-kick.jpg" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#ffb703" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Arena Kick" />
+  <link rel="apple-touch-icon" href="/images/logo-arena-kick.jpg" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@400;600;800&family=Luckiest+Guy&family=Baloo+2:wght@400;600;700;800&display=swap');
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -784,6 +790,13 @@
   <div style="font-family:'Orbitron',sans-serif; font-size:26px; font-weight:900;" id="select-mode-title">BEATBALL VS BOT</div>
   <div style="color:rgba(255,255,255,0.45); font-size:12px; letter-spacing:2px;">PERSONALIZE SUA PARTIDA</div>
 
+  <!-- FORMATO DA PARTIDA (BEATBALL 1v1 ou 2v2) -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-yellow); letter-spacing:2px; margin-top:6px;">MODO DE DISPUTA:</div>
+  <div style="display:flex; gap:12px;" class="bb-format-row">
+    <button class="btn btn-secondary bb-format-btn active" data-format="1v1" style="border-color:var(--neon-green); color:var(--neon-green);">⚔️ 1 VS 1 (DUELO)</button>
+    <button class="btn btn-secondary bb-format-btn" data-format="2v2" style="border-color:var(--neon-yellow); color:var(--neon-yellow);">👥 2 VS 2 (ATÉ 4 JOGADORES)</button>
+  </div>
+
   <!-- DIFICULDADE -->
   <div style="font-size:11px; font-weight:700; color:var(--neon-green); letter-spacing:2px; margin-top:4px;">INTENSIDADE DA IA:</div>
   <div style="display:flex; gap:12px;" class="diff-row">
@@ -886,6 +899,15 @@
       <div class="mode-name" style="color:#10b981;">Moto Nitro</div>
       <div class="mode-desc">Kenney Toon · Agilidade extrema</div>
     </div>
+  </div>
+
+  <!-- FORMATO DA PARTIDA (1v1, 2v2, 3v3 ou 4v4) -->
+  <div style="font-size:11px; font-weight:700; color:var(--neon-orange); letter-spacing:2px; margin-top:8px;">⚔️ FORMATO DA PARTIDA:</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;" class="turbo-format-row">
+    <button class="btn btn-secondary turbo-format-btn active" data-turbo-format="1v1" style="border-color:#00ff88; color:#00ff88;">⚔️ 1v1 (DUELO)</button>
+    <button class="btn btn-secondary turbo-format-btn" data-turbo-format="2v2" style="border-color:#00cfff; color:#00cfff;">👥 2v2 (DUPLAS)</button>
+    <button class="btn btn-secondary turbo-format-btn" data-turbo-format="3v3" style="border-color:#ffd23f; color:#ffd23f;">⚡ 3v3 (TRIOS)</button>
+    <button class="btn btn-secondary turbo-format-btn" data-turbo-format="4v4" style="border-color:#ff4d7d; color:#ff4d7d;">🔥 4v4 (ATÉ 8 CARROS)</button>
   </div>
 
   <!-- DIFICULDADE DO BOT 3D -->
@@ -1020,6 +1042,13 @@
   <button class="btn btn-secondary" id="btn-online-back">← VOLTAR AO MENU</button>
 </div>
 
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch((err) => console.log('SW reg error:', err))
+    })
+  }
+</script>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

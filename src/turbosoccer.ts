@@ -16,15 +16,15 @@ import { initAudio, AudioManager, setAudioMuted, isAudioMuted } from './audio'
 import { CAR_MODELS } from './carModels'
 
 
-const FIELD_W  = 160      // Campo 2× maior (era 96)
-const FIELD_L  = 260      // Campo 2× maior (era 136)
-const CEIL_H   = 38       // Teto mais alto para jogadas aéreas (era 28)
+const FIELD_W  = 220      // Arena 4v4 épica (era 160)
+const FIELD_L  = 360      // Arena 4v4 épica (era 260)
+const CEIL_H   = 46       // Teto alto para acrobacias (era 38)
 const BALL_R   = 2.2      // Raio da bola cartoon
 const GRAVITY  = 30       // Gravidade arcade
 
-const GOAL_W   = 30.0     // Trave proporcional ao campo maior (era 22)
-const GOAL_H   = 10.5     // Altura da trave (era 8.2)
-const GOAL_D   = 12.0     // Profundidade da rede (era 5.5)
+const GOAL_W   = 38.0     // Trave proporcional 4v4 (era 30)
+const GOAL_H   = 14.0     // Altura da trave 4v4 (era 10.5)
+const GOAL_D   = 16.0     // Profundidade da rede (era 12)
 
 
 function createToonGradient(): THREE.CanvasTexture {
@@ -81,6 +81,7 @@ interface SmokePuff {
 export type TurboTheme = 'classic' | 'cyber' | 'futsal'
 
 export type TurboBotLevel = 'easy' | 'medium' | 'hard'
+export type TurboMatchFormat = '1v1' | '2v2' | '3v3' | '4v4'
 
 export interface TurboTuning {
   playerSpeedMult?: number
@@ -89,6 +90,7 @@ export interface TurboTuning {
   ballBounce?: number
   theme?: TurboTheme
   botLevel?: TurboBotLevel
+  matchFormat?: TurboMatchFormat
 }
 
 // ============================================================
@@ -115,6 +117,11 @@ export class TurboSoccerGame {
 
   private playerCar!:    CarObject
   private botCar!:       CarObject
+  // ── MULTI-CAR (2v2 / 3v3 / 4v4) ──────────────────────────
+  private matchFormat:   TurboMatchFormat = '1v1'
+  private orangeCars:    CarObject[] = []  // time laranja (inclui playerCar)
+  private blueCars:      CarObject[] = []  // time azul (inclui botCar)
+  private allCars:       CarObject[] = []  // todos os carros para loops
     // ── MOEDAS DE NITRO & OBSTÁCULOS DINÂMICOS ────────────────
   private boostCoins: {
     group: THREE.Group
@@ -245,6 +252,7 @@ export class TurboSoccerGame {
     this.selectedCarModelId = carModelId
     this.theme = tuning?.theme ?? 'classic'
     this.botLevel = tuning?.botLevel ?? 'medium'
+    this.matchFormat = tuning?.matchFormat ?? '1v1'
 
     if (tuning) {
       if (tuning.playerSpeedMult !== undefined) this.studioParams.playerSpeedMult = tuning.playerSpeedMult
@@ -318,21 +326,57 @@ export class TurboSoccerGame {
       this.buildCartoonCrowd()
       this.buildImpactFlash()
 
-      // Carro do Jogador (Laranja/Vermelho Vibrante Toon — Kenney 3D Real)
-      this.playerCar = new CarObject(this.scene, 0xff4500, false)
-      this.playerCar.setPosition(0, 0, 48)
-      this.playerCar.yaw = Math.PI // Apontado para o centro da arena
-      this.playerCar.applyTransform()
+      // ── SPAWN DE CARROS CONFORME FORMATO ESCOLHIDO ──────────
+      // Configuração de times: Laranja (jogador + aliados bot) vs Azul (todos bots)
+      const teamSizes: Record<TurboMatchFormat, number> = { '1v1': 1, '2v2': 2, '3v3': 3, '4v4': 4 }
+      const teamSize = teamSizes[this.matchFormat]
 
-      // Carro do Bot Rival (Amarelo/Azul Elétrico Toon — Kenney 3D Real)
+      // Posições de kickoff por slot (Laranja ataca para -Z, Azul ataca para +Z)
+      const orangeSpawnZ = [FIELD_L * 0.18, FIELD_L * 0.08, FIELD_L * 0.25, FIELD_L * 0.08]
+      const orangeSpawnX = [0, -FIELD_W * 0.22, FIELD_W * 0.22, FIELD_W * 0.36]
+      const blueSpawnZ   = [-FIELD_L * 0.18, -FIELD_L * 0.08, -FIELD_L * 0.25, -FIELD_L * 0.08]
+      const blueSpawnX   = [0, FIELD_W * 0.22, -FIELD_W * 0.22, -FIELD_W * 0.36]
+
+      // Carro do Jogador (Laranja — slot 0)
+      this.playerCar = new CarObject(this.scene, 0xff4500, false)
+      this.playerCar.setPosition(orangeSpawnX[0], 0, orangeSpawnZ[0])
+      this.playerCar.yaw = Math.PI
+      this.playerCar.applyTransform()
+      this.orangeCars.push(this.playerCar)
+
+      // Aliados Bot Laranja (slots 1..teamSize-1)
+      const orangeBotColors = [0xff8800, 0xffaa00, 0xffcc00]
+      for (let i = 1; i < teamSize; i++) {
+        const ally = new CarObject(this.scene, orangeBotColors[i - 1] ?? 0xff8800, true)
+        ally.setPosition(orangeSpawnX[i], 0, orangeSpawnZ[i])
+        ally.yaw = Math.PI
+        ally.applyTransform()
+        this.orangeCars.push(ally)
+      }
+
+      // Carro do Bot Rival (Azul — slot 0)
       this.botCar = new CarObject(this.scene, 0x0099ff, true)
-      this.botCar.setPosition(0, 0, -48)
-      this.botCar.yaw = 0 // Apontado para o centro da arena
+      this.botCar.setPosition(blueSpawnX[0], 0, blueSpawnZ[0])
+      this.botCar.yaw = 0
       this.botCar.applyTransform()
+      this.blueCars.push(this.botCar)
+
+      // Rivais Bot Azul adicionais (slots 1..teamSize-1)
+      const blueBotColors = [0x00cfff, 0x00eeff, 0x44aaff]
+      for (let i = 1; i < teamSize; i++) {
+        const rival = new CarObject(this.scene, blueBotColors[i - 1] ?? 0x00cfff, true)
+        rival.setPosition(blueSpawnX[i], 0, blueSpawnZ[i])
+        rival.yaw = 0
+        rival.applyTransform()
+        this.blueCars.push(rival)
+      }
+
+      // Lista mestre com todos os carros
+      this.allCars = [...this.orangeCars, ...this.blueCars]
 
       // Posiciona câmera e inicializa HUD e loop imediatamente
-      this.camCurrentPos.set(0, 8.5, 48 + 18)
-      this.camCurrentLook.set(0, 2.2, 48 - 6)
+      this.camCurrentPos.set(0, 8.5, orangeSpawnZ[0] + 18)
+      this.camCurrentLook.set(0, 2.2, orangeSpawnZ[0] - 6)
       this.camera.position.copy(this.camCurrentPos)
       this.camera.lookAt(this.camCurrentLook)
 
@@ -345,9 +389,15 @@ export class TurboSoccerGame {
 
       this.loop()
 
-      // Carrega modelos 3D em segundo plano sem travar o início da partida
+      // Carrega modelos 3D em segundo plano
       void this.playerCar.loadModel(this.selectedCarModelId)
+      for (let i = 1; i < this.orangeCars.length; i++) {
+        void this.orangeCars[i].loadModel(this.selectedCarModelId)
+      }
       void this.botCar.loadModel('cartoon-yellow')
+      for (let i = 1; i < this.blueCars.length; i++) {
+        void this.blueCars[i].loadModel('cartoon-yellow')
+      }
     } catch (err) {
       console.error('[TurboSoccer] Falha crítica no initAsync:', err)
     }
@@ -1870,12 +1920,10 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       if (this.kickoffCountdown > 0) {
         this.kickoffCountdown -= dt
         this.updateCountdownDisplay()
-        this.playerCar.freeze()
-        this.botCar.freeze()
+        for (const car of this.allCars) car.freeze()
       } else if (this.goalCooldown > 0) {
         this.goalCooldown -= dt
-        this.playerCar.freeze()
-        this.botCar.freeze()
+        for (const car of this.allCars) car.freeze()
       } else if (!this.matchEnded) {
         this.updatePlayerInput(dt)
         this.updateBotAI(dt)
@@ -1885,16 +1933,14 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         this.updateBoostCoins(dt)
         this.updateDemoRespawn(dt)
       } else {
-        this.playerCar.freeze()
-        this.botCar.freeze()
+        for (const car of this.allCars) car.freeze()
       }
 
       this.updateSmoke(dt)
       this.updateCrowd(dt)
       this.updateCamera(dt)
       this.updateHUD(dt)
-      this.playerCar.update(dt)
-      this.botCar.update(dt)
+      for (const car of this.allCars) car.update(dt)
       this.audio.updateEngine(Math.min(1, Math.abs(this.playerCar.speed) / 1.3), this.playerBoosting)
     } else {
       this.audio.updateEngine(0, false)
@@ -2500,25 +2546,20 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         coin.coinMesh.rotation.y += 2.8 * dt
         coin.coinMesh.position.y = 1.4 + Math.sin(time + i * 0.9) * 0.18
 
-        // Checa coleta pelo Player
-        const pDist = Math.hypot(this.playerCar.pos.x - coin.pos.x, this.playerCar.pos.z - coin.pos.z)
-        if (pDist < 3.8) {
-          this.playerCar.boost = Math.min(100, this.playerCar.boost + coin.value)
-          coin.active = false
-          coin.respawnTimer = 5.5
-          coin.group.visible = false
-          this.audio.playBoost()
-          this.triggerImpactFlash(coin.pos)
-          continue
-        }
-
-        // Checa coleta pelo Bot
-        const bDist = Math.hypot(this.botCar.pos.x - coin.pos.x, this.botCar.pos.z - coin.pos.z)
-        if (bDist < 3.8) {
-          this.botCar.boost = Math.min(100, this.botCar.boost + coin.value)
-          coin.active = false
-          coin.respawnTimer = 5.5
-          coin.group.visible = false
+        // Checa coleta por todos os carros
+        for (const car of this.allCars) {
+          const cDist = Math.hypot(car.pos.x - coin.pos.x, car.pos.z - coin.pos.z)
+          if (cDist < 3.8) {
+            car.boost = Math.min(100, car.boost + coin.value)
+            coin.active = false
+            coin.respawnTimer = 5.5
+            coin.group.visible = false
+            if (car === this.playerCar) {
+              this.audio.playBoost()
+              this.triggerImpactFlash(coin.pos)
+            }
+            break
+          }
         }
       } else {
         coin.respawnTimer -= dt
@@ -2764,73 +2805,90 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     }
   }
 private resolveCarCarCollision() {
-    const a = this.playerCar
-    const b = this.botCar
-    if (a.isDemoed || b.isDemoed) return
-    if (Math.abs(a.pos.y - b.pos.y) > 2.2) return
-
-    const dx = b.pos.x - a.pos.x
-    const dz = b.pos.z - a.pos.z
-    const dist = Math.hypot(dx, dz)
-    const minDist = 4.8
-    if (dist <= 0.0001 || dist >= minDist) return
-
-    const nx = dx / dist
-    const nz = dz / dist
-    const overlap = (minDist - dist) / 2
-
-    a.pos.x -= nx * overlap
-    a.pos.z -= nz * overlap
-    b.pos.x += nx * overlap
-    b.pos.z += nz * overlap
-
-    const vAx = Math.sin(a.yaw) * a.speed + (a.velX || 0) * 0.02
-    const vAz = Math.cos(a.yaw) * a.speed + (a.velZ || 0) * 0.02
-    const vBx = Math.sin(b.yaw) * b.speed + (b.velX || 0) * 0.02
-    const vBz = Math.cos(b.yaw) * b.speed + (b.velZ || 0) * 0.02
-    const approach = (vAx - vBx) * nx + (vAz - vBz) * nz
-    const speedA = Math.hypot(vAx, vAz)
-    const speedB = Math.hypot(vBx, vBz)
-
-    if (approach > 0.35 && this.carHitCooldown <= 0) {
-      this.carHitCooldown = 0.3
-      const mx = (a.pos.x + b.pos.x) / 2
-      const mz = (a.pos.z + b.pos.z) / 2
-      const my = Math.max(a.pos.y, b.pos.y) + 1.0
-      const hitPt = new THREE.Vector3(mx, my, mz)
-      this.triggerImpactFlash(hitPt)
-      this.emitCartoonStarBurst(hitPt, 14, 0xffd23f)
-      this.triggerCameraShake(0.35)
-      this.audio.playPowerHit()
-      this.emitTireSmoke(a)
-      this.emitTireSmoke(b)
-
-      // ── DEMO (Demolição Cartoon Explosiva com Boost) ──
-      // Regra: colisão veloz com nitro ativo explode o carro rival
-      const aBoosting = this.playerBoosting && speedA > 0.95
-      const bBoosting = b.boost > 0 && speedB > 0.95
-
-      if (aBoosting && !b.isDemoed) {
-        this.triggerDemo('bot')
-        this.showQuickChat('💥 DEMOLIÇÃO!')
-      } else if (bBoosting && !a.isDemoed) {
-        this.triggerDemo('player')
-        this.showQuickChat('💥 DESTRUÍDO PELO RIVAL!')
-      }
-    }
-
-    a.speed *= 0.72
-    b.speed *= 0.72
-
     const limX = FIELD_W / 2 - 2.8
     const limZ = FIELD_L / 2 - 2.8
-    a.pos.x = Math.max(-limX, Math.min(limX, a.pos.x))
-    a.pos.z = Math.max(-limZ, Math.min(limZ, a.pos.z))
-    b.pos.x = Math.max(-limX, Math.min(limX, b.pos.x))
-    b.pos.z = Math.max(-limZ, Math.min(limZ, b.pos.z))
+    const cars = this.allCars
+    const minDist = 4.8
 
-    a.applyTransform()
-    b.applyTransform()
+    for (let i = 0; i < cars.length; i++) {
+      for (let j = i + 1; j < cars.length; j++) {
+        const a = cars[i]
+        const b = cars[j]
+        if (a.isDemoed || b.isDemoed) continue
+        if (Math.abs(a.pos.y - b.pos.y) > 2.2) continue
+
+        const dx = b.pos.x - a.pos.x
+        const dz = b.pos.z - a.pos.z
+        const dist = Math.hypot(dx, dz)
+        if (dist <= 0.0001 || dist >= minDist) continue
+
+        const nx = dx / dist
+        const nz = dz / dist
+        const overlap = (minDist - dist) / 2
+
+        a.pos.x -= nx * overlap
+        a.pos.z -= nz * overlap
+        b.pos.x += nx * overlap
+        b.pos.z += nz * overlap
+
+        const vAx = Math.sin(a.yaw) * a.speed + (a.velX || 0) * 0.02
+        const vAz = Math.cos(a.yaw) * a.speed + (a.velZ || 0) * 0.02
+        const vBx = Math.sin(b.yaw) * b.speed + (b.velX || 0) * 0.02
+        const vBz = Math.cos(b.yaw) * b.speed + (b.velZ || 0) * 0.02
+        const approach = (vAx - vBx) * nx + (vAz - vBz) * nz
+        const speedA = Math.hypot(vAx, vAz)
+        const speedB = Math.hypot(vBx, vBz)
+
+        if (approach > 0.35 && this.carHitCooldown <= 0) {
+          this.carHitCooldown = 0.3
+          const mx = (a.pos.x + b.pos.x) / 2
+          const mz = (a.pos.z + b.pos.z) / 2
+          const my = Math.max(a.pos.y, b.pos.y) + 1.0
+          const hitPt = new THREE.Vector3(mx, my, mz)
+          this.triggerImpactFlash(hitPt)
+          this.emitCartoonStarBurst(hitPt, 14, 0xffd23f)
+          this.triggerCameraShake(0.35)
+          this.audio.playPowerHit()
+          this.emitTireSmoke(a)
+          this.emitTireSmoke(b)
+
+          // Demo only allowed: player car (a===playerCar) demolishing blue team OR blue demolishing player
+          const isAPlayer = a === this.playerCar
+          const isBPlayer = b === this.playerCar
+          const aIsOrange = this.orangeCars.includes(a)
+          const bIsOrange = this.orangeCars.includes(b)
+
+          if (isAPlayer && this.playerBoosting && speedA > 0.95 && !bIsOrange && !b.isDemoed) {
+            this.triggerDemo('bot')
+            this.showQuickChat('💥 DEMOLIÇÃO!')
+          } else if (isBPlayer && this.playerBoosting && speedB > 0.95 && !aIsOrange && !a.isDemoed) {
+            this.triggerDemo('bot')
+            this.showQuickChat('💥 DEMOLIÇÃO!')
+          } else if (!aIsOrange && bIsOrange && b.boost > 0 && speedB > 0.95 && !a.isDemoed) {
+            if (a === this.playerCar) {
+              this.triggerDemo('player')
+              this.showQuickChat('💥 DESTRUÍDO PELO RIVAL!')
+            }
+          } else if (!bIsOrange && aIsOrange && a.boost > 0 && speedA > 0.95 && !b.isDemoed) {
+            if (b === this.playerCar) {
+              this.triggerDemo('player')
+              this.showQuickChat('💥 DESTRUÍDO PELO RIVAL!')
+            }
+          }
+        }
+
+        a.speed *= 0.72
+        b.speed *= 0.72
+
+        a.pos.x = Math.max(-limX, Math.min(limX, a.pos.x))
+        a.pos.z = Math.max(-limZ, Math.min(limZ, a.pos.z))
+        b.pos.x = Math.max(-limX, Math.min(limX, b.pos.x))
+        b.pos.z = Math.max(-limZ, Math.min(limZ, b.pos.z))
+
+        a.applyTransform()
+        b.applyTransform()
+      }
+    }
   }
 
   // ── SISTEMA DE DEMO (EXPLOSÃO CARTOON & RESPAWN) ──
@@ -2905,17 +2963,39 @@ private resolveCarCarCollision() {
         bc.applyTransform()
       }
     }
+    // Extra bots: auto-respawn after 3s
+    for (const car of this.allCars) {
+      if (car === this.playerCar || car === this.botCar) continue
+      if (car.isDemoed) {
+        const isBlue = this.blueCars.includes(car)
+        car.isDemoed = false
+        car.group.visible = true
+        car.pos.set((Math.random() - 0.5) * FIELD_W * 0.5, 0, isBlue ? -FIELD_L / 4 : FIELD_L / 4)
+        car.yaw = isBlue ? 0 : Math.PI
+        car.speed = 0; car.velY = 0; car.velX = 0; car.velZ = 0
+        car.grounded = true; car.jumpCount = 0
+        car.aerialPitch = 0; car.aerialRoll = 0
+        car.applyTransform()
+      }
+    }
   }
 
 
   //  BOT IA COMPETITIVO E BALANCEADO (DISPUTA JUSTA & HUMANA)
 
   private updateBotAI(dt: number) {
-    const bc = this.botCar
+    // Roda a IA para todos os carros bot (blue team + orange aliados)
+    for (const car of this.allCars) {
+      if (car === this.playerCar || car.isDemoed) continue
+      this.runSingleBotAI(car, dt)
+    }
+  }
+
+  private runSingleBotAI(bc: CarObject, dt: number) {
     const bp = this.ball.pos
-
-    const ownGoalZ = -FIELD_L / 2
-
+    const isBlue = this.blueCars.includes(bc)
+    // Blue ataca em -Z, Orange aliados atacam em +Z
+    const ownGoalZ = isBlue ? -FIELD_L / 2 : FIELD_L / 2
 
     let bx = bp.x
     let bz = bp.z - ownGoalZ
@@ -2926,23 +3006,20 @@ private resolveCarCarCollision() {
 
     const distBall = Math.hypot(bp.x - bc.pos.x, bp.z - bc.pos.z)
     const distBehind = Math.hypot(behindX - bc.pos.x, behindZ - bc.pos.z)
-    const ballInOwnHalf = bp.z < 0
+    const ballInOwnHalf = isBlue ? bp.z < 0 : bp.z > 0
 
     let targetX: number
     let targetZ: number
 
     if (ballInOwnHalf && distBall > 4.5 && distBehind > 3.0) {
-
       targetX = bp.x * 0.5
       targetZ = (bp.z + ownGoalZ) * 0.5
     } else if (distBehind > 2.4) {
-
       targetX = behindX
       targetZ = behindZ
     } else {
-
       targetX = bp.x
-      targetZ = bp.z + 1.0
+      targetZ = bp.z + (isBlue ? 1.0 : -1.0)
     }
 
     // Nunca mira fora do campo (evita travar nas paredes)
@@ -2956,7 +3033,6 @@ private resolveCarCarCollision() {
     let angleDiff = targetYaw - bc.yaw
     while (angleDiff > Math.PI)  angleDiff -= Math.PI * 2
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
-
 
     const turnGain = this.botLevel === 'easy' ? 2.5 : this.botLevel === 'hard' ? 4.4 : 3.5
     const speedCap = this.botLevel === 'easy' ? 0.76 : this.botLevel === 'hard' ? 1.12 : 0.92
@@ -2977,15 +3053,6 @@ private resolveCarCarCollision() {
     if (bp.y > 2.8 && distBall < 8.0 && bc.grounded) {
       bc.velY = 12
       bc.grounded = false
-    }
-
-    // Bot tenta coletar boost pads próximos quando nitro < 50
-    if (bc.boost < 50) {
-      for (const pad of this.boostCoins) {
-        if (!pad.active) continue
-        const dist = Math.hypot(pad.pos.x - bc.pos.x, pad.pos.z - bc.pos.z)
-        if (dist < 3.5) break  // já vai pegar
-      }
     }
 
     this.applyCarPhysics(bc, dt)
@@ -3100,8 +3167,9 @@ private resolveCarCarCollision() {
       this.emitCartoonStarBurst(b.pos, 6, 0xffaa00)
     }
 
-    this.checkCarBallCollision(this.playerCar)
-    this.checkCarBallCollision(this.botCar)
+    for (const car of this.allCars) {
+      this.checkCarBallCollision(car)
+    }
 
     b.mesh.position.copy(b.pos)
     const speed = b.vel.length()
@@ -3162,7 +3230,7 @@ private resolveCarCarCollision() {
     const hitRadius = BALL_R
 
     if (dist < hitRadius) {
-      this.lastToucher = car === this.playerCar ? 'player' : 'bot'
+      this.lastToucher = this.orangeCars.includes(car) ? 'player' : 'bot'
       const lnx = dist > 0.001 ? (localX - cx) / dist : 0
       const lny = dist > 0.001 ? (dy - cy) / dist : 1
       const lnz = dist > 0.001 ? (localZ - cz) / dist : 1
@@ -3413,15 +3481,27 @@ private resolveCarCarCollision() {
     this.ball.pos.set(0, BALL_R + 0.1, 0)
     this.ball.vel.set(0, 0, 0)
 
-    this.playerCar.setPosition(0, 0, 65)
-    this.playerCar.yaw = Math.PI
-    this.playerCar.freeze()
-    this.playerCar.applyTransform()
+    // Reposiciona todos os carros nos slots de kickoff
+    const teamSize = this.orangeCars.length
+    const orangeSpawnZ = [FIELD_L * 0.18, FIELD_L * 0.08, FIELD_L * 0.25, FIELD_L * 0.08]
+    const orangeSpawnX = [0, -FIELD_W * 0.22, FIELD_W * 0.22, FIELD_W * 0.36]
+    const blueSpawnZ   = [-FIELD_L * 0.18, -FIELD_L * 0.08, -FIELD_L * 0.25, -FIELD_L * 0.08]
+    const blueSpawnX   = [0, FIELD_W * 0.22, -FIELD_W * 0.22, -FIELD_W * 0.36]
 
-    this.botCar.setPosition(0, 0, -65)
-    this.botCar.yaw = 0
-    this.botCar.freeze()
-    this.botCar.applyTransform()
+    for (let i = 0; i < teamSize; i++) {
+      const oc = this.orangeCars[i]
+      oc.setPosition(orangeSpawnX[i] ?? 0, 0, orangeSpawnZ[i] ?? FIELD_L * 0.18)
+      oc.yaw = Math.PI
+      oc.freeze()
+      oc.applyTransform()
+    }
+    for (let i = 0; i < teamSize; i++) {
+      const bc = this.blueCars[i]
+      bc.setPosition(blueSpawnX[i] ?? 0, 0, blueSpawnZ[i] ?? -FIELD_L * 0.18)
+      bc.yaw = 0
+      bc.freeze()
+      bc.applyTransform()
+    }
 
     this.kickoffCountdown = 3.5
     this.isKickoffActive = true
@@ -3450,12 +3530,11 @@ private resolveCarCarCollision() {
     this.hudGoalBanner.style.display = 'none'
     this.hudGoalBanner.style.pointerEvents = 'none'
 
-    this.playerCar.boost = 100
-    this.botCar.boost = 100
-    this.playerCar.isDemoed = false
-    this.botCar.isDemoed = false
-    this.playerCar.group.visible = true
-    this.botCar.group.visible = true
+    for (const car of this.allCars) {
+      car.boost = 100
+      car.isDemoed = false
+      car.group.visible = true
+    }
     this.demoRespawnTimer = 0
     this.botDemoRespawnTimer = 0
 
@@ -3498,8 +3577,7 @@ private resolveCarCarCollision() {
     if (this.matchEnded) return
     this.matchEnded = true
 
-    this.playerCar.freeze()
-    this.botCar.freeze()
+    for (const car of this.allCars) car.freeze()
 
     const isDraw = this.scorePlayer === this.scoreBot
     const isWin = this.scorePlayer > this.scoreBot
@@ -3556,6 +3634,14 @@ private resolveCarCarCollision() {
 
     const root = document.getElementById('turbo-hud-root')
     if (root) root.remove()
+
+    // Remove todos os carros da cena
+    for (const car of this.allCars) {
+      this.scene.remove(car.group)
+    }
+    this.allCars = []
+    this.orangeCars = []
+    this.blueCars = []
 
     for (const p of this.smokePuffs) {
       this.scene.remove(p.mesh)

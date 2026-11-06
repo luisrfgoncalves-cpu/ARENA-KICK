@@ -28,6 +28,8 @@ export const LABEL = {
   BALL:        'ball',
   PLAYER1:     'player1',
   PLAYER2:     'player2',
+  PLAYER3:     'player3',
+  PLAYER4:     'player4',
   WALL:        'wall',
   GOAL_SENSOR: 'goal_sensor',
   POST:        'post',
