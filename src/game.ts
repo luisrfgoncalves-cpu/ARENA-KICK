@@ -857,7 +857,13 @@ export class Game {
   }
 
   destroy() {
+    this.paused = true
     cancelAnimationFrame(this.raf)
+    if (this.engine) {
+      Matter.Events.off(this.engine, 'collisionStart', undefined as any)
+      Matter.World.clear(this.engine.world, false)
+      Matter.Engine.clear(this.engine)
+    }
     this.renderer.destroy()
     this.input.destroy()
     this.audio.stopAll()

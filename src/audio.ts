@@ -243,6 +243,15 @@ export class AudioManager {
   playVictory()    { this.play('victory') }
   playBoost()      { this.play('boost') }
 
+  playDemo() {
+    this.play('postHit')
+    this.play('powerHit')
+  }
+
+  playCoin() {
+    this.play('kickoffArp')
+  }
+
   startCrowd() {
     if (this.muted || !sounds || this.crowdPlaying) return
     try {

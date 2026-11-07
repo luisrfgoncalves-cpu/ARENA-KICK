@@ -80,11 +80,19 @@ if (btnAudio) {
 function refreshLobby() {
   const container = document.getElementById('online-rooms-container')
   if (container) {
-    renderPublicRooms(container, (code) => {
-      const input = document.getElementById('online-join-code') as HTMLInputElement
-      if (input) input.value = code
-      document.getElementById('btn-online-join')?.click()
-    })
+    void renderPublicRooms(
+      container,
+      (code) => {
+        const input = document.getElementById('online-join-code') as HTMLInputElement
+        if (input) input.value = code
+        document.getElementById('btn-online-join')?.click()
+      },
+      (code) => {
+        const input = document.getElementById('online-join-code') as HTMLInputElement
+        if (input) input.value = code
+        document.getElementById('btn-online-spectate')?.click()
+      }
+    )
   }
 }
 
@@ -330,7 +338,7 @@ document.getElementById('btn-exit-turbo')?.addEventListener('click', () => {
   showScreen('menu')
 })
 
-async function startTurboSoccer3D(carId = 'ferrari', tuning?: TurboTuning) {
+async function startTurboSoccer3D(carId = 'ferrari', tuning?: TurboTuning, network?: NetworkManager) {
   closeGaragePreview()
   if (currentGame) {
     currentGame.destroy()
@@ -353,7 +361,7 @@ async function startTurboSoccer3D(carId = 'ferrari', tuning?: TurboTuning) {
     if (screens.turbo3d.classList.contains('hidden')) return
 
     container.innerHTML = ''
-    const game = new TurboSoccerGame(container, carId, tuning)
+    const game = new TurboSoccerGame(container, carId, tuning, network)
     currentTurboGame = game
     game.onExit = () => {
       currentTurboGame = null
@@ -376,11 +384,14 @@ function setOnlineStatus(which: 'host' | 'join' | 'global', msg: string, color =
   }
 }
 
+let currentHostRoomCode = ''
+
 function resetOnlineUI() {
+  if (currentHostRoomCode) {
+    void removePublicRoom(currentHostRoomCode)
+    currentHostRoomCode = ''
+  }
   if (netManager) {
-    if (netManager.isHost() && netManager.myId) {
-      removePublicRoom(netManager.myId)
-    }
     netManager.onConnected = undefined
     netManager.onDisconnected = undefined
     netManager.onError = undefined
@@ -420,16 +431,24 @@ function handleOnlineDisconnect() {
     currentGame.destroy()
     currentGame = null
   }
+  if (currentTurboGame) {
+    currentTurboGame.destroy()
+    currentTurboGame = null
+  }
   resetOnlineUI()
   showScreen('online')
-  setOnlineStatus('global', 'Conexão encerrada. Crie ou entre em outra sala.', '#ff2d78')
-  showToast('Adversário desconectou da partida.')
+  setOnlineStatus('global', 'Host desconectado ou conexão encerrada.', '#ff2d78')
+  showToast('O host encerrou ou desconectou da sala.')
 }
 
 function createOnlineNetwork() {
   return import('./network').then(({ NetworkManager }) => {
     const net = new NetworkManager()
-    net.onError = (msg) => setOnlineStatus('global', msg, '#ff2d78')
+    net.onError = (msg) => {
+      setOnlineStatus('join', msg, '#ff2d78')
+      setOnlineStatus('global', msg, '#ff2d78')
+      showToast(msg)
+    }
     net.onDisconnected = handleOnlineDisconnect
     return net
   })
@@ -487,23 +506,27 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
   try {
     netManager = await createOnlineNetwork()
     const code = generateRoomCode()
+    currentHostRoomCode = code
 
     const countBadge = document.getElementById('online-player-count-badge')
     const launchBtn = document.getElementById('btn-online-launch')
 
+    const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
+    const maxP = selectedOnlineGame === 'turbo' ? (chosenFormat === '4v4' ? 8 : chosenFormat === '3v3' ? 6 : chosenFormat === '2v2' ? 4 : 2) : (chosenFormat === '2v2' ? 4 : 2)
+    netManager.maxPlayers = maxP
+
     netManager.onPlayerCountChange = (count) => {
       if (countBadge) countBadge.textContent = `👥 ${count} Jogadores Conectados`
       setOnlineStatus('host', `✅ ${count} jogador(es) na sala. Pode aguardar mais amigos ou iniciar!`, '#00ff88')
-      updatePublicRoomPlayerCount(code, count)
+      void updatePublicRoomPlayerCount(code, count)
       refreshLobby()
     }
 
     launchBtn?.addEventListener('click', () => {
       if (!netManager || !netManager.isHost()) return
-      removePublicRoom(code)
+      void updatePublicRoomPlayerCount(code, netManager.getPlayerCount(), 'in_game')
       refreshLobby()
       const count = netManager.getPlayerCount()
-      const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
       netManager.send({
         t: performance.now(),
         event: 'start_game',
@@ -514,9 +537,9 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
       showToast(`Iniciando ${chosenFormat} (${count} pessoas)!`)
       if (selectedOnlineGame === 'turbo') {
         const tuning = readTurboTuning()
-        tuning.matchFormat = selectedOnlineTurboFormat
+        tuning.matchFormat = '1v1'
         showScreen('turbo3d')
-        startTurboSoccer3D(selectedCar, tuning)
+        startTurboSoccer3D(selectedCar, tuning, netManager)
       } else {
         selectedBBFormat = selectedOnlineBBFormat
         startOnlineMatch()
@@ -532,9 +555,7 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     setOnlineStatus('host', 'Aguardando amigos entrarem com o link ou código...', '#00cfff')
 
     // Publica no Lobby Público em tempo real
-    const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
-    const maxP = selectedOnlineGame === 'turbo' ? (chosenFormat === '4v4' ? 8 : chosenFormat === '3v3' ? 6 : chosenFormat === '2v2' ? 4 : 2) : (chosenFormat === '2v2' ? 4 : 2)
-    publishPublicRoom({
+    void publishPublicRoom({
       hostId: code,
       code,
       hostName: 'Jogador 1',
@@ -606,8 +627,9 @@ async function handleJoinRoom(asSpectator = false) {
           const tuning = readTurboTuning()
           if (payload.format) tuning.matchFormat = payload.format as TurboMatchFormat
           if (asSpectator) tuning.spectatorMode = true
+          tuning.matchFormat = '1v1'   // force 1v1 for online
           showScreen('turbo3d')
-          startTurboSoccer3D(selectedCar, tuning)
+          startTurboSoccer3D(selectedCar, tuning, asSpectator ? undefined : (netManager ?? undefined))
         } else {
           if (payload.format) selectedBBFormat = payload.format as '1v1' | '2v2'
           startOnlineMatch()
@@ -621,9 +643,16 @@ async function handleJoinRoom(asSpectator = false) {
 
     await netManager.joinRoom(code, asSpectator)
     setOnlineStatus('join', asSpectator ? '👁️ Modo Espectador ativo! A transmissão iniciará assim que o Host começar.' : 'Conectado com sucesso! Aguardando o Host clicar em Iniciar...', '#a855f7')
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Online] Falha ao entrar:', err)
-    setOnlineStatus('join', 'Não foi possível conectar. Confira o código.', '#ff2d78')
+    const msg = err?.message || ''
+    if (msg.includes('esgotado') || msg.includes('timeout')) {
+      setOnlineStatus('join', 'Sala não encontrada ou expirada. Confira o código.', '#ff2d78')
+    } else if (msg.includes('cheia') || msg.includes('room_full')) {
+      setOnlineStatus('join', 'A sala atingiu a capacidade máxima de jogadores.', '#ff2d78')
+    } else {
+      setOnlineStatus('join', 'Falha de conexão com a sala. Confira o código ou tente novamente.', '#ff2d78')
+    }
     if (netManager) {
       netManager.onDisconnected = undefined
       netManager.destroy()

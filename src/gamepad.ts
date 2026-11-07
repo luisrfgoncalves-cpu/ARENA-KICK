@@ -19,6 +19,8 @@ export interface GamepadState {
   jump: boolean      // A (Pulo / Flip)
   boost: boolean     // B ou RB (Nitro Boost)
   handbrake: boolean // LB (Drift)
+  lb: boolean        // LB (Botão de ombro esquerdo)
+  rb: boolean        // RB (Botão de ombro direito)
   roll: boolean      // X (Barrel Roll)
   ballCam: boolean   // Y (Alternar Câmera)
   menu: boolean      // Start / Menu
@@ -61,6 +63,8 @@ export class GamepadManager {
       jump: false,
       boost: false,
       handbrake: false,
+      lb: false,
+      rb: false,
       roll: false,
       ballCam: false,
       menu: false,
@@ -129,6 +133,8 @@ export class GamepadManager {
       jump: btnA,
       boost: btnB || btnRB,
       handbrake: btnLB,
+      lb: btnLB,
+      rb: btnRB,
       roll: btnX,
       ballCam: btnY,
       menu: btnStart,

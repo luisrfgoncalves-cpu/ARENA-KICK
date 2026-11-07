@@ -29,7 +29,8 @@ export interface NetSyncPayload {
   p4?: { x: number; y: number; vx: number; vy: number; dash: boolean }
   ball?: { x: number; y: number; z?: number; vx: number; vy: number; vz?: number }
   scores?: { p1: number; p2: number }
-  event?: 'goal' | 'rematch' | 'slot_assign' | 'start_game'
+  event?: 'goal' | 'rematch' | 'slot_assign' | 'start_game' | 'room_full'
+  message?: string
   assignedSlot?: number
   totalPlayers?: number
   gameType?: 'beatball' | 'turbo'
@@ -73,6 +74,7 @@ export class NetworkManager {
   public myId = ''
   public mySlot = 0 // 0 = Host (P1), 1 = P2, 2 = P3, ..., 7 = P8
   public isSpectator = false
+  public maxPlayers = 2
 
   public onConnected?: (isHost: boolean) => void
   public onDataReceived?: (data: NetSyncPayload) => void
@@ -148,6 +150,21 @@ export class NetworkManager {
     this.conns.set(conn.peer, conn)
 
     conn.on('open', () => {
+      // Se a sala exceder maxPlayers e o cliente não for espectador, rejeita com evento room_full
+      const activePlayers = Array.from(this.conns.values()).filter((c: any) => !c.isSpectator).length + 1
+      if (activePlayers > this.maxPlayers) {
+        conn.send({
+          t: performance.now(),
+          event: 'room_full',
+          message: `A sala atingiu o limite de ${this.maxPlayers} jogadores.`
+        } as NetSyncPayload)
+        setTimeout(() => {
+          this.conns.delete(conn.peer)
+          conn.close()
+        }, 300)
+        return
+      }
+
       // Atribui slot ao novo cliente
       conn.send({
         t: performance.now(),
@@ -162,6 +179,9 @@ export class NetworkManager {
 
     conn.on('data', (data) => {
       const payload = data as NetSyncPayload
+      if (payload.event === 'slot_assign' && payload.isSpectator) {
+        ;(conn as any).isSpectator = true
+      }
       if (this.onDataReceived) {
         this.onDataReceived(payload)
       }
@@ -187,6 +207,11 @@ export class NetworkManager {
   private setupClientConnection(conn: DataConnection) {
     conn.on('data', (data) => {
       const payload = data as NetSyncPayload
+      if (payload.event === 'room_full') {
+        if (this.onError) this.onError(payload.message || 'Sala cheia! Limite de jogadores atingido.')
+        conn.close()
+        return
+      }
       if (payload.event === 'slot_assign' && payload.assignedSlot !== undefined) {
         this.mySlot = payload.assignedSlot
         if (payload.totalPlayers && this.onPlayerCountChange) {
@@ -220,7 +245,7 @@ export class NetworkManager {
     })
   }
 
-  send(payload: NetSyncPayload) {
+  send(payload: NetSyncPayload | Record<string, any>) {
     payload.slot = this.mySlot
     if (this.isHostPlayer) {
       for (const conn of this.conns.values()) {

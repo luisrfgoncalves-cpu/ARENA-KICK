@@ -14,8 +14,125 @@ export interface LeaderboardEntry {
   created_at?: string
 }
 
+export interface RemoteRoom {
+  code: string
+  hostId: string
+  hostName: string
+  gameType: 'beatball' | 'turbo'
+  format: '1v1' | '2v2' | '3v3' | '4v4'
+  playerCount: number
+  maxPlayers: number
+  status: 'waiting' | 'in_game' | 'closed'
+  createdAt: number
+  updatedAt: number
+}
+
 class SupabaseService {
   private client: SupabaseClient | null = null
+
+  isAvailable(): boolean {
+    return !!this.client
+  }
+
+  async publishRoom(room: RemoteRoom): Promise<boolean> {
+    if (!this.client) return false
+    try {
+      const { error } = await this.client.from('rooms').upsert({
+        code: room.code,
+        host_id: room.hostId,
+        host_name: room.hostName,
+        game_type: room.gameType,
+        format: room.format,
+        player_count: room.playerCount,
+        max_players: room.maxPlayers,
+        status: room.status,
+        updated_at: new Date(room.updatedAt).toISOString()
+      }, { onConflict: 'code' })
+      return !error
+    } catch {
+      return false
+    }
+  }
+
+  async updateRoom(code: string, updates: Partial<RemoteRoom>): Promise<void> {
+    if (!this.client) return
+    try {
+      const payload: Record<string, any> = {
+        updated_at: new Date().toISOString()
+      }
+      if (updates.playerCount !== undefined) payload.player_count = updates.playerCount
+      if (updates.status !== undefined) payload.status = updates.status
+      if (updates.hostName !== undefined) payload.host_name = updates.hostName
+
+      await this.client.from('rooms').update(payload).eq('code', code)
+    } catch {}
+  }
+
+  async heartbeatRoom(code: string): Promise<void> {
+    if (!this.client) return
+    try {
+      await this.client.from('rooms').update({
+        updated_at: new Date().toISOString()
+      }).eq('code', code)
+    } catch {}
+  }
+
+  async removeRoom(code: string): Promise<void> {
+    if (!this.client) return
+    try {
+      await this.client.from('rooms').delete().eq('code', code)
+    } catch {}
+  }
+
+  async fetchRooms(): Promise<RemoteRoom[] | null> {
+    if (!this.client) return null
+    try {
+      const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString()
+      const { data, error } = await this.client
+        .from('rooms')
+        .select('*')
+        .eq('status', 'waiting')
+        .gt('updated_at', cutoff)
+        .order('created_at', { ascending: false })
+
+      if (error || !Array.isArray(data)) return null
+
+      return data.map((r: any) => ({
+        code: r.code,
+        hostId: r.host_id || r.code,
+        hostName: r.host_name || 'Host',
+        gameType: r.game_type || 'beatball',
+        format: r.format || '1v1',
+        playerCount: Number(r.player_count) || 1,
+        maxPlayers: Number(r.max_players) || 2,
+        status: r.status || 'waiting',
+        createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+        updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now()
+      }))
+    } catch {
+      return null
+    }
+  }
+
+  subscribeRooms(onChange: () => void): (() => void) | null {
+    if (!this.client) return null
+    try {
+      const channel = this.client
+        .channel('arena_rooms_realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => {
+          onChange()
+        })
+        .subscribe()
+
+      return () => {
+        try {
+          this.client?.removeChannel(channel)
+        } catch {}
+      }
+    } catch {
+      return null
+    }
+  }
 
   constructor() {
     const meta = import.meta as any

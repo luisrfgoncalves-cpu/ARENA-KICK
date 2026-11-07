@@ -95,7 +95,7 @@ export class InputManager {
   private listeners: Array<[string, EventListener]> = []
   private gamepad = new GamepadManager()
 
-  constructor(private mode: 'bot' | '2p' | 'online' = 'bot') {
+  constructor(private mode: 'bot' | '2p' | 'online' | 'practice' = 'bot') {
     const down: EventListener = (e) => {
       this.keys.add((e as KeyboardEvent).code)
     }

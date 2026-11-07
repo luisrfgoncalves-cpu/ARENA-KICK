@@ -1,9 +1,5 @@
 // ============================================================
-
 //  100% CARTOON: Cel-Shading com OutlineEffect & MeshToonMaterial,
-
-
-
 //  Countdown 3.. 2.. 1.. VAI! com Sons Procedurais e Bot Justo e Divertido
 // ============================================================
 import * as THREE from 'three'
@@ -17,6 +13,8 @@ import { GamepadManager } from './gamepad'
 import { initAudio, AudioManager, setAudioMuted, isAudioMuted } from './audio'
 import { CAR_MODELS } from './carModels'
 import { dbService } from './supabase'
+import { TurboNetworkController } from './turbonetwork'
+import type { NetworkManager } from './network'
 
 
 const FIELD_W  = 220      // Arena 4v4 épica (era 160)
@@ -240,7 +238,7 @@ export class TurboSoccerGame {
   private impactFlashMesh: THREE.Mesh | null = null
   private impactFlashTimer = 0
   private carHitCooldown = 0
-  private crowdInstances: { mesh: THREE.InstancedMesh; items: { x: number; feetY: number; z: number; phase: number; yaw: number }[] }[] = []
+  private crowdInstances: { mesh: THREE.InstancedMesh; data: { x: number; feetY: number; z: number; phase: number; yaw: number }[] }[] = []
   private crowdDummy = new THREE.Object3D()
   private crowdTextures: THREE.CanvasTexture[] = []
   private crowdFanW = 1.62
@@ -273,6 +271,14 @@ export class TurboSoccerGame {
   private goalExplosion: GoalExplosionType = 'toon'
   private gameMode: TurboGameMode = 'standard'
   private spectatorMode = false
+
+  // ── ONLINE 1v1 (Turbo Network Controller) ──────────────────
+  private turboNet: TurboNetworkController | null = null
+  private isOnline1v1 = false
+  private snapshotTimer = 0
+  private readonly SNAPSHOT_INTERVAL = 1 / 25   // 25 Hz snapshot broadcast
+  private hudPingEl: HTMLElement | null = null
+  private onlineDisconnectShown = false
 
   // Rumble
   private rumblePowerup: RumblePowerup | null = null
@@ -312,7 +318,7 @@ export class TurboSoccerGame {
   private readonly _camOffset = new THREE.Vector3(0, 18, 36)
   private readonly _camReplayTarget = new THREE.Vector3()
 
-  constructor(container: HTMLElement, carModelId = 'octane-cartoon', tuning?: TurboTuning) {
+  constructor(container: HTMLElement, carModelId = 'octane-cartoon', tuning?: TurboTuning, network?: NetworkManager) {
     this.container = container
     this.selectedCarModelId = carModelId
     this.theme = tuning?.theme ?? 'classic'
@@ -323,6 +329,51 @@ export class TurboSoccerGame {
     this.spectatorMode = tuning?.spectatorMode ?? false
     if (this.gameMode === 'snowday') {
       this.theme = 'snowday'
+    }
+
+    // ── ONLINE 1v1 setup ──────────────────────────────────────
+    if (network) {
+      this.turboNet = new TurboNetworkController(network)
+      this.isOnline1v1 = true
+      this.matchFormat = '1v1'           // força 1v1 no modo online
+      this.botLevel = 'medium'            // bot AI não será usado no modo online
+
+      this.turboNet.onGoalEvent = (scorer, scores, _ballPos) => {
+        // Cliente recebe gol do Host e atualiza o placar local
+        // No Host: Host = Laranja, Cliente = Azul.
+        // No Cliente: Cliente = Azul, Host = Laranja.
+        if (this.destroyed) return
+        const isPlayerGoal = !this.turboNet!.isHost
+          ? scorer === 'blue'
+          : scorer === 'orange'
+        this.scorePlayer = !this.turboNet!.isHost ? scores.blue : scores.orange
+        this.scoreBot    = !this.turboNet!.isHost ? scores.orange : scores.blue
+        this.onGoalScored(isPlayerGoal ? 'player' : 'bot')
+      }
+
+      this.turboNet.onResetEvent = () => {
+        if (this.destroyed) return
+        this.resetKickoff()
+      }
+
+      this.turboNet.onCountdownEvent = (count) => {
+        if (this.destroyed) return
+        this.applyCountdownValue(count)
+      }
+
+      this.turboNet.onMatchEndEvent = (winner, scores) => {
+        if (this.destroyed) return
+        const isPlayerWin = !this.turboNet!.isHost
+          ? (winner === 'blue' || winner === 'draw')
+          : (winner === 'orange' || winner === 'draw')
+        this.scorePlayer = !this.turboNet!.isHost ? scores.blue : scores.orange
+        this.scoreBot    = !this.turboNet!.isHost ? scores.orange : scores.blue
+        this.endMatch()
+      }
+
+      this.turboNet.onPeerDisconnected = () => {
+        this.handleOnlineDisconnect()
+      }
     }
 
     if (tuning) {
@@ -445,51 +496,80 @@ export class TurboSoccerGame {
       const teamSize = teamSizes[this.matchFormat]
 
       const { orangeSpawns, blueSpawns } = this.getKickoffSpawns()
+      const isClient1v1 = this.isOnline1v1 && !this.turboNet?.isHost
 
-      // Carro do Jogador (Laranja — slot 0)
-      this.playerCar = new CarObject(this.scene, 0xff4500, false)
-      this.playerCar.setPosition(orangeSpawns[0].x, 0, orangeSpawns[0].z)
-      this.playerCar.yaw = orangeSpawns[0].yaw
-      this.playerCar.applyTransform()
-      this.orangeCars.push(this.playerCar)
+      if (isClient1v1) {
+        // ── CLIENTE ONLINE 1v1:
+        // playerCar = Carro Azul do próprio jogador (Slot 1, nasce no blueSpawn)
+        this.playerCar = new CarObject(this.scene, 0x0099ff, false)
+        this.playerCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
+        this.playerCar.yaw = blueSpawns[0].yaw
+        this.playerCar.applyTransform()
+        this.blueCars.push(this.playerCar)
 
-      // Aliados Bot Laranja (slots 1..teamSize-1)
-      const orangeBotColors = [0xff8800, 0xffaa00, 0xffcc00]
-      for (let i = 1; i < teamSize; i++) {
-        const ally = new CarObject(this.scene, orangeBotColors[i - 1] ?? 0xff8800, true)
-        const sp = orangeSpawns[i] ?? orangeSpawns[0]
-        ally.setPosition(sp.x, 0, sp.z)
-        ally.yaw = sp.yaw
-        ally.applyTransform()
-        this.orangeCars.push(ally)
+        // botCar = Carro Laranja que representa o Host remoto (Slot 0, nasce no orangeSpawn)
+        this.botCar = new CarObject(this.scene, 0xff4500, true)
+        this.botCar.setPosition(orangeSpawns[0].x, 0, orangeSpawns[0].z)
+        this.botCar.yaw = orangeSpawns[0].yaw
+        this.botCar.applyTransform()
+        this.orangeCars.push(this.botCar)
+
+        // Lista mestre com índices de slot correspondentes:
+        // Slot 0 = Host Laranja (botCar), Slot 1 = Cliente Azul (playerCar)
+        this.allCars = [this.botCar, this.playerCar]
+
+        // Posiciona câmera atrás do carro Azul olhando em direção ao gol Laranja (+Z)
+        this.camCurrentPos.set(blueSpawns[0].x * 0.5, 8.5, blueSpawns[0].z - 18)
+        this.camCurrentLook.set(0, 2.2, 0)
+        this.camera.position.copy(this.camCurrentPos)
+        this.camera.lookAt(this.camCurrentLook)
+      } else {
+        // ── HOST ONLINE OU MODO SOLO / OFFLINE (padrão preservado):
+        // Carro do Jogador (Laranja — slot 0)
+        this.playerCar = new CarObject(this.scene, 0xff4500, false)
+        this.playerCar.setPosition(orangeSpawns[0].x, 0, orangeSpawns[0].z)
+        this.playerCar.yaw = orangeSpawns[0].yaw
+        this.playerCar.applyTransform()
+        this.orangeCars.push(this.playerCar)
+
+        // Aliados Bot Laranja (slots 1..teamSize-1)
+        const orangeBotColors = [0xff8800, 0xffaa00, 0xffcc00]
+        for (let i = 1; i < teamSize; i++) {
+          const ally = new CarObject(this.scene, orangeBotColors[i - 1] ?? 0xff8800, true)
+          const sp = orangeSpawns[i] ?? orangeSpawns[0]
+          ally.setPosition(sp.x, 0, sp.z)
+          ally.yaw = sp.yaw
+          ally.applyTransform()
+          this.orangeCars.push(ally)
+        }
+
+        // Carro do Bot Rival (Azul — slot 0)
+        this.botCar = new CarObject(this.scene, 0x0099ff, true)
+        this.botCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
+        this.botCar.yaw = blueSpawns[0].yaw
+        this.botCar.applyTransform()
+        this.blueCars.push(this.botCar)
+
+        // Rivais Bot Azul adicionais (slots 1..teamSize-1)
+        const blueBotColors = [0x00cfff, 0x00eeff, 0x44aaff]
+        for (let i = 1; i < teamSize; i++) {
+          const rival = new CarObject(this.scene, blueBotColors[i - 1] ?? 0x00cfff, true)
+          const sp = blueSpawns[i] ?? blueSpawns[0]
+          rival.setPosition(sp.x, 0, sp.z)
+          rival.yaw = sp.yaw
+          rival.applyTransform()
+          this.blueCars.push(rival)
+        }
+
+        // Lista mestre com todos os carros
+        this.allCars = [...this.orangeCars, ...this.blueCars]
+
+        // Posiciona câmera e inicializa HUD e loop imediatamente
+        this.camCurrentPos.set(orangeSpawns[0].x * 0.5, 8.5, orangeSpawns[0].z + 18)
+        this.camCurrentLook.set(0, 2.2, 0)
+        this.camera.position.copy(this.camCurrentPos)
+        this.camera.lookAt(this.camCurrentLook)
       }
-
-      // Carro do Bot Rival (Azul — slot 0)
-      this.botCar = new CarObject(this.scene, 0x0099ff, true)
-      this.botCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
-      this.botCar.yaw = blueSpawns[0].yaw
-      this.botCar.applyTransform()
-      this.blueCars.push(this.botCar)
-
-      // Rivais Bot Azul adicionais (slots 1..teamSize-1)
-      const blueBotColors = [0x00cfff, 0x00eeff, 0x44aaff]
-      for (let i = 1; i < teamSize; i++) {
-        const rival = new CarObject(this.scene, blueBotColors[i - 1] ?? 0x00cfff, true)
-        const sp = blueSpawns[i] ?? blueSpawns[0]
-        rival.setPosition(sp.x, 0, sp.z)
-        rival.yaw = sp.yaw
-        rival.applyTransform()
-        this.blueCars.push(rival)
-      }
-
-      // Lista mestre com todos os carros
-      this.allCars = [...this.orangeCars, ...this.blueCars]
-
-      // Posiciona câmera e inicializa HUD e loop imediatamente
-      this.camCurrentPos.set(orangeSpawns[0].x * 0.5, 8.5, orangeSpawns[0].z + 18)
-      this.camCurrentLook.set(0, 2.2, 0)
-      this.camera.position.copy(this.camCurrentPos)
-      this.camera.lookAt(this.camCurrentLook)
 
       this.buildHUD()
 
@@ -2076,6 +2156,29 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       hud.appendChild(specBadge)
     }
 
+    // ── ONLINE 1v1: Ping HUD + badge de conexão ──────────────
+    if (this.isOnline1v1) {
+      const pingEl = document.createElement('div')
+      pingEl.id = 'turbo-ping-display'
+      pingEl.style.cssText = `
+        position:absolute;top:68px;right:14px;font-size:11px;color:#00cfff;
+        font-family:monospace;background:rgba(0,0,0,0.5);padding:3px 8px;
+        border-radius:6px;z-index:40;pointer-events:none;letter-spacing:1px;
+      `
+      pingEl.textContent = 'PING: --ms'
+      hud.appendChild(pingEl)
+      this.hudPingEl = pingEl
+
+      const roleBadge = document.createElement('div')
+      roleBadge.style.cssText = `
+        position:absolute;top:92px;right:14px;font-size:10px;
+        color:rgba(255,255,255,0.7);font-family:monospace;background:rgba(0,0,0,0.5);
+        padding:2px 7px;border-radius:6px;z-index:40;pointer-events:none;letter-spacing:1px;
+      `
+      roleBadge.textContent = this.turboNet?.isHost ? '🖥 HOST' : '🎮 CLIENT'
+      hud.appendChild(roleBadge)
+    }
+
     if (this.gameMode === 'rumble' && this.hudRumbleCard) {
       this.hudRumbleCard.style.display = 'flex'
       this.hudRumbleCard.addEventListener('click', () => this.activatePlayerRumble())
@@ -2256,21 +2359,42 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       // 1. Contagem Regressiva de Kickoff (3.. 2.. 1.. VAI!)
       if (this.kickoffCountdown > 0) {
         this.kickoffCountdown -= dt
-        this.updateCountdownDisplay()
+        // Apenas o Host (ou solo/offline) atualiza o display diretamente; o Cliente segue o Host
+        if (!this.isOnline1v1 || this.turboNet?.isHost) {
+          this.updateCountdownDisplay()
+        }
         for (const car of this.allCars) car.freeze()
       } else if (this.goalCooldown > 0) {
         this.goalCooldown -= dt
         for (const car of this.allCars) car.freeze()
       } else if (!this.matchEnded) {
-        if (!this.spectatorMode) {
-          this.updatePlayerInput(dt)
+        // ── ONLINE 1v1: modo host ou cliente ─────────────────
+        if (this.isOnline1v1 && this.turboNet) {
+          this.updateOnlineFrame(dt)
+        } else {
+          // ── MODO SOLO/BOT (padrão) ─────────────────────────
+          if (!this.spectatorMode) {
+            this.updatePlayerInput(dt)
+          }
+          this.updateBotAI(dt)
         }
-        this.updateBotAI(dt)
         this.resolveCarCarCollision()
-        this.updateBall(dt)
+        // Física da bola: somente Host (online) ou sempre (solo)
+        if (!this.isOnline1v1 || this.turboNet?.isHost) {
+          this.updateBall(dt)
+        }
         this.updateDynamicObstacles(dt)
         this.updateBoostCoins(dt)
         this.updateDemoRespawn(dt)
+
+        // ── ONLINE 1v1: snapshot do Host → cliente ───────────
+        if (this.isOnline1v1 && this.turboNet?.isHost) {
+          this.snapshotTimer += dt
+          if (this.snapshotTimer >= this.SNAPSHOT_INTERVAL) {
+            this.snapshotTimer = 0
+            this.broadcastOnlineSnapshot()
+          }
+        }
 
         if (this.gameMode === 'rumble') {
           this.updateRumble(dt)
@@ -2291,7 +2415,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
             slot.pos.copy(c.pos)
             slot.yaw = c.yaw
             slot.pitch = c.pitch
-            slot.roll = c.roll
+            slot.roll = c.rollAngle
           }
           this.replayHead = (this.replayHead + 1) % TurboSoccerGame.MAX_REPLAY_FRAMES
           if (this.replayTotalStored < TurboSoccerGame.MAX_REPLAY_FRAMES) {
@@ -2399,6 +2523,12 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
     if (currentSec !== this.lastCountdownSec) {
       this.lastCountdownSec = currentSec
+
+      // Correção 2: Host envia evento autoritativo de countdown pela rede sempre que o segundo mudar
+      if (this.isOnline1v1 && this.turboNet?.isHost) {
+        this.turboNet.sendCountdownEvent(currentSec)
+      }
+
       if (currentSec > 0) {
         this.audio.playCountdown()
       } else {
@@ -3490,12 +3620,299 @@ private resolveCarCarCollision() {
   }
 
 
+  //  ONLINE 1v1 — MÉTODOS DE INTEGRAÇÃO DE REDE
+
+  /**
+   * Executado a cada frame quando isOnline1v1 === true e !matchEnded.
+   *   Host  → consome input do cliente, roda física do próprio carro e,
+   *            como o cliente mandou o input, usa-o para o botCar (slot remoto).
+   *   Client → envia input numerado; aplica predição local no playerCar;
+   *            o botCar é atualizado via snapshot (applyRemoteCarFromSnapshot).
+   */
+  private updateOnlineFrame(dt: number) {
+    if (!this.turboNet) return
+
+    if (this.turboNet.isHost) {
+      // 1. Física do carro local do Host (playerCar — orange)
+      this.updatePlayerInput(dt)
+
+      // 2. Aplica input do cliente remoto no botCar (blue)
+      const remoteInput = this.turboNet.consumeLatestClientInputOnHost()
+      if (remoteInput) {
+        this.applyRemoteInputToCar(this.botCar, remoteInput, dt)
+      } else {
+        // Sem input do cliente: mantém botCar desacelerando
+        this.botCar.speed *= 0.92
+        this.applyCarPhysics(this.botCar, dt)
+      }
+    } else {
+      // Cliente: lê inputs locais, envia numerado, aplica predição local
+      this.updatePlayerInputAndSendOnline(dt)
+      // botCar é atualizado via snapshot em applyRemoteCarFromSnapshot (chamado em updateHUD)
+    }
+  }
+
+  /**
+   * Cliente: lê o input local, aplica ao playerCar (predição) e envia ao Host.
+   */
+  private updatePlayerInputAndSendOnline(dt: number) {
+    const gp = this.gamepad.getState()
+    const pc = this.playerCar
+    if (pc.isDemoed) return
+
+    // Coleta inputs do frame
+    let throttle = 0
+    if (gp.connected) {
+      if (gp.rtThrottle > 0.1)  throttle =  gp.rtThrottle
+      else if (gp.ltBrake > 0.1) throttle = -gp.ltBrake
+    } else {
+      if (this.keys['KeyW'] || this.keys['ArrowUp'])    throttle += 1
+      if (this.keys['KeyS'] || this.keys['ArrowDown'])  throttle -= 1
+      throttle += this.touch.throttle
+      throttle = Math.max(-1, Math.min(1, throttle))
+    }
+
+    let steer = 0
+    if (gp.connected) {
+      if (Math.abs(gp.steerX) > 0.15) steer = gp.steerX
+    } else {
+      if (this.keys['KeyA'] || this.keys['ArrowLeft'])  steer -= 1
+      if (this.keys['KeyD'] || this.keys['ArrowRight']) steer += 1
+      steer += this.touch.steer
+      steer = Math.max(-1, Math.min(1, steer))
+    }
+
+    const boostBtn = gp.connected && gp.boost
+    const boostKey = this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touch.boost
+    const isBoosting = (boostBtn || boostKey) && pc.boost > 0
+
+    const jump = this.keys['Space'] || this.touch.jump || (gp.connected && gp.jump) || false
+    const drift = this.keys['KeyF'] || this.touch.drift || (gp.connected && gp.handbrake) || false
+
+    // Envia input numerado ao Host
+    this.turboNet!.sendClientInput(
+      steer, throttle, 0, 0, jump, isBoosting, drift,
+      { x: pc.pos.x, y: pc.pos.y, z: pc.pos.z }
+    )
+
+    // Predição local: aplica o mesmo input ao playerCar
+    this.applyRemoteInputToCar(pc, {
+      steer, throttle,
+      jump, boost: isBoosting, drift
+    }, dt)
+
+    this.playerBoosting = isBoosting
+  }
+
+  /**
+   * Aplica um TurboInputPacket diretamente a um CarObject (usado pelo Host para o botCar
+   * e pelo Cliente para predição local do playerCar).
+   */
+  private applyRemoteInputToCar(
+    car: CarObject,
+    input: { steer: number; throttle: number; boost: boolean; jump: boolean; drift: boolean },
+    dt: number
+  ) {
+    // Virar
+    if (input.steer !== 0) {
+      const turnMult = car.drifting ? 2.1 : car.speed < -0.1 ? -1 : 1
+      car.yaw -= input.steer * this.studioParams.turnRate * turnMult * dt
+      car.steerFront(-input.steer * 0.45)
+    } else {
+      car.steerFront(0)
+    }
+
+    // Boost
+    const isBoosting = input.boost && car.boost > 0
+    if (isBoosting) {
+      car.boost = Math.max(0, car.boost - 32 * dt)
+      car.showFlame(true)
+    } else {
+      car.showFlame(false)
+    }
+
+    // Aceleração
+    if (input.throttle !== 0) {
+      const maxSpd = (isBoosting ? 1.75 : 1.25) * this.studioParams.playerSpeedMult
+      car.speed = Math.max(-0.65, Math.min(maxSpd, car.speed + input.throttle * 2.2 * dt))
+    } else {
+      car.speed *= 0.94
+    }
+
+    // Drift
+    if (input.drift && car.grounded && car.speed > 0.35) {
+      car.drifting = true
+    } else if (!input.drift && car.drifting) {
+      car.drifting = false
+      car.driftCharge = 0
+    }
+
+    this.applyCarPhysics(car, dt)
+  }
+
+  /**
+   * Cliente: aplica o snapshot mais recente do Host ao botCar (carro remoto).
+   * Usa interpolação suave de posição/rotação para evitar teleports visíveis.
+   */
+  private applyRemoteCarFromSnapshot() {
+    if (!this.turboNet || this.turboNet.isHost) return
+
+    // Atualiza timer do Host pelo snapshot
+    const snap = this.turboNet.getLatestServerSnapshot()
+    if (snap) {
+      // Sincroniza o timer (usa o valor do Host)
+      this.matchTimer = snap.timeRemainingSec
+
+      // Aplica posição/vel da bola do Host ao cliente (blend exponencial)
+      const b = this.ball
+      const sb = snap.ball
+      const ballAlpha = 0.18   // blend suave: 18% do alvo por frame
+      b.pos.x += (sb.x - b.pos.x) * ballAlpha
+      b.pos.y += (sb.y - b.pos.y) * ballAlpha
+      b.pos.z += (sb.z - b.pos.z) * ballAlpha
+      b.vel.x += (sb.vx - b.vel.x) * ballAlpha
+      b.vel.y += (sb.vy - b.vel.y) * ballAlpha
+      b.vel.z += (sb.vz - b.vel.z) * ballAlpha
+
+      // Scores do Host:
+      // No Cliente: scorePlayer = scores.blue (o próprio jogador), scoreBot = scores.orange (Host)
+      this.scorePlayer = snap.scores.blue
+      this.scoreBot    = snap.scores.orange
+      this.hudScoreP.textContent = String(this.scorePlayer)
+      this.hudScoreB.textContent = String(this.scoreBot)
+    }
+
+    // Interpolação do carro remoto do Host (slot 0 = Laranja) no botCar do Cliente:
+    const remoteSlot = 0  // Host é sempre slot 0 (Laranja)
+    const interpolated = this.turboNet.getInterpolatedRemoteCar(remoteSlot)
+    if (interpolated) {
+      const bc = this.botCar
+      // Blend exponencial de posição (evita snap, 25% do alvo por frame)
+      const posAlpha = 0.25
+      bc.pos.x += (interpolated.pos.x - bc.pos.x) * posAlpha
+      bc.pos.y += (interpolated.pos.y - bc.pos.y) * posAlpha
+      bc.pos.z += (interpolated.pos.z - bc.pos.z) * posAlpha
+      // Rotações via lerp angular
+      const lerpAngle = (a: number, b: number, t: number) => {
+        let d = (b - a) % (Math.PI * 2)
+        if (d >  Math.PI) d -= Math.PI * 2
+        if (d < -Math.PI) d += Math.PI * 2
+        return a + d * t
+      }
+      bc.yaw        = lerpAngle(bc.yaw, interpolated.yaw, 0.3)
+      bc.pitch      = lerpAngle(bc.pitch, interpolated.pitch, 0.3)
+      bc.rollAngle  = lerpAngle(bc.rollAngle, interpolated.rollAngle, 0.3)
+      bc.applyTransform()
+    }
+  }
+
+  /**
+   * Cliente: aplica o valor de countdown enviado autoritativamente pelo Host.
+   */
+  private applyCountdownValue(currentSec: number) {
+    const cdWrap = document.getElementById('turbo-countdown-overlay')
+    if (!cdWrap) return
+
+    if (currentSec <= 0) {
+      this.hudCountdown.textContent = 'VAI! ⚽'
+      this.hudCountdown.style.color = '#22c55e'
+      this.audio.playCountdownGo()
+      this.audio.startBGM()
+      this.audio.startEngine()
+      this.audio.startCrowd()
+      this.kickoffCountdown = 0
+      this.isKickoffActive = false
+      setTimeout(() => {
+        const wrap = document.getElementById('turbo-countdown-overlay')
+        if (wrap) wrap.style.display = 'none'
+      }, 600)
+    } else {
+      cdWrap.style.display = 'flex'
+      this.isKickoffActive = true
+      this.kickoffCountdown = currentSec + 0.5
+      this.hudCountdown.textContent = String(currentSec)
+      this.hudCountdown.style.color = currentSec === 3 ? '#ef4444' : currentSec === 2 ? '#f59e0b' : '#10b981'
+      this.audio.playCountdown()
+    }
+    this.lastCountdownSec = currentSec
+  }
+
+  /**
+   * Host: constrói e envia um snapshot completo ao cliente.
+   */
+  private broadcastOnlineSnapshot() {
+    if (!this.turboNet || !this.turboNet.isHost) return
+
+    const cars = this.allCars.map((c, i) => ({
+      slot: i,
+      x: c.pos.x, y: c.pos.y, z: c.pos.z,
+      yaw: c.yaw, pitch: c.pitch, rollAngle: c.rollAngle,
+      vx: c.velX, vy: c.velY, vz: c.velZ,
+      boost: c.boost,
+      isBoosting: c.boost < 95,
+      isDemoed: c.isDemoed
+    }))
+
+    this.turboNet.broadcastSnapshot(
+      this.matchTimer,
+      { orange: this.scorePlayer, blue: this.scoreBot },
+      {
+        x: this.ball.pos.x, y: this.ball.pos.y, z: this.ball.pos.z,
+        vx: this.ball.vel.x, vy: this.ball.vel.y, vz: this.ball.vel.z
+      },
+      cars
+    )
+  }
+
+  /**
+   * Exibe overlay de desconexão e retorna ao menu após 4 segundos.
+   */
+  private handleOnlineDisconnect() {
+    if (this.onlineDisconnectShown || this.destroyed) return
+    this.onlineDisconnectShown = true
+    this.isRunning = false   // para o loop
+
+    const isHost = this.turboNet?.isHost ?? false
+    const disconnectMsg = isHost
+      ? 'O adversário desconectou da partida.'
+      : 'O host encerrou ou desconectou da partida.'
+
+    const overlay = document.createElement('div')
+    overlay.style.cssText = `
+      position:absolute;inset:0;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;
+      align-items:center;justify-content:center;z-index:999;
+      font-family:'Luckiest Guy','Orbitron',sans-serif;
+    `
+    overlay.innerHTML = `
+      <div style="font-size:22px;color:#ff2d78;letter-spacing:3px;text-shadow:0 2px 0 #000;">
+        📡 CONEXÃO ENCERRADA
+      </div>
+      <div style="font-size:13px;margin-top:10px;color:rgba(255,255,255,0.65);font-family:monospace;letter-spacing:1px;">
+        ${disconnectMsg}
+      </div>
+      <button
+        style="margin-top:20px;padding:12px 28px;background:#ff2d78;border:none;
+               color:#fff;font-family:'Luckiest Guy',cursive;font-size:14px;letter-spacing:2px;
+               cursor:pointer;border-radius:10px;box-shadow:0 5px 0 #8b0032;"
+        onclick="window.location.reload()">
+        🏠 VOLTAR AO MENU
+      </button>
+    `
+    this.container.appendChild(overlay)
+    setTimeout(() => {
+      if (!this.destroyed) this.onExit?.()
+    }, 5000)
+  }
+
+
   //  BOT IA COMPETITIVO E BALANCEADO (DISPUTA JUSTA & HUMANA)
 
   private updateBotAI(dt: number) {
     // Roda a IA para todos os carros bot (blue team + orange aliados)
     for (const car of this.allCars) {
       if ((car === this.playerCar && !this.spectatorMode) || car.isDemoed) continue
+      // Online 1v1: botCar é o carro remoto — não usar IA nele
+      if (this.isOnline1v1 && car === this.botCar) continue
       this.runSingleBotAI(car, dt)
     }
   }
@@ -3992,7 +4409,8 @@ private resolveCarCarCollision() {
     this.goalCooldown = 4.2
 
     if (scorer === 'player') {
-      this.scorePlayer++
+      // Online 1v1: somente o Host incrementa o placar e notifica o cliente
+      if (!this.isOnline1v1) this.scorePlayer++
       this.hudScoreP.textContent = String(this.scorePlayer)
       this.hudGoalTitle.textContent = '🎉 GOLAZO DO JOGADOR!'
       this.hudGoalTitle.style.color = '#ff6600'
@@ -4000,12 +4418,22 @@ private resolveCarCarCollision() {
       this.audio.playVictory()
       this.audio.playCheer()
     } else {
-      this.scoreBot++
+      if (!this.isOnline1v1) this.scoreBot++
       this.hudScoreB.textContent = String(this.scoreBot)
-      this.hudGoalTitle.textContent = '🤖 GOL DO BOT RIVAL!'
+      this.hudGoalTitle.textContent = this.isOnline1v1 ? '🤖 GOL DO ADVERSÁRIO!' : '🤖 GOL DO BOT RIVAL!'
       this.hudGoalTitle.style.color = '#0088ff'
       this.audio.playGoal()
       this.audio.playCheer()
+    }
+
+    // Online 1v1 Host: envia evento de gol ao cliente
+    if (this.isOnline1v1 && this.turboNet?.isHost) {
+      const netScorer = scorer === 'player' ? 'orange' : 'blue'
+      this.turboNet.sendGoalEvent(
+        netScorer,
+        { orange: this.scorePlayer, blue: this.scoreBot },
+        { x: this.ball.pos.x, y: this.ball.pos.y, z: this.ball.pos.z }
+      )
     }
 
     this.triggerGoalExplosion(this.ball.pos, this.goalExplosion, scorer)
@@ -4023,6 +4451,10 @@ private resolveCarCarCollision() {
     setTimeout(() => {
       if (this.destroyed) return
       this.hudGoalBanner.style.display = 'none'
+      // Online 1v1 Host: envia reset ao cliente antes de replay
+      if (this.isOnline1v1 && this.turboNet?.isHost) {
+        this.turboNet.sendResetEvent()
+      }
       this.startGoalReplay()
     }, 1800)
   }
@@ -4034,8 +4466,10 @@ private resolveCarCarCollision() {
       if (d < 95 && d > 1) {
         const dir = car.pos.clone().sub(pos).normalize()
         const force = Math.max(0, (95 - d) / 95) * 52
-        car.vel.add(dir.multiplyScalar(force))
-        car.vel.y += 20 * (1 - d / 95)
+        car.velX = (car.velX || 0) + dir.x * force
+        car.velZ = (car.velZ || 0) + dir.z * force
+        car.velY = (car.velY || 0) + 20 * (1 - d / 95)
+        car.grounded = false
       }
     }
 
@@ -4143,9 +4577,8 @@ private resolveCarCarCollision() {
       c.pos.copy(cf.pos)
       c.yaw = cf.yaw
       c.pitch = cf.pitch
-      c.roll = cf.roll
-      c.mesh.position.copy(cf.pos)
-      c.mesh.rotation.set(cf.pitch, cf.yaw, cf.roll, 'YXZ')
+      c.rollAngle = cf.roll
+      c.applyTransform()
     }
 
     this._camReplayTarget.copy(this.ball.pos).add(this._camOffset)
@@ -4213,8 +4646,10 @@ private resolveCarCarCollision() {
       if (d > 0.5 && d < 44) {
         const dir = car.pos.clone().sub(origin).normalize()
         const force = (1 - d / 44) * 48
-        car.vel.add(dir.multiplyScalar(force))
-        car.vel.y += 18 * (1 - d / 44)
+        car.velX = (car.velX || 0) + dir.x * force
+        car.velZ = (car.velZ || 0) + dir.z * force
+        car.velY = (car.velY || 0) + 18 * (1 - d / 44)
+        car.grounded = false
       }
     }
 
@@ -4251,7 +4686,7 @@ private resolveCarCarCollision() {
           this.emitCartoonStarBurst(this.ball.pos.clone().addScaledVector(toCar, 0.5), 1, 0x00cfff)
         }
       } else if (this.rumbleActive.type === 'overdrive') {
-        this.playerBoost = 100
+        this.playerCar.boost = 100
         this.playerCar.speed = Math.max(this.playerCar.speed, 1.45)
       }
 
@@ -4484,9 +4919,26 @@ private resolveCarCarCollision() {
       this.hudNitroArc.setAttribute('stroke', bv > 50 ? '#ff6600' : bv > 25 ? '#ffaa00' : '#ef4444')
     }
 
+    // ── ONLINE 1v1: ping HUD ──────────────────────────────────
+    if (this.isOnline1v1 && this.turboNet) {
+      this.turboNet.updatePing(dt)
+      if (this.hudPingEl) {
+        const ping = this.turboNet.currentPing
+        this.hudPingEl.textContent = ping === 0 ? 'PING: --ms' : `PING: ${ping}ms`
+        this.hudPingEl.style.color = ping === 0 ? '#00cfff' : ping < 80 ? '#00ff88' : ping < 150 ? '#ffd23f' : '#ff2d78'
+      }
+      // Cliente: aplica snapshot do Host ao carro remoto (botCar)
+      if (!this.turboNet.isHost) {
+        this.applyRemoteCarFromSnapshot()
+      }
+    }
 
     if (!this.matchEnded && this.kickoffCountdown <= 0 && this.goalCooldown <= 0) {
-      this.matchTimer = Math.max(0, this.matchTimer - dt)
+      // Apenas o Host (online) ou solo decrementa o timer localmente
+      // Cliente recebe via snapshot
+      if (!this.isOnline1v1 || this.turboNet?.isHost) {
+        this.matchTimer = Math.max(0, this.matchTimer - dt)
+      }
       const m = Math.floor(this.matchTimer / 60)
       const s = Math.floor(this.matchTimer % 60)
       this.hudTimer.textContent = `${m}:${s < 10 ? '0' : ''}${s}`
@@ -4509,6 +4961,12 @@ private resolveCarCarCollision() {
 
     const isDraw = this.scorePlayer === this.scoreBot
     const isWin = this.scorePlayer > this.scoreBot
+
+    // Online 1v1 Host: notifica o cliente do fim de partida
+    if (this.isOnline1v1 && this.turboNet?.isHost) {
+      const winner = isDraw ? 'draw' : isWin ? 'orange' : 'blue'
+      this.turboNet.sendMatchEndEvent(winner, { orange: this.scorePlayer, blue: this.scoreBot })
+    }
 
     // Registra pontuação no Supabase / Leaderboard ELO local
     dbService.recordMatchResult('Jogador 1', isWin, this.scorePlayer)
