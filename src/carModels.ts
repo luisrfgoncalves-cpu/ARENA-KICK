@@ -7,12 +7,14 @@ export interface CarModelEntry {
 
 export const CAR_MODELS: Record<string, CarModelEntry> = {
   'octane-cartoon': { file: '/models/vehicle-truck-red.glb', label: 'Octane Toon Red' },
-  'cartoon-red': { file: '/models/vehicle-truck-red.glb', label: 'Cartoon Red' },
-  'cartoon-yellow': { file: '/models/vehicle-truck-yellow.glb', label: 'Cartoon Yellow' },
-  'cartoon-green': { file: '/models/vehicle-truck-green.glb', label: 'Cartoon Green' },
-  'cartoon-purple': { file: '/models/vehicle-truck-purple.glb', label: 'Cartoon Purple' },
-  'toycar': { file: '/models/ToyCar.glb', label: 'ToyCar 3D' },
-  'ferrari': { file: '/models/ferrari.glb', label: 'Ferrari GT' },
-  'milktruck': { file: '/models/CesiumMilkTruck.glb', label: 'Milk Truck' },
-  'cartoon-moto': { file: '/models/vehicle-motorcycle.glb', label: 'Moto Nitro' }
+  'buggy': { file: '/models/buggy.glb', label: 'Dune Buggy 4x4' },
+  'ferrari': { file: '/models/ferrari.glb', label: 'Ferrari GT Sport' },
+  'toycar': { file: '/models/ToyCar.glb', label: 'ToyCar Super' },
+  'cartoon-yellow': { file: '/models/vehicle-truck-yellow.glb', label: 'Cruiser Toon Gold' },
+  'cartoon-green': { file: '/models/vehicle-truck-green.glb', label: 'Beast Toon Lime' },
+  'cartoon-purple': { file: '/models/vehicle-truck-purple.glb', label: 'Phantom Toon Purple' },
+  'cartoon-moto': { file: '/models/vehicle-motorcycle.glb', label: 'Moto Nitro 3D' },
+  'sportscar': { file: '/models/sportscar.glb', label: 'Cyber Sportscar' },
+  'milktruck': { file: '/models/CesiumMilkTruck.glb', label: 'Milk Truck Heavy' },
+  'cartoon-red': { file: '/models/vehicle-truck-red.glb', label: 'Red Racer Toon' }
 }

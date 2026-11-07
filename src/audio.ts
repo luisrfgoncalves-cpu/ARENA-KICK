@@ -124,6 +124,53 @@ export class AudioManager {
 
   static isMutedGlobal() { return AudioManager.mutedGlobal }
 
+  // ── ÁUDIO ESPACIAL 3D HOWLER ──
+  updateListener(x: number, y: number, z: number, forwardX = 0, forwardY = 0, forwardZ = -1) {
+    if (this.muted) return
+    try {
+      Howler.pos(x, y, z)
+      Howler.orientation(forwardX, forwardY, forwardZ, 0, 1, 0)
+    } catch {}
+  }
+
+  playSpatial(sound: SoundKey, x: number, y: number, z: number) {
+    if (this.muted || !sounds) return
+    try {
+      const h = sounds[sound]
+      if (!h) return
+      const id = h.play()
+      if (typeof id === 'number') {
+        h.pos(x, y, z, id)
+      }
+    } catch {}
+  }
+
+  playCollisionTiered(force: number, x?: number, y?: number, z?: number) {
+    if (this.muted || !sounds) return
+    try {
+      if (force > 38) {
+        if (x !== undefined && y !== undefined && z !== undefined) {
+          this.playSpatial('postHit', x, y, z)
+          this.playSpatial('powerHit', x, y, z)
+        } else {
+          this.playPostHit()
+        }
+      } else if (force > 18) {
+        if (x !== undefined && y !== undefined && z !== undefined) {
+          this.playSpatial('powerHit', x, y, z)
+        } else {
+          this.playPowerHit()
+        }
+      } else {
+        if (x !== undefined && y !== undefined && z !== undefined) {
+          this.playSpatial('hit', x, y, z)
+        } else {
+          this.playHit()
+        }
+      }
+    } catch {}
+  }
+
   play(sound: SoundKey) {
     if (this.muted || !sounds) return
     try { sounds[sound]?.play() } catch {}

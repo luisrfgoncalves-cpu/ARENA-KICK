@@ -83,14 +83,10 @@ export class GaragePreview {
   setCar(carId: string) {
     const entry = CAR_MODELS[carId]
     const token = ++this.loadToken
-
-    if (!entry || !entry.file) {
-      this.showProcedural()
-      return
-    }
+    const file = (entry && entry.file) ? entry.file : '/models/vehicle-truck-red.glb'
 
     this.loader.load(
-      entry.file,
+      file,
       (gltf) => {
         if (this.disposed || token !== this.loadToken) return
         this.mount(gltf.scene)
@@ -98,7 +94,11 @@ export class GaragePreview {
       undefined,
       () => {
         if (this.disposed || token !== this.loadToken) return
-        this.showProcedural()
+        // Fallback para modelo 3D Kenney padrão em caso de erro de rede
+        this.loader.load('/models/vehicle-truck-red.glb', (fallbackGltf) => {
+          if (this.disposed || token !== this.loadToken) return
+          this.mount(fallbackGltf.scene)
+        })
       }
     )
   }

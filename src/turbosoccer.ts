@@ -9,6 +9,8 @@
 import * as THREE from 'three'
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import Stats from 'three/examples/jsm/libs/stats.module.js'
+import { EffectComposer, RenderPass, BloomEffect, EffectPass, VignetteEffect } from 'postprocessing'
 import confetti from 'canvas-confetti'
 import GUI from 'lil-gui'
 import { GamepadManager } from './gamepad'
@@ -108,6 +110,7 @@ export interface TurboTuning {
   goalExplosion?: GoalExplosionType
   gameMode?: TurboGameMode
   spectatorMode?: boolean
+  isTraining?: boolean
 }
 
 // ============================================================
@@ -119,6 +122,8 @@ export class TurboSoccerGame {
   private camera:        THREE.PerspectiveCamera
   private renderer:      THREE.WebGLRenderer
   private outlineEffect: OutlineEffect
+  private composer:      EffectComposer | null = null
+  private stats:         any = null
   private clock          = new THREE.Clock()
   private animId         = 0
   private isRunning      = true
@@ -377,6 +382,45 @@ export class TurboSoccerGame {
       defaultKeepAlive: true,
     })
 
+    // 5. Pós-Processamento GPU pmndrs/postprocessing (Bloom nos Neons & Vinheta de Estádio no PC)
+    if (!this.isMobile) {
+      try {
+        this.composer = new EffectComposer(this.renderer, {
+          frameBufferType: THREE.HalfFloatType
+        })
+        this.composer.addPass(new RenderPass(this.scene, this.camera))
+        const bloom = new BloomEffect({
+          intensity: 0.82,
+          luminanceThreshold: 0.70,
+          mipmapBlur: true
+        })
+        const vignette = new VignetteEffect({
+          darkness: 0.35,
+          offset: 0.35
+        })
+        this.composer.addPass(new EffectPass(this.camera, bloom, vignette))
+      } catch (e) {
+        console.warn('[PostProcessing] Fallback to standard OutlineEffect:', e)
+        this.composer = null
+      }
+    }
+
+    // 6. Monitor de Performance FPS stats.js (ativável via tecla F2)
+    try {
+      this.stats = new Stats()
+      this.stats.showPanel(0)
+      this.stats.dom.style.position = 'absolute'
+      this.stats.dom.style.top = '14px'
+      this.stats.dom.style.left = '14px'
+      this.stats.dom.style.zIndex = '9999'
+      this.stats.dom.style.display = 'none'
+      this.container.appendChild(this.stats.dom)
+    } catch {}
+
+    if (tuning?.isTraining) {
+      this.isTraining = true
+    }
+
     this.initAsync()
   }
 
@@ -456,6 +500,9 @@ export class TurboSoccerGame {
       window.addEventListener('keyup', this.onKeyUp)
 
       this.loop()
+      if (this.isTraining) {
+        this.setTrainingMode(true)
+      }
 
       // Carrega modelos 3D em segundo plano
       void this.playerCar.loadModel(this.selectedCarModelId)
@@ -485,6 +532,9 @@ export class TurboSoccerGame {
     if (e.code === 'KeyH') {
       this.toggleStudioGUI()
     }
+    if (e.code === 'F2' && this.stats) {
+      this.stats.dom.style.display = this.stats.dom.style.display === 'none' ? 'block' : 'none'
+    }
     if (e.code === 'Escape' || e.code === 'KeyP') {
       e.preventDefault()
       this.togglePause()
@@ -508,6 +558,10 @@ export class TurboSoccerGame {
     this.isTraining = enabled
     if (enabled) {
       this.matchTimer = 999999
+      this.kickoffCountdown = 0
+      this.isKickoffActive = false
+      const cdWrap = document.getElementById('turbo-countdown-overlay')
+      if (cdWrap) cdWrap.style.display = 'none'
       if (this.hudTimer) this.hudTimer.textContent = 'TREINO'
       this.playerCar.boost = 100
       for (const car of this.allCars) {
@@ -2251,12 +2305,22 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       this.audio.updateEngine(0, false)
     }
 
-    // Renderiza cena: no desktop usa OutlineEffect cel-shaded; no mobile usa single-pass ultra veloz (60 FPS)
+    // Renderiza cena: no desktop usa Bloom+Vinheta pós-processados (pmndrs/postprocessing)
+    // No mobile usa single-pass ultra veloz (60 FPS estável)
+    // IMPORTANTE: OutlineEffect e EffectComposer NÃO podem rodar juntos (double-render).
+    // No desktop com composer, o RenderPass interno já cuida da cena completa.
+    // No desktop sem composer (fallback), usa OutlineEffect diretamente.
+    if (this.stats) this.stats.begin()
     if (this.isMobile) {
       this.renderer.render(this.scene, this.camera)
+    } else if (this.composer) {
+      // Bloom + Vinheta via postprocessing (RenderPass interno = sem double-render)
+      this.composer.render()
     } else {
+      // Fallback cartoon outline clássico
       this.outlineEffect.render(this.scene, this.camera)
     }
+    if (this.stats) this.stats.end()
   }
 
   private updateCountdownDisplay() {
@@ -4238,6 +4302,26 @@ private resolveCarCarCollision() {
     this.ball.pos.set(0, BALL_R + 0.1, 0)
     this.ball.vel.set(0, 0, 0)
 
+    if (this.isTraining) {
+      this.playerCar.setPosition(0, 0, FIELD_L * 0.18)
+      this.playerCar.yaw = Math.PI
+      this.playerCar.freeze()
+      this.playerCar.applyTransform()
+      this.playerCar.boost = 100
+      for (const car of this.allCars) {
+        if (car !== this.playerCar) {
+          car.freeze()
+          car.group.visible = false
+        }
+      }
+      this.kickoffCountdown = 0
+      this.isKickoffActive = false
+      const cdWrap = document.getElementById('turbo-countdown-overlay')
+      if (cdWrap) cdWrap.style.display = 'none'
+      if (this.hudTimer) this.hudTimer.textContent = 'TREINO'
+      return
+    }
+
     // Reposiciona todos os carros nos slots de kickoff
     const teamSize = this.orangeCars.length
     const orangeSpawnZ = [FIELD_L * 0.18, FIELD_L * 0.08, FIELD_L * 0.25, FIELD_L * 0.08]
@@ -4373,6 +4457,7 @@ private resolveCarCarCollision() {
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(window.innerWidth, window.innerHeight)
     this.outlineEffect.setSize(window.innerWidth, window.innerHeight)
+    if (this.composer) this.composer.setSize(window.innerWidth, window.innerHeight)
   }
 
   public destroy() {
@@ -4410,6 +4495,14 @@ private resolveCarCarCollision() {
     this.smokeGeo.dispose()
 
     this.renderer.dispose()
+    if (this.composer) {
+      this.composer.dispose()
+      this.composer = null
+    }
+    if (this.stats && this.stats.dom?.parentElement) {
+      this.stats.dom.parentElement.removeChild(this.stats.dom)
+    }
+    this.stats = null
     if (this.renderer.domElement.parentElement) {
       this.renderer.domElement.parentElement.removeChild(this.renderer.domElement)
     }

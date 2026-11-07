@@ -312,10 +312,8 @@ document.getElementById('btn-training-turbo')?.addEventListener('click', () => {
   closeGaragePreview()
   const tuning = readTurboTuning()
   tuning.matchFormat = '1v1'
+  tuning.isTraining = true  // passado via tuning — sem setTimeout frágil
   startTurboSoccer3D(selectedCar, tuning)
-  setTimeout(() => {
-    currentTurboGame?.setTrainingMode(true)
-  }, 300)
   showToast('🎯 Treino Livre Ativado: Arena livre e Nitro Infinito!')
 })
 
@@ -669,7 +667,7 @@ document.querySelectorAll('.theme-btn').forEach((btn) => {
 document.getElementById('btn-back-to-menu')!.addEventListener('click', () => showScreen('menu'))
 document.getElementById('btn-start-game')!.addEventListener('click', () => startBeatBall())
 document.getElementById('btn-training-bb')?.addEventListener('click', () => {
-  startBeatBall('bot')
+  launchBeatBall('bot')
   currentGame?.setTrainingMode(true)
   showToast('🎯 Treino Livre Ativado: Pratique condução e curvas!')
 })

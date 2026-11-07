@@ -38,6 +38,33 @@ export interface NetSyncPayload {
   isSpectator?: boolean
 }
 
+// Configuração de NAT Traversal de Alta Conectividade (OpenRelay STUN + TURN público gratuito)
+// Permite que jogadores em redes 4G/5G, celulares e roteadores com NAT Restrito joguem juntos sem bloqueio
+const PEER_OPTIONS = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:openrelay.metered.ca:80' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelay',
+        credential: 'openrelay'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelay',
+        credential: 'openrelay'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelay',
+        credential: 'openrelay'
+      }
+    ]
+  }
+}
+
 export class NetworkManager {
   private peer: Peer | null = null
   private conns: Map<string, DataConnection> = new Map() // Múltiplas conexões para o Host
@@ -55,7 +82,7 @@ export class NetworkManager {
 
   init(customId?: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      this.peer = customId ? new Peer(customId) : new Peer()
+      this.peer = customId ? new Peer(customId, PEER_OPTIONS) : new Peer(PEER_OPTIONS)
 
       this.peer.on('open', (id) => {
         this.myId = id
