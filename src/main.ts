@@ -30,6 +30,7 @@ let selectedGoalExplosion: GoalExplosionType = (localStorage.getItem('arena_kick
 let selectedTurboMode: TurboGameMode = 'standard'
 let garagePreview: { setCar(id: string): void; dispose(): void } | null = null
 let selectedTeamP1: TeamKey = 'brazil'
+let onlineHostTeam: TeamKey | null = null
 let selectedTheme: FieldTheme = 'classic'
 let selectedOnlineGame: 'beatball' | 'turbo' = 'beatball'
 let selectedOnlineBBFormat: '1v1' | '2v2' = '1v1'
@@ -532,7 +533,8 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
         event: 'start_game',
         gameType: selectedOnlineGame,
         format: chosenFormat,
-        totalPlayers: count
+        totalPlayers: count,
+        hostTeam: selectedTeamP1
       })
       showToast(`Iniciando ${chosenFormat} (${count} pessoas)!`)
       if (selectedOnlineGame === 'turbo') {
@@ -622,6 +624,9 @@ async function handleJoinRoom(asSpectator = false) {
     netManager.onDataReceived = (payload) => {
       if (payload.event === 'start_game') {
         const fmt = payload.format || '1v1'
+        if (payload.hostTeam) {
+          onlineHostTeam = payload.hostTeam
+        }
         showToast(asSpectator ? `👁️ Transmitindo partida ${fmt} ao vivo!` : `Partida ${fmt} iniciada pelo Host!`)
         if (payload.gameType === 'turbo') {
           const tuning = readTurboTuning()
@@ -802,6 +807,22 @@ function launchBeatBall(mode: 'bot' | '2p' | 'online', network?: NetworkManager)
 
   const isOnline = mode === 'online'
   lastWasOnline = isOnline
+  const isHost = isOnline && (network ? network.isHost() : false)
+
+  let teamP1Config: TeamKey = selectedTeamP1
+  let teamP2Config: TeamKey = selectedTeamP1 === 'usa' ? 'brazil' : 'usa'
+
+  if (isOnline) {
+    if (isHost) {
+      teamP1Config = selectedTeamP1
+      teamP2Config = selectedTeamP1 === 'cyber' ? 'brazil' : 'cyber'
+    } else {
+      const effectiveHostTeam = onlineHostTeam || selectedTeamP1
+      teamP1Config = effectiveHostTeam === 'cyber' ? 'brazil' : 'cyber'
+      teamP2Config = effectiveHostTeam === 'cyber' ? 'cyber' : effectiveHostTeam
+    }
+  }
+
   const teamNameP1 = selectedTeamP1.toUpperCase()
 
   hudP1Name.textContent = isOnline ? 'VOCÊ' : teamNameP1
@@ -824,8 +845,8 @@ function launchBeatBall(mode: 'bot' | '2p' | 'online', network?: NetworkManager)
     format: selectedBBFormat,
     difficulty: selectedDiff,
     theme: selectedTheme,
-    teamP1: selectedTeamP1,
-    teamP2: selectedTeamP1 === 'usa' ? 'brazil' : 'usa',
+    teamP1: teamP1Config,
+    teamP2: teamP2Config,
     network,
     playerName: isOnline ? 'Jogador Online' : undefined,
 

@@ -172,16 +172,38 @@ export class TurboNetworkController {
     this.latestClientInput = packet
   }
 
-  public consumeLatestClientInputOnHost(): TurboInputPacket | null {
-    if (!this.isHost) return null
-    if (this.remoteClientInputs.length === 0) return this.latestClientInput
+  /**
+   * Host: Consome os inputs do cliente em ordem sequencial (FIFO).
+   * Evita descarte de pacotes intermediários quando chegam em burst/rajada.
+   * Se houver backlog excessivo (> 10 pacotes), retém os 10 mais recentes (política controlada).
+   * Retorna até maxBatch pacotes (padrão 4) para processamento sequencial no frame atual.
+   */
+  public consumePendingClientInputsOnHost(maxBatch = 4): TurboInputPacket[] {
+    if (!this.isHost) return []
 
-    // Pega o input mais recente e atualiza lastProcessedInputSeq
-    const next = this.remoteClientInputs[this.remoteClientInputs.length - 1]
-    this.lastProcessedInputSeq = next.inputSeq
-    this.remoteClientInputs = []
-    this.latestClientInput = next
-    return next
+    // Controle de backlog em picos de latência (mantém até 10 mais recentes)
+    if (this.remoteClientInputs.length > 10) {
+      this.remoteClientInputs = this.remoteClientInputs.slice(-10)
+    }
+
+    if (this.remoteClientInputs.length === 0) {
+      // Se não há pacotes novos no buffer, retorna o último conhecido para manter continuidade
+      return this.latestClientInput ? [this.latestClientInput] : []
+    }
+
+    // Retira da fila em ordem estrita de chegada
+    const batch = this.remoteClientInputs.splice(0, maxBatch)
+    const last = batch[batch.length - 1]
+    if (last) {
+      this.lastProcessedInputSeq = last.inputSeq
+      this.latestClientInput = last
+    }
+    return batch
+  }
+
+  public consumeLatestClientInputOnHost(): TurboInputPacket | null {
+    const list = this.consumePendingClientInputsOnHost(1)
+    return list.length > 0 ? list[0] : null
   }
 
   public broadcastSnapshot(

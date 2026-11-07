@@ -1989,6 +1989,8 @@ export class TurboSoccerGame {
     const existing = document.getElementById('turbo-hud-root')
     if (existing) existing.remove()
 
+    const isClient1v1 = this.isOnline1v1 && !this.turboNet?.isHost
+
     const hud = document.createElement('div')
     hud.id = 'turbo-hud-root'
     hud.style.position = 'absolute'
@@ -3669,19 +3671,62 @@ private resolveCarCarCollision() {
       // 1. Física do carro local do Host (playerCar — orange)
       this.updatePlayerInput(dt)
 
-      // 2. Aplica input do cliente remoto no botCar (blue)
-      const remoteInput = this.turboNet.consumeLatestClientInputOnHost()
-      if (remoteInput) {
-        this.applyRemoteInputToCar(this.botCar, remoteInput, dt)
+      // 2. Aplica fila de inputs do cliente remoto no botCar (blue) em ordem estrita
+      const pendingInputs = this.turboNet.consumePendingClientInputsOnHost(4)
+      if (pendingInputs.length > 0) {
+        const subDt = dt / pendingInputs.length
+        for (const input of pendingInputs) {
+          this.applyRemoteInputToCar(this.botCar, input, subDt)
+        }
+        // Correção suave de desvio cumulativo usando debugPos seguro (sem teletransporte)
+        const latest = pendingInputs[pendingInputs.length - 1]
+        if (latest.debugPos) {
+          this.reconcileRemoteCarPos(this.botCar, latest.debugPos)
+        }
       } else {
-        // Sem input do cliente: mantém botCar desacelerando
+        // Sem input do cliente: mantém botCar desacelerando suavemente
         this.botCar.speed *= 0.92
         this.applyCarPhysics(this.botCar, dt)
       }
     } else {
       // Cliente: lê inputs locais, envia numerado, aplica predição local
       this.updatePlayerInputAndSendOnline(dt)
+      // Predição física local da colisão com a bola (evita atravessar a bola antes do snapshot)
+      this.checkCarBallCollision(this.playerCar)
       // botCar é atualizado via snapshot em applyRemoteCarFromSnapshot (chamado em updateHUD)
+    }
+  }
+
+  /**
+   * Host: Corrige desvios microscópicos cumulativos entre o botCar no Host e a posição do Cliente.
+   * Não permite teletransporte, valida limites da arena e aplica lerp suave apenas se a distância for moderada.
+   */
+  private reconcileRemoteCarPos(car: CarObject, targetPos: { x: number; y: number; z: number }) {
+    if (!Number.isFinite(targetPos.x) || !Number.isFinite(targetPos.y) || !Number.isFinite(targetPos.z)) return
+
+    const limX = FIELD_W / 2 - 2.8
+    const limZ = FIELD_L / 2 - 2.8
+
+    // Rejeita coordenadas fora dos limites da arena
+    if (Math.abs(targetPos.x) > limX || Math.abs(targetPos.z) > limZ || targetPos.y < 0 || targetPos.y > CEIL_H) {
+      return
+    }
+
+    const dx = targetPos.x - car.pos.x
+    const dy = targetPos.y - car.pos.y
+    const dz = targetPos.z - car.pos.z
+    const dist = Math.hypot(dx, dy, dz)
+
+    // Rejeita discrepâncias anômalas (> 4m) para evitar trapaça ou teleportes bruscos
+    if (dist > 4.0) return
+
+    // Se houver um pequeno drift acumulado (entre 0.12m e 3.0m), aplica micro-lerp suave (8% por frame)
+    if (dist > 0.12) {
+      const blend = 0.08
+      car.pos.x += dx * blend
+      car.pos.y += dy * blend
+      car.pos.z += dz * blend
+      car.applyTransform()
     }
   }
 
@@ -3812,10 +3857,10 @@ private resolveCarCarCollision() {
       // Sincroniza o timer (usa o valor do Host)
       this.matchTimer = snap.timeRemainingSec
 
-      // Aplica posição/vel da bola do Host ao cliente (blend exponencial)
+      // Aplica posição/vel da bola do Host ao cliente (blend exponencial responsivo)
       const b = this.ball
       const sb = snap.ball
-      const ballAlpha = 0.18   // blend suave: 18% do alvo por frame
+      const ballAlpha = 0.30   // blend responsivo: 30% do alvo por frame
       b.pos.x += (sb.x - b.pos.x) * ballAlpha
       b.pos.y += (sb.y - b.pos.y) * ballAlpha
       b.pos.z += (sb.z - b.pos.z) * ballAlpha
@@ -4456,6 +4501,8 @@ private resolveCarCarCollision() {
     if (this.goalCooldown > 0) return
     this.goalCooldown = 4.2
 
+    const scoreBefore = scorer === 'player' ? this.scorePlayer : this.scoreBot
+
     if (scorer === 'player') {
       // Offline ou Host Online: incrementa placar do time local
       if (!this.isOnline1v1 || this.turboNet?.isHost) this.scorePlayer++
@@ -4481,6 +4528,19 @@ private resolveCarCarCollision() {
         : '#0088ff'
       this.audio.playGoal()
       this.audio.playCheer()
+    }
+
+    // Log de diagnóstico temporário (disparado apenas 1 vez no momento do gol, nunca por frame)
+    if (this.isOnline1v1) {
+      console.log('[TurboGoalDebug]', {
+        role: this.turboNet?.isHost ? 'host' : 'client',
+        ballZ: Number(this.ball.pos.z.toFixed(2)),
+        ballVelocityZ: Number(this.ball.vel.z.toFixed(2)),
+        goalSide: this.ball.pos.z < 0 ? 'blue_goal' : 'orange_goal',
+        scorer: scorer === 'player' ? (this.turboNet?.isHost ? 'orange' : 'blue') : (this.turboNet?.isHost ? 'blue' : 'orange'),
+        scoreBefore,
+        scoreAfter: scorer === 'player' ? this.scorePlayer : this.scoreBot
+      })
     }
 
     // Online 1v1 Host: envia evento autoritativo de gol ao cliente

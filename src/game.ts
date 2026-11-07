@@ -368,9 +368,23 @@ export class Game {
           this.countdownTimer = 0
           this.phase = 'COUNTDOWN'
           this.resetPositions()
+          if (this.cfg.mode === 'online' && this.cfg.network?.isHost()) {
+            this.cfg.network.send({
+              t: performance.now(),
+              event: 'countdown',
+              countdown: 2,
+              ball: {
+                x: this.ball.position.x,
+                y: this.ball.position.y,
+                vx: this.ball.velocity.x,
+                vy: this.ball.velocity.y
+              }
+            })
+          }
         }
         break
     }
+    this.syncNetwork(dt)
   }
 
   private updatePlaying(dt: number) {
@@ -581,7 +595,7 @@ export class Game {
     }
 
     // 3. Verificação de bola presa no canto/trave por mais de 1 segundo
-    const isNearGoalY = bp.y < this.arena.goalTop + 18 || bp.y > this.arena.goalBottom - 18
+    const isNearGoalY = bp.y < this.arena.goalTop + 18 || bp.y > this.arena.goalBot - 18
     const isNearPostX = Math.abs(bp.x - ax) < 32 || Math.abs(bp.x - (ax + aw)) < 32
     if (isNearGoalY && isNearPostX) {
       const moved = Math.hypot(bp.x - this.lastBallPos.x, bp.y - this.lastBallPos.y)
@@ -603,11 +617,13 @@ export class Game {
       this.ballStuckTimer = 0
       this.lastBallPos = { x: bp.x, y: bp.y }
     }
+  }
 
-    // SincronizaàƒÂ§àƒÂ£o Online P2P
+  private syncNetwork(dt: number) {
+    // Sincronização Online P2P (30Hz broadcast constante em todas as fases)
     if (this.cfg.mode === 'online' && this.cfg.network?.isConnected()) {
       this.netSyncTimer += dt
-      if (this.netSyncTimer > 1 / 30) { // 30Hz broadcast
+      if (this.netSyncTimer > 1 / 30) {
         this.netSyncTimer = 0
         const isHost = this.cfg.network.isHost()
         const payload: NetSyncPayload = {
@@ -786,15 +802,73 @@ export class Game {
 
     this.phase = 'GOAL'
     this.goalResetTimer = 2.0
+
+    // Host autoritativo notifica o cliente imediatamente
+    if (this.cfg.mode === 'online' && this.cfg.network?.isHost()) {
+      this.cfg.network.send({
+        t: performance.now(),
+        event: 'goal',
+        whoScored: scorer,
+        scores: { p1: this.scoreP1, p2: this.scoreP2 },
+        ball: {
+          x: this.ball.position.x,
+          y: this.ball.position.y,
+          vx: this.ball.velocity.x,
+          vy: this.ball.velocity.y
+        }
+      })
+    }
   }
 
+  private triggerClientGoal(whoScored: 'p1' | 'p2', scores: { p1: number; p2: number }) {
+    if (this.phase === 'GOAL') return
+
+    this.p1.carrying = false
+    this.p2.carrying = false
+    this.p1.body.collisionFilter.mask = 0xFFFF
+    this.p2.body.collisionFilter.mask = 0xFFFF
+    if (this.p3) {
+      this.p3.carrying = false
+      this.p3.body.collisionFilter.mask = 0xFFFF
+    }
+    if (this.p4) {
+      this.p4.carrying = false
+      this.p4.body.collisionFilter.mask = 0xFFFF
+    }
+
+    // No Host, scores.p1 é o host e scores.p2 é o cliente.
+    // No cliente local, scoreP1 é o cliente e scoreP2 é o host.
+    this.scoreP1 = scores.p2
+    this.scoreP2 = scores.p1
+    this.cfg.onScoreUpdate(this.scoreP1, this.scoreP2)
+
+    // Se no host quem marcou foi p1 (host), para o cliente quem marcou foi o adversário ('p2').
+    // Se no host quem marcou foi p2 (cliente), para o cliente quem marcou foi ele mesmo ('p1').
+    const localScorer: 'p1' | 'p2' = whoScored === 'p1' ? 'p2' : 'p1'
+    this.cfg.onGoal(localScorer)
+
+    this.audio.playGoal()
+    this.input.vibrate(400)
+    this.particles.emitGoal(this.ball.position.x, this.ball.position.y)
+    this.renderer.triggerShake(18, 0.45)
+    this.renderer.triggerFlash(localScorer === 'p1' ? '#00ff88' : '#ff2d78', 0.5)
+
+    confetti({
+      particleCount: 120,
+      spread: 80,
+      origin: { y: 0.6 }
+    })
+
+    // Entra na fase de comemoração sincronizada (trava o jogo por 2.0s igual ao Host)
+    this.phase = 'GOAL'
+    this.goalResetTimer = 2.0
+  }
 
   private mirrorX(x: number) { return 2 * this.arena.x + this.arena.w - x }
   private mirrorY(y: number) { return 2 * this.arena.y + this.arena.h - y }
 
   private handleNetworkData(payload: NetSyncPayload) {
     const isHost = this.cfg.network?.isHost()
-
 
     if (payload.p1) {
       Matter.Body.setPosition(this.p2.body, {
@@ -808,7 +882,21 @@ export class Game {
     }
 
     if (!isHost) {
-      // Cliente reconcilia bola e placar enviados pela autoridade (host)
+      // 1. Evento explícito de gol enviado pelo Host
+      if (payload.event === 'goal' && payload.whoScored && payload.scores) {
+        this.triggerClientGoal(payload.whoScored, payload.scores)
+      }
+
+      // 2. Transição sincronizada para countdown após reset do gol
+      if (payload.event === 'countdown') {
+        this.phase = 'COUNTDOWN'
+        this.countdown = payload.countdown ?? 2
+        this.countdownTimer = 0
+        this.goalResetTimer = 0
+        this.resetPositions()
+      }
+
+      // 3. Cliente reconcilia bola enviada pela autoridade (host)
       if (payload.ball) {
         Matter.Body.setPosition(this.ball, {
           x: this.mirrorX(payload.ball.x),
@@ -819,14 +907,15 @@ export class Game {
           y: -payload.ball.vy
         })
       }
+
+      // 4. Fallback de segurança para sincronização de placar caso o evento UDP atrase
       if (payload.scores) {
-        const newP1 = payload.scores.p2 // no host, p2 àƒ© o cliente
+        const newP1 = payload.scores.p2 // no host, p2 é o cliente
         const newP2 = payload.scores.p1
-        if (newP1 > this.scoreP1) this.cfg.onGoal('p1')
-        else if (newP2 > this.scoreP2) this.cfg.onGoal('p2')
-        this.scoreP1 = newP1
-        this.scoreP2 = newP2
-        this.cfg.onScoreUpdate(this.scoreP1, this.scoreP2)
+        if (newP1 > this.scoreP1 || newP2 > this.scoreP2) {
+          const who: 'p1' | 'p2' = newP1 > this.scoreP1 ? 'p2' : 'p1'
+          this.triggerClientGoal(who, payload.scores)
+        }
       }
     }
   }

@@ -3,6 +3,7 @@
 //  Zero Custo de Servidor: Topologia Estrela (Host Autoridativo + até 8 Clientes)
 // ============================================================
 import { Peer, DataConnection } from 'peerjs'
+import type { TeamKey } from './assets'
 
 export interface NetPlayerState {
   slot: number
@@ -29,7 +30,7 @@ export interface NetSyncPayload {
   p4?: { x: number; y: number; vx: number; vy: number; dash: boolean }
   ball?: { x: number; y: number; z?: number; vx: number; vy: number; vz?: number }
   scores?: { p1: number; p2: number }
-  event?: 'goal' | 'rematch' | 'slot_assign' | 'start_game' | 'room_full'
+  event?: 'goal' | 'countdown' | 'rematch' | 'slot_assign' | 'start_game' | 'room_full'
   message?: string
   assignedSlot?: number
   totalPlayers?: number
@@ -37,6 +38,8 @@ export interface NetSyncPayload {
   format?: '1v1' | '2v2' | '3v3' | '4v4'
   whoScored?: 'p1' | 'p2'
   isSpectator?: boolean
+  hostTeam?: TeamKey
+  countdown?: number
 }
 
 // Configuração de NAT Traversal de Alta Conectividade (OpenRelay STUN + TURN público gratuito)
