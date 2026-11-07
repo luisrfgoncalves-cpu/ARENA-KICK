@@ -702,15 +702,52 @@ document.getElementById('btn-training-bb')?.addEventListener('click', () => {
 })
 
 // ── PAUSE E REVANCHE ─────────────────────────────────────────
+const pauseMainBox = document.getElementById('pause-main-box')
+const pauseConfirmBox = document.getElementById('pause-confirm-box')
+
+function showPauseOverlay() {
+  if (pauseMainBox) pauseMainBox.style.display = 'flex'
+  if (pauseConfirmBox) pauseConfirmBox.style.display = 'none'
+  pauseOverlay.classList.add('visible')
+}
+
+function hidePauseOverlay() {
+  pauseOverlay.classList.remove('visible')
+  if (pauseMainBox) pauseMainBox.style.display = 'flex'
+  if (pauseConfirmBox) pauseConfirmBox.style.display = 'none'
+}
+
+document.getElementById('btn-hud-pause')?.addEventListener('click', () => {
+  if (currentGame) {
+    if (currentGame.isPaused()) {
+      currentGame.resume()
+      hidePauseOverlay()
+    } else {
+      currentGame.pause()
+      showPauseOverlay()
+    }
+  }
+})
+
 document.getElementById('btn-resume')!.addEventListener('click', () => {
   currentGame?.resume()
-  pauseOverlay.classList.remove('visible')
+  hidePauseOverlay()
 })
 
 document.getElementById('btn-pause-menu')!.addEventListener('click', () => {
+  if (pauseMainBox) pauseMainBox.style.display = 'none'
+  if (pauseConfirmBox) pauseConfirmBox.style.display = 'flex'
+})
+
+document.getElementById('btn-confirm-resume')?.addEventListener('click', () => {
+  if (pauseMainBox) pauseMainBox.style.display = 'flex'
+  if (pauseConfirmBox) pauseConfirmBox.style.display = 'none'
+})
+
+document.getElementById('btn-confirm-exit')?.addEventListener('click', () => {
   currentGame?.destroy()
   currentGame = null
-  pauseOverlay.classList.remove('visible')
+  hidePauseOverlay()
   if (netManager) resetOnlineUI()
   lastWasOnline = false
   showScreen('menu')
@@ -736,10 +773,10 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && currentGame) {
     if (currentGame.isPaused()) {
       currentGame.resume()
-      pauseOverlay.classList.remove('visible')
+      hidePauseOverlay()
     } else {
       currentGame.pause()
-      pauseOverlay.classList.add('visible')
+      showPauseOverlay()
     }
   }
 })

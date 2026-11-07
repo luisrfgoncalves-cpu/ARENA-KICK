@@ -500,15 +500,15 @@ export class TurboSoccerGame {
 
       if (isClient1v1) {
         // ── CLIENTE ONLINE 1v1:
-        // playerCar = Carro Azul do próprio jogador (Slot 1, nasce no blueSpawn)
-        this.playerCar = new CarObject(this.scene, 0x0099ff, false)
+        // playerCar = Carro Azul do próprio jogador (Slot 1, nasce no blueSpawn, força azul)
+        this.playerCar = new CarObject(this.scene, 0x0099ff, false, true)
         this.playerCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
         this.playerCar.yaw = blueSpawns[0].yaw
         this.playerCar.applyTransform()
         this.blueCars.push(this.playerCar)
 
-        // botCar = Carro Laranja que representa o Host remoto (Slot 0, nasce no orangeSpawn)
-        this.botCar = new CarObject(this.scene, 0xff4500, true)
+        // botCar = Carro Laranja que representa o Host remoto (Slot 0, nasce no orangeSpawn, força laranja)
+        this.botCar = new CarObject(this.scene, 0xff4500, true, true)
         this.botCar.setPosition(orangeSpawns[0].x, 0, orangeSpawns[0].z)
         this.botCar.yaw = orangeSpawns[0].yaw
         this.botCar.applyTransform()
@@ -519,14 +519,16 @@ export class TurboSoccerGame {
         this.allCars = [this.botCar, this.playerCar]
 
         // Posiciona câmera atrás do carro Azul olhando em direção ao gol Laranja (+Z)
-        this.camCurrentPos.set(blueSpawns[0].x * 0.5, 8.5, blueSpawns[0].z - 18)
-        this.camCurrentLook.set(0, 2.2, 0)
+        const sp = blueSpawns[0]
+        this.camCurrentPos.set(sp.x - Math.sin(sp.yaw) * 16, 8.5, sp.z - Math.cos(sp.yaw) * 16)
+        this.camCurrentLook.set(sp.x + Math.sin(sp.yaw) * 10, 2.0, sp.z + Math.cos(sp.yaw) * 10)
         this.camera.position.copy(this.camCurrentPos)
         this.camera.lookAt(this.camCurrentLook)
       } else {
         // ── HOST ONLINE OU MODO SOLO / OFFLINE (padrão preservado):
         // Carro do Jogador (Laranja — slot 0)
-        this.playerCar = new CarObject(this.scene, 0xff4500, false)
+        const forceOrange = this.isOnline1v1
+        this.playerCar = new CarObject(this.scene, 0xff4500, false, forceOrange)
         this.playerCar.setPosition(orangeSpawns[0].x, 0, orangeSpawns[0].z)
         this.playerCar.yaw = orangeSpawns[0].yaw
         this.playerCar.applyTransform()
@@ -543,8 +545,9 @@ export class TurboSoccerGame {
           this.orangeCars.push(ally)
         }
 
-        // Carro do Bot Rival (Azul — slot 0)
-        this.botCar = new CarObject(this.scene, 0x0099ff, true)
+        // Carro do Bot Rival (Azul — slot 0 no solo, slot 1 online)
+        const forceBlue = this.isOnline1v1
+        this.botCar = new CarObject(this.scene, 0x0099ff, true, forceBlue)
         this.botCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
         this.botCar.yaw = blueSpawns[0].yaw
         this.botCar.applyTransform()
@@ -565,10 +568,26 @@ export class TurboSoccerGame {
         this.allCars = [...this.orangeCars, ...this.blueCars]
 
         // Posiciona câmera e inicializa HUD e loop imediatamente
-        this.camCurrentPos.set(orangeSpawns[0].x * 0.5, 8.5, orangeSpawns[0].z + 18)
-        this.camCurrentLook.set(0, 2.2, 0)
+        const sp = orangeSpawns[0]
+        this.camCurrentPos.set(sp.x - Math.sin(sp.yaw) * 16, 8.5, sp.z - Math.cos(sp.yaw) * 16)
+        this.camCurrentLook.set(sp.x + Math.sin(sp.yaw) * 10, 2.0, sp.z + Math.cos(sp.yaw) * 10)
         this.camera.position.copy(this.camCurrentPos)
         this.camera.lookAt(this.camCurrentLook)
+      }
+
+      if (this.isOnline1v1) {
+        const role = this.turboNet?.isHost ? 'host' : 'client'
+        const slot = this.turboNet?.isHost ? 0 : 1
+        const team = this.turboNet?.isHost ? 'orange' : 'blue'
+        const spawnZ = this.playerCar.pos.z
+        const targetGoalZ = this.turboNet?.isHost ? -FIELD_L / 2 : FIELD_L / 2
+        console.log('[TurboOnline]', {
+          role,
+          slot,
+          team,
+          spawnZ,
+          targetGoalZ
+        })
       }
 
       this.buildHUD()
@@ -1456,8 +1475,10 @@ export class TurboSoccerGame {
     ctx.font = '900 150px Arial, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(String(this.scorePlayer), 160, 192)
-    ctx.fillText(String(this.scoreBot), w - 160, 192)
+    const orangeScore = this.isOnline1v1 && !this.turboNet?.isHost ? this.scoreBot : this.scorePlayer
+    const blueScore   = this.isOnline1v1 && !this.turboNet?.isHost ? this.scorePlayer : this.scoreBot
+    ctx.fillText(String(orangeScore), 160, 192)
+    ctx.fillText(String(blueScore), w - 160, 192)
 
     const m = Math.floor(this.matchTimer / 60)
     const s = Math.floor(this.matchTimer % 60)
@@ -1470,6 +1491,12 @@ export class TurboSoccerGame {
     ctx.fillText('ARENA KICK', w / 2, 302)
 
     this.scoreboardTex.needsUpdate = true
+  }
+
+  private updateScoreboardDisplay() {
+    if (!this.hudScoreP || !this.hudScoreB) return
+    this.hudScoreP.textContent = String(this.scorePlayer)
+    this.hudScoreB.textContent = String(this.scoreBot)
   }
 
 
@@ -1974,16 +2001,22 @@ export class TurboSoccerGame {
       <!-- PLACAR CENTRAL TOON -->
       <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;
         background:#22345c;border:3px solid #141426;border-radius:20px;overflow:hidden;box-shadow:0 7px 0 #141426;">
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 24px;">
-          <div style="width:16px;height:16px;border-radius:4px;background:#ff5500;box-shadow:0 0 10px #ff5500;"></div>
-          <div style="color:#ff5500;font-weight:900;font-size:34px;min-width:32px;text-align:center;" id="turbo-score-p">0</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 20px;">
+          <div style="width:14px;height:14px;border-radius:4px;background:${isClient1v1 ? '#0088ff' : '#ff5500'};box-shadow:0 0 10px ${isClient1v1 ? '#0088ff' : '#ff5500'};"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:${isClient1v1 ? '#0088ff' : '#ff5500'};">${this.isOnline1v1 ? (isClient1v1 ? 'AZUL' : 'LARANJA') : 'JOGADOR'}</div>
+            <div style="color:${isClient1v1 ? '#0088ff' : '#ff5500'};font-weight:900;font-size:32px;min-width:32px;text-align:center;line-height:1;" id="turbo-score-p">0</div>
+          </div>
         </div>
         <div style="background:#ffd23f;padding:8px 18px;font-size:18px;font-weight:900;color:#141426;letter-spacing:2px;" id="turbo-timer">
           5:00
         </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 24px;">
-          <div style="color:#0088ff;font-weight:900;font-size:34px;min-width:32px;text-align:center;" id="turbo-score-b">0</div>
-          <div style="width:16px;height:16px;border-radius:4px;background:#0088ff;box-shadow:0 0 10px #0088ff;"></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 20px;">
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:${isClient1v1 ? '#ff5500' : '#0088ff'};">${this.isOnline1v1 ? (isClient1v1 ? 'LARANJA' : 'AZUL') : 'RIVAL'}</div>
+            <div style="color:${isClient1v1 ? '#ff5500' : '#0088ff'};font-weight:900;font-size:32px;min-width:32px;text-align:center;line-height:1;" id="turbo-score-b">0</div>
+          </div>
+          <div style="width:14px;height:14px;border-radius:4px;background:${isClient1v1 ? '#ff5500' : '#0088ff'};box-shadow:0 0 10px ${isClient1v1 ? '#ff5500' : '#0088ff'};"></div>
         </div>
       </div>
 
@@ -3747,6 +3780,22 @@ private resolveCarCarCollision() {
       car.driftCharge = 0
     }
 
+    // Pulo & Sustentação (1º pulo com momentum real e sustentação variável)
+    if (input.jump && car.grounded && car.jumpCount === 0) {
+      const fwdSpeed = car.speed * 50
+      car.velX = Math.sin(car.yaw) * fwdSpeed
+      car.velZ = Math.cos(car.yaw) * fwdSpeed
+      car.velY = this.studioParams.jumpForce
+      car.grounded = false
+      car.jumpCount = 1
+      car.jumpHoldTimer = 0.20
+      this.audio.playDash()
+      this.emitTireSmoke(car, true)
+    } else if (input.jump && car.jumpHoldTimer > 0 && !car.grounded && car.jumpCount === 1) {
+      car.velY += 40 * dt
+      car.jumpHoldTimer -= dt
+    }
+
     this.applyCarPhysics(car, dt)
   }
 
@@ -3775,11 +3824,10 @@ private resolveCarCarCollision() {
       b.vel.z += (sb.vz - b.vel.z) * ballAlpha
 
       // Scores do Host:
-      // No Cliente: scorePlayer = scores.blue (o próprio jogador), scoreBot = scores.orange (Host)
+      // No Cliente: scorePlayer = scores.blue (o próprio jogador azul), scoreBot = scores.orange (Host laranja)
       this.scorePlayer = snap.scores.blue
       this.scoreBot    = snap.scores.orange
-      this.hudScoreP.textContent = String(this.scorePlayer)
-      this.hudScoreB.textContent = String(this.scoreBot)
+      this.updateScoreboardDisplay()
     }
 
     // Interpolação do carro remoto do Host (slot 0 = Laranja) no botCar do Cliente:
@@ -4043,33 +4091,33 @@ private resolveCarCarCollision() {
     const inGoalW = Math.abs(b.pos.x) < GOAL_W / 2 - 0.5
     const inGoalH = b.pos.y < GOAL_H - 0.2
 
-    // ── VALIDAÇÃO DE GOL PROFUNDO & ANTI-GOL-CONTRA ──
-    // Meta do Bot (z negativo): gol marcado pelo Jogador
+    // ── VALIDAÇÃO DE GOL PROFUNDO & REGRA DE GOL CONTRA ──
+    // Meta do Bot / Azul (z negativo): gol marcado pelo Jogador / Laranja
     if (b.pos.z <= -FIELD_L / 2 && inGoalW && inGoalH) {
-      if (this.lastToucher === 'bot') {
-        // Anti-gol contra: zagueiro bot rebate na linha
+      if (!this.isOnline1v1 && this.lastToucher === 'bot') {
+        // Anti-gol contra offline: zagueiro bot rebate na linha
         b.vel.z = Math.abs(b.vel.z) * 0.85 + 14
         b.vel.y = Math.max(b.vel.y, 4.5)
         this.audio.playWallBounce()
         this.showQuickChat('🛡️ SALVAMENTO NA LINHA!')
-      } else if (b.pos.z <= -FIELD_L / 2 - BALL_R - 1.2) {
-        // A bola deve entrar inteira na profundidade da rede para valer o gol!
+      } else if (b.pos.z <= -FIELD_L / 2 - BALL_R * 0.4) {
+        // Bola ultrapassou a linha da meta: Gol confirmado pelo Host!
         this.emitCartoonStarBurst(b.pos, 20, 0xffd23f)
         this.onGoalScored('player')
         return
       }
     }
 
-    // Meta do Jogador (z positivo): gol marcado pelo Bot
+    // Meta do Jogador / Laranja (z positivo): gol marcado pelo Bot / Azul
     if (b.pos.z >= FIELD_L / 2 && inGoalW && inGoalH) {
-      if (this.lastToucher === 'player') {
-        // Anti-gol contra: jogador rebate na própria meta
+      if (!this.isOnline1v1 && this.lastToucher === 'player') {
+        // Anti-gol contra offline: jogador rebate na própria meta
         b.vel.z = -Math.abs(b.vel.z) * 0.85 - 14
         b.vel.y = Math.max(b.vel.y, 4.5)
         this.audio.playWallBounce()
         this.showQuickChat('🛡️ SALVAMENTO NA LINHA!')
-      } else if (b.pos.z >= FIELD_L / 2 + BALL_R + 1.2) {
-        // A bola deve entrar inteira na profundidade da rede para valer o gol!
+      } else if (b.pos.z >= FIELD_L / 2 + BALL_R * 0.4) {
+        // Bola ultrapassou a linha da meta: Gol confirmado pelo Host!
         this.emitCartoonStarBurst(b.pos, 20, 0x00cfff)
         this.onGoalScored('bot')
         return
@@ -4409,24 +4457,33 @@ private resolveCarCarCollision() {
     this.goalCooldown = 4.2
 
     if (scorer === 'player') {
-      // Online 1v1: somente o Host incrementa o placar e notifica o cliente
-      if (!this.isOnline1v1) this.scorePlayer++
-      this.hudScoreP.textContent = String(this.scorePlayer)
-      this.hudGoalTitle.textContent = '🎉 GOLAZO DO JOGADOR!'
-      this.hudGoalTitle.style.color = '#ff6600'
+      // Offline ou Host Online: incrementa placar do time local
+      if (!this.isOnline1v1 || this.turboNet?.isHost) this.scorePlayer++
+      this.updateScoreboardDisplay()
+      this.hudGoalTitle.textContent = this.isOnline1v1
+        ? (this.turboNet?.isHost ? '🎉 GOL DO TIME LARANJA!' : '🎉 GOL DO TIME AZUL!')
+        : '🎉 GOLAZO DO JOGADOR!'
+      this.hudGoalTitle.style.color = this.isOnline1v1
+        ? (this.turboNet?.isHost ? '#ff6600' : '#0088ff')
+        : '#ff6600'
       this.audio.playGoal()
       this.audio.playVictory()
       this.audio.playCheer()
     } else {
-      if (!this.isOnline1v1) this.scoreBot++
-      this.hudScoreB.textContent = String(this.scoreBot)
-      this.hudGoalTitle.textContent = this.isOnline1v1 ? '🤖 GOL DO ADVERSÁRIO!' : '🤖 GOL DO BOT RIVAL!'
-      this.hudGoalTitle.style.color = '#0088ff'
+      // Offline ou Host Online: incrementa placar do rival
+      if (!this.isOnline1v1 || this.turboNet?.isHost) this.scoreBot++
+      this.updateScoreboardDisplay()
+      this.hudGoalTitle.textContent = this.isOnline1v1
+        ? (this.turboNet?.isHost ? '🤖 GOL DO TIME AZUL!' : '🤖 GOL DO TIME LARANJA!')
+        : '🤖 GOL DO BOT RIVAL!'
+      this.hudGoalTitle.style.color = this.isOnline1v1
+        ? (this.turboNet?.isHost ? '#0088ff' : '#ff6600')
+        : '#0088ff'
       this.audio.playGoal()
       this.audio.playCheer()
     }
 
-    // Online 1v1 Host: envia evento de gol ao cliente
+    // Online 1v1 Host: envia evento autoritativo de gol ao cliente
     if (this.isOnline1v1 && this.turboNet?.isHost) {
       const netScorer = scorer === 'player' ? 'orange' : 'blue'
       this.turboNet.sendGoalEvent(
@@ -4439,7 +4496,15 @@ private resolveCarCarCollision() {
     this.triggerGoalExplosion(this.ball.pos, this.goalExplosion, scorer)
 
     const sub = document.getElementById('turbo-goal-sub')!
-    sub.textContent = `${this.scorePlayer} × ${this.scoreBot}`
+    if (sub) {
+      if (this.isOnline1v1) {
+        sub.textContent = this.turboNet?.isHost
+          ? `LARANJA ${this.scorePlayer} × ${this.scoreBot} AZUL`
+          : `AZUL ${this.scorePlayer} × ${this.scoreBot} LARANJA`
+      } else {
+        sub.textContent = `${this.scorePlayer} × ${this.scoreBot}`
+      }
+    }
 
     const endActions = document.getElementById('turbo-end-actions')
     if (endActions) endActions.style.display = 'none'
@@ -4867,6 +4932,15 @@ private resolveCarCarCollision() {
       bc.applyTransform()
     }
 
+    if (this.isOnline1v1) {
+      const isClient = !this.turboNet?.isHost
+      const sp = isClient ? blueSpawns[0] : orangeSpawns[0]
+      this.camCurrentPos.set(sp.x - Math.sin(sp.yaw) * 16, 8.5, sp.z - Math.cos(sp.yaw) * 16)
+      this.camCurrentLook.set(sp.x + Math.sin(sp.yaw) * 10, 2.0, sp.z + Math.cos(sp.yaw) * 10)
+      this.camera.position.copy(this.camCurrentPos)
+      this.camera.lookAt(this.camCurrentLook)
+    }
+
     this.kickoffCountdown = 3.5
     this.isKickoffActive = true
     this.lastCountdownSec = -1
@@ -5094,11 +5168,13 @@ export class CarObject {
   private scene:         THREE.Scene
   private teamColor:     number
   private isBot:         boolean
+  public forceTeamColor: boolean = false
 
-  constructor(scene: THREE.Scene, color: number, isBot: boolean) {
-    this.scene     = scene
-    this.teamColor = color
-    this.isBot     = isBot
+  constructor(scene: THREE.Scene, color: number, isBot: boolean, forceTeamColor = false) {
+    this.scene          = scene
+    this.teamColor      = color
+    this.isBot          = isBot
+    this.forceTeamColor = forceTeamColor
 
     // Sombra permanente no solo
     this.shadowMesh = new THREE.Mesh(
@@ -5193,10 +5269,24 @@ export class CarObject {
               const mesh = child as THREE.Mesh
               const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
               if (origMat) {
-                const origColor = origMat.color && typeof origMat.color.clone === 'function'
+                let origColor = origMat.color && typeof origMat.color.clone === 'function'
                   ? origMat.color.clone()
                   : new THREE.Color(this.teamColor)
-                const origMap = origMat.map || null
+                let origMap = origMat.map || null
+
+                if (this.forceTeamColor) {
+                  const mname = (child.name || '').toLowerCase()
+                  const matName = (origMat.name || '').toLowerCase()
+                  const isNeutral = mname.includes('wheel') || mname.includes('tire') || mname.includes('roda') ||
+                                    mname.includes('glass') || mname.includes('window') || mname.includes('vidro') ||
+                                    mname.includes('light') || mname.includes('farol') || mname.includes('black') ||
+                                    matName.includes('glass') || matName.includes('tire') || matName.includes('wheel')
+                  if (!isNeutral) {
+                    origColor = new THREE.Color(this.teamColor)
+                    origMap = null
+                  }
+                }
+
                 mesh.material = new THREE.MeshToonMaterial({
                   color: origColor,
                   map: origMap,
@@ -5212,6 +5302,16 @@ export class CarObject {
           const underglow = new THREE.PointLight(this.teamColor, 2.2, 9)
           underglow.position.set(0, 0.4, 0)
           this.group.add(underglow)
+
+          // Indicador luminoso de equipe no teto para identificação online nítida
+          if (this.forceTeamColor) {
+            const roofMarker = new THREE.Mesh(
+              new THREE.SphereGeometry(0.26, 12, 12),
+              new THREE.MeshBasicMaterial({ color: this.teamColor })
+            )
+            roofMarker.position.set(0, 2.35, 0)
+            this.group.add(roofMarker)
+          }
 
           // Fogo de Nitro Traseiro
           this.flameGroup = this.buildFlame()

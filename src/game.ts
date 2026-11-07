@@ -93,6 +93,8 @@ export class Game {
   private countdown = 3
   private countdownTimer = 0
   private goalResetTimer = 0
+  private ballStuckTimer = 0
+  private lastBallPos = { x: 0, y: 0 }
 
   private paused = false
   private raf = 0
@@ -294,6 +296,37 @@ export class Game {
       x: (Math.random() - 0.5) * 3,
       y: (Math.random() - 0.5) * 3
     })
+  }
+
+  /**
+   * Função central de recuperação da bola 2D (Item 10)
+   * Restaura a bola de estados inválidos (fora do campo, NaN, travada no canto)
+   * sem criar uma segunda bola, mantendo exatamente 1 bola válida e visível.
+   */
+  public recoverBall(reason: string): void {
+    if (!this.ball) return
+    const { x, y, w, h } = this.arena
+
+    // Diagnóstico controlado
+    console.warn(`[BeatBall2D] recoverBall disparado: motivo=${reason}`)
+
+    // Se estiver em estado de comemoração de gol, não interfere no fluxo de comemoração
+    if (this.phase === 'GOAL') return
+
+    // Posição segura no centro do campo
+    const safeX = x + w * 0.5
+    const safeY = y + h * 0.5
+
+    Matter.Body.setPosition(this.ball, { x: safeX, y: safeY })
+    Matter.Body.setVelocity(this.ball, {
+      x: (Math.random() - 0.5) * 2,
+      y: (Math.random() - 0.5) * 2
+    })
+    Matter.Body.setAngularVelocity(this.ball, 0)
+    Matter.Body.setAngle(this.ball, 0)
+
+    this.ballStuckTimer = 0
+    this.lastBallPos = { x: safeX, y: safeY }
   }
 
   private loop = (now: number) => {
@@ -519,6 +552,56 @@ export class Game {
           this.handleGoal('p1')
         }
       }
+    }
+
+    // ── VALIDAÇÃO DE INTEGRIDADE DA BOLA (Item 10) ──
+    const bp = this.ball.position
+    const bvNow = this.ball.velocity
+
+    // 1. Verificação de NaN ou Infinity
+    if (!Number.isFinite(bp.x) || !Number.isFinite(bp.y) ||
+        !Number.isFinite(bvNow.x) || !Number.isFinite(bvNow.y) ||
+        !Number.isFinite(this.ball.angle)) {
+      this.recoverBall('invalid_nan_or_infinity')
+      return
+    }
+
+    // 2. Verificação de limites da arena (fora da área sem ser gol)
+    const { x: ax, y: ay, w: aw, h: ah, goalDepth: agd } = this.arena
+    const outMargin = 35
+    const minX = ax - agd - outMargin
+    const maxX = ax + aw + agd + outMargin
+    const minY = ay - outMargin
+    const maxY = ay + ah + outMargin
+
+    if (bp.x < minX || bp.x > maxX || bp.y < minY || bp.y > maxY) {
+      if (this.phase !== 'GOAL') {
+        this.recoverBall('out_of_bounds')
+      }
+    }
+
+    // 3. Verificação de bola presa no canto/trave por mais de 1 segundo
+    const isNearGoalY = bp.y < this.arena.goalTop + 18 || bp.y > this.arena.goalBottom - 18
+    const isNearPostX = Math.abs(bp.x - ax) < 32 || Math.abs(bp.x - (ax + aw)) < 32
+    if (isNearGoalY && isNearPostX) {
+      const moved = Math.hypot(bp.x - this.lastBallPos.x, bp.y - this.lastBallPos.y)
+      const speed = Math.hypot(bvNow.x, bvNow.y)
+      if (moved < 3 && speed < 0.25) {
+        this.ballStuckTimer += dt
+        if (this.ballStuckTimer > 1.0) {
+          // Descola a bola em direção ao campo aberto com impulso seguro
+          const nudgeDirX = bp.x < ax + aw * 0.5 ? 1 : -1
+          Matter.Body.setVelocity(this.ball, { x: nudgeDirX * 5.0, y: (Math.random() - 0.5) * 3 })
+          this.ballStuckTimer = 0
+          console.warn('[BeatBall2D] recoverBall: bola descolada do canto da trave')
+        }
+      } else {
+        this.ballStuckTimer = 0
+        this.lastBallPos = { x: bp.x, y: bp.y }
+      }
+    } else {
+      this.ballStuckTimer = 0
+      this.lastBallPos = { x: bp.x, y: bp.y }
     }
 
     // SincronizaàƒÂ§àƒÂ£o Online P2P
@@ -858,6 +941,9 @@ export class Game {
 
   destroy() {
     this.paused = true
+    this.phase = 'ENDED'
+    this.bot = null
+    this.physicsAccumulator = 0
     cancelAnimationFrame(this.raf)
     if (this.engine) {
       Matter.Events.off(this.engine, 'collisionStart', undefined as any)
