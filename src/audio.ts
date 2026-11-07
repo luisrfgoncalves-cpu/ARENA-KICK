@@ -95,10 +95,49 @@ class EngineSound {
   }
 }
 
+// ── MOTOR ESPACIAL 3D: Som de motor posicional para adversários com atenuação ──
+class SpatialEngineSound {
+  private howl: Howl | null = null
+  private id: number | null = null
+  private vol = 0
+
+  start() {
+    if (this.howl) return
+    try {
+      this.howl = new Howl({ src: [`${ENGINE}/engine_mid.wav`], loop: true, volume: 0 })
+      this.id = this.howl.play()
+      if (typeof this.id === 'number') this.howl.volume(0, this.id)
+    } catch {}
+  }
+
+  update(x: number, y: number, z: number, ratio: number, boosting: boolean, muted: boolean) {
+    if (!this.howl || this.id === null) return
+    const r = clamp(ratio, 0, 1.5)
+    const target = muted ? 0 : 0.08 + Math.min(r, 1) * 0.22 + (boosting ? 0.08 : 0)
+    this.vol += (target - this.vol) * 0.15
+    const rate = 0.65 + Math.min(r, 1.5) * 0.85 + (boosting ? 0.25 : 0)
+    this.howl.rate(rate, this.id)
+    this.howl.volume(this.vol, this.id)
+    this.howl.pos(x, y, z, this.id)
+  }
+
+  stop() {
+    if (!this.howl) return
+    try {
+      this.howl.stop()
+      this.howl.unload()
+    } catch {}
+    this.howl = null
+    this.id = null
+    this.vol = 0
+  }
+}
+
 export class AudioManager {
   // Estado de mute GLOBAL e compartilhado por todas as instâncias (2D e 3D)
   private static mutedGlobal = false
   private engine = new EngineSound()
+  private opponentEngine = new SpatialEngineSound()
   private crowdPlaying = false
   private crowdId: number | null = null
 
@@ -255,6 +294,18 @@ export class AudioManager {
     this.engine.stop()
   }
 
+  startOpponentEngine() {
+    this.opponentEngine.start()
+  }
+
+  updateOpponentEngine(x: number, y: number, z: number, speedRatio: number, boosting: boolean) {
+    this.opponentEngine.update(x, y, z, speedRatio, boosting, this.muted)
+  }
+
+  stopOpponentEngine() {
+    this.opponentEngine.stop()
+  }
+
   setMuted(v: boolean) {
     AudioManager.setMutedGlobal(v)
   }
@@ -264,6 +315,7 @@ export class AudioManager {
   stopAll() {
     this.stopBGM()
     this.engine.stop()
+    this.opponentEngine.stop()
     this.crowdPlaying = false
     this.crowdId = null
     try { sounds?.crowd.stop() } catch {}

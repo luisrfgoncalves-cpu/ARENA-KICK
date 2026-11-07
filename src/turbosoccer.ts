@@ -2310,6 +2310,31 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       for (const car of this.allCars) car.update(dt)
       this.audio.updateEngine(Math.min(1, Math.abs(this.playerCar.speed) / 1.3), this.playerBoosting)
 
+      // Som de motor espacial 3D do adversário mais próximo com atenuação de distância
+      let closestOpponent: CarObject | null = null
+      let closestDistSq = Infinity
+      for (const bot of this.blueCars) {
+        if (!bot.isDemoed && bot.group.visible) {
+          const dSq = this.playerCar.pos.distanceToSquared(bot.pos)
+          if (dSq < closestDistSq) {
+            closestDistSq = dSq
+            closestOpponent = bot
+          }
+        }
+      }
+      if (closestOpponent && closestDistSq < 2500) { // dentro de 50 metros
+        this.audio.startOpponentEngine()
+        this.audio.updateOpponentEngine(
+          closestOpponent.pos.x,
+          closestOpponent.pos.y,
+          closestOpponent.pos.z,
+          Math.min(1, Math.abs(closestOpponent.speed) / 1.3),
+          false
+        )
+      } else {
+        this.audio.stopOpponentEngine()
+      }
+
       // Atualiza o Listener do Áudio Espacial 3D (Howler) com a posição e orientação real da Câmera
       const camDir = new THREE.Vector3()
       this.camera.getWorldDirection(camDir)
@@ -2323,6 +2348,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       )
     } else {
       this.audio.updateEngine(0, false)
+      this.audio.stopOpponentEngine()
     }
 
     // Renderiza cena: no desktop usa Bloom+Vinheta pós-processados (pmndrs/postprocessing)

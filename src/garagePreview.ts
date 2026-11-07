@@ -157,56 +157,6 @@ export class GaragePreview {
     this.pivot.add(model)
   }
 
-  private showProcedural() {
-    this.clearCar()
-
-    const g = new THREE.Group()
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2f6bff, metalness: 0.25, roughness: 0.45 })
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.3, roughness: 0.6 })
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x9fe6ff,
-      metalness: 0.1,
-      roughness: 0.1,
-      transparent: true,
-      opacity: 0.75
-    })
-    const accentMat = new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.8 })
-
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.75, 4.7), bodyMat)
-    body.position.y = 0.75
-    g.add(body)
-
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 2.1), glassMat)
-    cabin.position.set(0, 1.35, -0.15)
-    g.add(cabin)
-
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.4, 1.2), bodyMat)
-    nose.position.set(0, 0.6, 2.2)
-    g.add(nose)
-
-    const spoilerBar = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.5), accentMat)
-    spoilerBar.position.set(0, 1.35, -2.1)
-    g.add(spoilerBar)
-
-    const stalkGeo = new THREE.BoxGeometry(0.12, 0.45, 0.12)
-    for (const sx of [-0.9, 0.9]) {
-      const stalk = new THREE.Mesh(stalkGeo, darkMat)
-      stalk.position.set(sx, 1.12, -2.1)
-      g.add(stalk)
-    }
-
-    const wheelGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.42, 20)
-    for (const [x, z] of [[-1.25, 1.5], [1.25, 1.5], [-1.25, -1.5], [1.25, -1.5]]) {
-      const wheel = new THREE.Mesh(wheelGeo, darkMat)
-      wheel.rotation.z = Math.PI / 2
-      wheel.position.set(x, 0.55, z)
-      g.add(wheel)
-    }
-
-    this.carRoot = g
-    this.pivot.add(g)
-  }
-
   private animate = () => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.animate)
