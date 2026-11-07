@@ -216,8 +216,8 @@ export class TurboSoccerGame {
     playerSpeedMult: 1.0,
     turnRate: 2.8,
     jumpForce: 14,
-    gravity: 30,
-    ballBounce: 0.68,
+    gravity: 17.5,
+    ballBounce: 0.80,
     camDist: 14.8,
     camH: 6.2,
   }
@@ -438,21 +438,18 @@ export class TurboSoccerGame {
       this.buildCartoonCrowd()
       this.buildImpactFlash()
 
-      // ── SPAWN DE CARROS CONFORME FORMATO ESCOLHIDO ──────────
-      // Configuração de times: Laranja (jogador + aliados bot) vs Azul (todos bots)
+      // ── SPAWN DE KICKOFF DIAGONAL / LATERAL ESTILO ROCKET LEAGUE ──────────
+      // NUNCA nascem em linha reta pro gol! A saída acontece pelas laterais em 45°,
+      // evitando gols instantâneos e permitindo disputa aérea e passes reais!
       const teamSizes: Record<TurboMatchFormat, number> = { '1v1': 1, '2v2': 2, '3v3': 3, '4v4': 4 }
       const teamSize = teamSizes[this.matchFormat]
 
-      // Posições de kickoff por slot (Laranja ataca para -Z, Azul ataca para +Z)
-      const orangeSpawnZ = [FIELD_L * 0.18, FIELD_L * 0.08, FIELD_L * 0.25, FIELD_L * 0.08]
-      const orangeSpawnX = [0, -FIELD_W * 0.22, FIELD_W * 0.22, FIELD_W * 0.36]
-      const blueSpawnZ   = [-FIELD_L * 0.18, -FIELD_L * 0.08, -FIELD_L * 0.25, -FIELD_L * 0.08]
-      const blueSpawnX   = [0, FIELD_W * 0.22, -FIELD_W * 0.22, -FIELD_W * 0.36]
+      const { orangeSpawns, blueSpawns } = this.getKickoffSpawns()
 
       // Carro do Jogador (Laranja — slot 0)
       this.playerCar = new CarObject(this.scene, 0xff4500, false)
-      this.playerCar.setPosition(orangeSpawnX[0], 0, orangeSpawnZ[0])
-      this.playerCar.yaw = Math.PI
+      this.playerCar.setPosition(orangeSpawns[0].x, 0, orangeSpawns[0].z)
+      this.playerCar.yaw = orangeSpawns[0].yaw
       this.playerCar.applyTransform()
       this.orangeCars.push(this.playerCar)
 
@@ -460,16 +457,17 @@ export class TurboSoccerGame {
       const orangeBotColors = [0xff8800, 0xffaa00, 0xffcc00]
       for (let i = 1; i < teamSize; i++) {
         const ally = new CarObject(this.scene, orangeBotColors[i - 1] ?? 0xff8800, true)
-        ally.setPosition(orangeSpawnX[i], 0, orangeSpawnZ[i])
-        ally.yaw = Math.PI
+        const sp = orangeSpawns[i] ?? orangeSpawns[0]
+        ally.setPosition(sp.x, 0, sp.z)
+        ally.yaw = sp.yaw
         ally.applyTransform()
         this.orangeCars.push(ally)
       }
 
       // Carro do Bot Rival (Azul — slot 0)
       this.botCar = new CarObject(this.scene, 0x0099ff, true)
-      this.botCar.setPosition(blueSpawnX[0], 0, blueSpawnZ[0])
-      this.botCar.yaw = 0
+      this.botCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
+      this.botCar.yaw = blueSpawns[0].yaw
       this.botCar.applyTransform()
       this.blueCars.push(this.botCar)
 
@@ -477,8 +475,9 @@ export class TurboSoccerGame {
       const blueBotColors = [0x00cfff, 0x00eeff, 0x44aaff]
       for (let i = 1; i < teamSize; i++) {
         const rival = new CarObject(this.scene, blueBotColors[i - 1] ?? 0x00cfff, true)
-        rival.setPosition(blueSpawnX[i], 0, blueSpawnZ[i])
-        rival.yaw = 0
+        const sp = blueSpawns[i] ?? blueSpawns[0]
+        rival.setPosition(sp.x, 0, sp.z)
+        rival.yaw = sp.yaw
         rival.applyTransform()
         this.blueCars.push(rival)
       }
@@ -487,8 +486,8 @@ export class TurboSoccerGame {
       this.allCars = [...this.orangeCars, ...this.blueCars]
 
       // Posiciona câmera e inicializa HUD e loop imediatamente
-      this.camCurrentPos.set(0, 8.5, orangeSpawnZ[0] + 18)
-      this.camCurrentLook.set(0, 2.2, orangeSpawnZ[0] - 6)
+      this.camCurrentPos.set(orangeSpawns[0].x * 0.5, 8.5, orangeSpawns[0].z + 18)
+      this.camCurrentLook.set(0, 2.2, 0)
       this.camera.position.copy(this.camCurrentPos)
       this.camera.lookAt(this.camCurrentLook)
 
@@ -3034,42 +3033,65 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     }
   }
 
-  // ── OBSTÁCULOS DINÂMICOS 3D (BARRIS & CONES COM FÍSICA REAL) ─────
+  // ── OBSTÁCULOS DINÂMICOS 3D (BARRIS & CONES COM TAMANHO REAL E SEM AFUNDAR) ─────
   private buildObstacles3D() {
     this.dynamicObstacles = []
 
     const addBarrel = (x: number, z: number) => {
       const g = new THREE.Group()
-      g.position.set(x, 1.3, z)
+      const barrelH = 3.4
+      const bellyR = 1.65
+      const rimR = 1.28
 
-      const barrelMat = new THREE.MeshToonMaterial({
-        color: 0xf59e0b, // Amarelo industrial cartoon
+      g.position.set(x, barrelH / 2, z)
+
+      const woodMat = new THREE.MeshToonMaterial({
+        color: 0xd97706, // Madeira/óleo rústico cartoon
         gradientMap: TOON_GRADIENT
       })
-      const rimMat = new THREE.MeshToonMaterial({
-        color: 0x0f172a,
+      const ironMat = new THREE.MeshToonMaterial({
+        color: 0x1e293b, // Aro de ferro escuro
+        gradientMap: TOON_GRADIENT
+      })
+      const capMat = new THREE.MeshToonMaterial({
+        color: 0xb45309,
         gradientMap: TOON_GRADIENT
       })
 
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 2.6, 20), barrelMat)
-      body.castShadow = true
-      g.add(body)
+      // Formato clássico abaulado de barril real (mais largo no centro)
+      const topHalf = new THREE.Mesh(new THREE.CylinderGeometry(rimR, bellyR, barrelH / 2, 24), woodMat)
+      topHalf.position.y = barrelH / 4
+      topHalf.castShadow = true
+      g.add(topHalf)
 
-      for (const yOffset of [-0.9, 0, 0.9]) {
-        const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.26, 1.26, 0.2, 20), rimMat)
-        rim.position.y = yOffset
+      const btmHalf = new THREE.Mesh(new THREE.CylinderGeometry(bellyR, rimR, barrelH / 2, 24), woodMat)
+      btmHalf.position.y = -barrelH / 4
+      btmHalf.castShadow = true
+      g.add(btmHalf)
+
+      // Tampas superior e inferior
+      const topCap = new THREE.Mesh(new THREE.CylinderGeometry(rimR - 0.05, rimR - 0.05, 0.12, 24), capMat)
+      topCap.position.y = barrelH / 2
+      g.add(topCap)
+
+      // 4 Aros de ferro clássicos de reforço com relevo
+      const ringOffsets = [barrelH * 0.42, barrelH * 0.14, -barrelH * 0.14, -barrelH * 0.42]
+      const ringRadii   = [rimR + 0.06, bellyR + 0.05, bellyR + 0.05, rimR + 0.06]
+      for (let i = 0; i < ringOffsets.length; i++) {
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(ringRadii[i], ringRadii[i], 0.22, 24), ironMat)
+        rim.position.y = ringOffsets[i]
         g.add(rim)
       }
 
       this.scene.add(g)
       this.dynamicObstacles.push({
         group: g,
-        pos: new THREE.Vector3(x, 1.3, z),
+        pos: new THREE.Vector3(x, barrelH / 2, z),
         vel: new THREE.Vector3(0, 0, 0),
         rot: new THREE.Euler(0, Math.random() * Math.PI, 0),
         rotVel: new THREE.Vector3(0, 0, 0),
-        radius: 1.3,
-        height: 2.6,
+        radius: bellyR,
+        height: barrelH,
         type: 'barrel',
         selfRightTimer: 0
       })
@@ -3077,10 +3099,12 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
     const addCone = (x: number, z: number) => {
       const g = new THREE.Group()
-      g.position.set(x, 1.2, z)
+      const coneH = 3.2
+      const coneBaseR = 1.2
+      g.position.set(x, coneH / 2, z)
 
       const coneMat = new THREE.MeshToonMaterial({
-        color: 0xff5500, // Laranja neon cartoon
+        color: 0xff5500, // Laranja fluorescente de trânsito
         gradientMap: TOON_GRADIENT
       })
       const whiteMat = new THREE.MeshToonMaterial({
@@ -3088,38 +3112,46 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         gradientMap: TOON_GRADIENT
       })
       const baseMat = new THREE.MeshToonMaterial({
-        color: 0x0f172a,
+        color: 0x0f172a, // Base pesada de borracha preta
         gradientMap: TOON_GRADIENT
       })
 
-      const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.22, 2.2), baseMat)
-      base.position.y = -1.1
+      // Base quadrada pesada
+      const base = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.32, 2.7), baseMat)
+      base.position.y = -coneH / 2 + 0.16
       base.castShadow = true
       g.add(base)
 
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.95, 2.4, 20), coneMat)
+      // Corpo cônico robusto
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(coneBaseR, coneH, 24), coneMat)
+      cone.position.y = 0.1
       cone.castShadow = true
       g.add(cone)
 
-      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.68, 0.55, 20), whiteMat)
-      stripe.position.y = -0.05
-      g.add(stripe)
+      // Faixas refletivas brancas duplas
+      const stripe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 0.65, 24), whiteMat)
+      stripe1.position.y = 0.25
+      g.add(stripe1)
+
+      const stripe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.02, 0.55, 24), whiteMat)
+      stripe2.position.y = -0.65
+      g.add(stripe2)
 
       this.scene.add(g)
       this.dynamicObstacles.push({
         group: g,
-        pos: new THREE.Vector3(x, 1.2, z),
+        pos: new THREE.Vector3(x, coneH / 2, z),
         vel: new THREE.Vector3(0, 0, 0),
         rot: new THREE.Euler(0, Math.random() * Math.PI, 0),
         rotVel: new THREE.Vector3(0, 0, 0),
-        radius: 1.2,
-        height: 2.4,
+        radius: 1.45,
+        height: coneH,
         type: 'cone',
         selfRightTimer: 0
       })
     }
 
-    // Barris e Cones distribuídos proporcionalmente na arena maior
+    // Barris e Cones maiores posicionados na arena
     addBarrel(-28, 0)
     addBarrel(28, 0)
     addBarrel(-22, 50)
@@ -3140,17 +3172,19 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       obs.vel.y -= GRAVITY * dt
       obs.pos.addScaledVector(obs.vel, dt)
 
-      // Colisão com o solo (quica e desliza - clamp rígido para NUNCA entrar no chão)
-      const groundY = obs.height / 2
-      if (obs.pos.y <= groundY) {
-        obs.pos.y = groundY
-        obs.vel.y = -obs.vel.y * 0.35 // Quique
-        if (Math.abs(obs.vel.y) < 0.2) obs.vel.y = 0
-        // Atrito forte no chão para desacelerar gradativamente
-        obs.vel.x *= Math.pow(0.85, dt * 60)
-        obs.vel.z *= Math.pow(0.85, dt * 60)
+      // Trava de Solo Dinâmica: Calcula altura real mesmo quando inclinado/tombado para NUNCA afundar na grama!
+      const tilt = Math.min(1.0, Math.hypot(Math.sin(obs.rot.x), Math.sin(obs.rot.z)))
+      const effectiveGroundY = (obs.height / 2) * (1 - tilt) + obs.radius * tilt + 0.08
+
+      if (obs.pos.y <= effectiveGroundY) {
+        obs.pos.y = effectiveGroundY
+        obs.vel.y = -obs.vel.y * 0.35 // Quique elástico
+        if (Math.abs(obs.vel.y) < 0.25) obs.vel.y = 0
+        // Atrito forte no solo
+        obs.vel.x *= Math.pow(0.84, dt * 60)
+        obs.vel.z *= Math.pow(0.84, dt * 60)
       }
-      obs.pos.y = Math.max(groundY, obs.pos.y) // Trava absoluta de segurança contra afundar
+      obs.pos.y = Math.max(effectiveGroundY, obs.pos.y) // Trava absoluta contra afundamento
 
       // Rotação física e tombamento
       obs.rot.x += obs.rotVel.x * dt
@@ -3160,11 +3194,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
       // Auto-reerguimento gradual ("João-bobo" cartoon após tombar)
       const isTilted = Math.abs(obs.rot.x) > 0.25 || Math.abs(obs.rot.z) > 0.25
-      if (isTilted && obs.pos.y <= groundY + 0.1 && obs.vel.length() < 1.2) {
+      if (isTilted && obs.pos.y <= effectiveGroundY + 0.15 && obs.vel.length() < 1.2) {
         obs.selfRightTimer += dt
-        if (obs.selfRightTimer > 1.8) {
-          obs.rot.x *= Math.pow(0.86, dt * 60)
-          obs.rot.z *= Math.pow(0.86, dt * 60)
+        if (obs.selfRightTimer > 2.0) {
+          obs.rot.x *= Math.pow(0.85, dt * 60)
+          obs.rot.z *= Math.pow(0.85, dt * 60)
           obs.rotVel.x *= 0.8
           obs.rotVel.z *= 0.8
           if (Math.abs(obs.rot.x) < 0.04 && Math.abs(obs.rot.z) < 0.04) {
@@ -3546,8 +3580,8 @@ private resolveCarCarCollision() {
     // Colisão com o solo & Atrito de rolamento no gramado
     if (b.pos.y <= BALL_R) {
       b.pos.y = BALL_R
-      if (Math.abs(b.vel.y) > 0.5) {
-        b.vel.y = -b.vel.y * this.studioParams.ballBounce // Quique configurável
+      if (Math.abs(b.vel.y) > 0.4) {
+        b.vel.y = -b.vel.y * Math.max(0.76, this.studioParams.ballBounce) // Quique vivo elástico
         // Squash no solo só ocorre em impacto forte (> 14 m/s)
         if (Math.abs(b.vel.y) > 14) {
           b.targetSquash.set(1.35, 0.65, 1.35)
@@ -3744,11 +3778,12 @@ private resolveCarCarCollision() {
           this.audio.playDash()
         }
       } else if (isFrontBumper) {
-        // POWER SHOT DO BUMPER FRONTAL (estilo Rocket League / Turbo Soccer)
-        const powerF = (24 + carSpd * 32) * 1.55
-        b.vel.x = Math.sin(car.yaw) * powerF + nx * 10
-        b.vel.z = Math.cos(car.yaw) * powerF + nz * 10
-        b.vel.y = Math.max(6.0, 10.0 + ny * 16)
+        // POWER SHOT DO BUMPER FRONTAL (estilo Rocket League: a bola sobe em arcos aéreos épicos!)
+        const powerF = (26 + carSpd * 34) * 1.6
+        b.vel.x = Math.sin(car.yaw) * powerF + nx * 12
+        b.vel.z = Math.cos(car.yaw) * powerF + nz * 12
+        const aerialLift = (!car.grounded || car.flipTimer > 0) ? 22.0 : 15.0
+        b.vel.y = Math.max(aerialLift, 13.0 + carSpd * 16 + Math.max(0, ny) * 16)
         this.triggerCameraShake(0.55)
         // ── SOM ESPACIAL 3D EM CAMADAS PELO IMPACTO TOTAL CARRO-BOLA ──
         const impactSpeedBumper = b.vel.length() + carSpd
@@ -3770,11 +3805,11 @@ private resolveCarCarCollision() {
         b.vel.z = nz * 10
         b.vel.y = Math.max(2.5, ny * 8)
       } else {
-        // Colisão padrão lateral/traseira — também tiered e espacial
+        // Colisão padrão lateral/traseira — também ganha elevação vertical
         const impF = 18 + carSpd * 22
         b.vel.x = nx * impF + Math.sin(car.yaw) * carSpd * 12
         b.vel.z = nz * impF + Math.cos(car.yaw) * carSpd * 12
-        b.vel.y = Math.max(b.vel.y, 5.0 + ny * 12)
+        b.vel.y = Math.max(b.vel.y, 8.5 + carSpd * 12 + Math.max(0, ny) * 10)
         const impactSpeedLateral = b.vel.length() + carSpd
         this.audio.playCollisionTiered(impactSpeedLateral, b.pos.x, b.pos.y, b.pos.z)
         if (impactSpeedLateral > 55) {
@@ -4330,14 +4365,35 @@ private resolveCarCarCollision() {
     }
   }
 
+  private getKickoffSpawns() {
+    // 1v1 / Equipes: Kickoff diagonal nas laterais (estilo Rocket League oficial)
+    // Carros NUNCA nascem de frente alinhados com o gol aberto!
+    // A disputa acontece na diagonal em 45°, ricocheteando a bola na lateral ou para o alto!
+    const orangeSpawns = [
+      { x: -FIELD_W * 0.22, z: FIELD_L * 0.16, yaw: Math.PI - 0.70 }, // Slot 0: Diagonal Lateral Esquerda
+      { x: FIELD_W * 0.22,  z: FIELD_L * 0.16, yaw: Math.PI + 0.70 }, // Slot 1: Diagonal Lateral Direita
+      { x: 0,               z: FIELD_L * 0.32, yaw: Math.PI },        // Slot 2: Goleiro Recuado na Trave
+      { x: -FIELD_W * 0.34, z: FIELD_L * 0.12, yaw: Math.PI - 0.50 }  // Slot 3: Ponta Aberto
+    ]
+
+    const blueSpawns = [
+      { x: FIELD_W * 0.22,  z: -FIELD_L * 0.16, yaw: -0.70 },          // Slot 0: Diagonal Oposta
+      { x: -FIELD_W * 0.22, z: -FIELD_L * 0.16, yaw: 0.70 },           // Slot 1: Diagonal Oposta
+      { x: 0,               z: -FIELD_L * 0.32, yaw: 0 },              // Slot 2: Goleiro Recuado na Trave
+      { x: FIELD_W * 0.34,  z: -FIELD_L * 0.12, yaw: 0.50 }            // Slot 3: Ponta Aberto
+    ]
+
+    return { orangeSpawns, blueSpawns }
+  }
+
   private resetKickoff() {
     this.lastToucher = null
     this.ball.pos.set(0, BALL_R + 0.1, 0)
     this.ball.vel.set(0, 0, 0)
 
     if (this.isTraining) {
-      this.playerCar.setPosition(0, 0, FIELD_L * 0.18)
-      this.playerCar.yaw = Math.PI
+      this.playerCar.setPosition(-FIELD_W * 0.22, 0, FIELD_L * 0.16)
+      this.playerCar.yaw = Math.PI - 0.70
       this.playerCar.freeze()
       this.playerCar.applyTransform()
       this.playerCar.boost = 100
@@ -4355,24 +4411,23 @@ private resolveCarCarCollision() {
       return
     }
 
-    // Reposiciona todos os carros nos slots de kickoff
+    // Reposiciona todos os carros nos slots de kickoff laterais em ângulo
     const teamSize = this.orangeCars.length
-    const orangeSpawnZ = [FIELD_L * 0.18, FIELD_L * 0.08, FIELD_L * 0.25, FIELD_L * 0.08]
-    const orangeSpawnX = [0, -FIELD_W * 0.22, FIELD_W * 0.22, FIELD_W * 0.36]
-    const blueSpawnZ   = [-FIELD_L * 0.18, -FIELD_L * 0.08, -FIELD_L * 0.25, -FIELD_L * 0.08]
-    const blueSpawnX   = [0, FIELD_W * 0.22, -FIELD_W * 0.22, -FIELD_W * 0.36]
+    const { orangeSpawns, blueSpawns } = this.getKickoffSpawns()
 
     for (let i = 0; i < teamSize; i++) {
       const oc = this.orangeCars[i]
-      oc.setPosition(orangeSpawnX[i] ?? 0, 0, orangeSpawnZ[i] ?? FIELD_L * 0.18)
-      oc.yaw = Math.PI
+      const sp = orangeSpawns[i] ?? orangeSpawns[0]
+      oc.setPosition(sp.x, 0, sp.z)
+      oc.yaw = sp.yaw
       oc.freeze()
       oc.applyTransform()
     }
     for (let i = 0; i < teamSize; i++) {
       const bc = this.blueCars[i]
-      bc.setPosition(blueSpawnX[i] ?? 0, 0, blueSpawnZ[i] ?? -FIELD_L * 0.18)
-      bc.yaw = 0
+      const sp = blueSpawns[i] ?? blueSpawns[0]
+      bc.setPosition(sp.x, 0, sp.z)
+      bc.yaw = sp.yaw
       bc.freeze()
       bc.applyTransform()
     }
