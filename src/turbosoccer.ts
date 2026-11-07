@@ -2699,16 +2699,15 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     const jumpJustPressed = jumpNow && !this.jumpHeld
     this.jumpHeld = jumpNow
 
-    // ── NITRO NO AR DIRECIONAL (Pulo + Nitro vai na direção do analógico/controle) ──
+    // ── NITRO NO AR DIRECIONAL (Pulo + Nitro obedece o direcional do controle sem girar o carro em falso) ──
     const isNitroPressed = (gp.connected && gp.boost) || this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touch.boost
     if (!pc.grounded && isNitroPressed && pc.boost > 0) {
-      // Lê o direcional colocado no controle (Analógico esquerdo / D-pad / Teclas / Toque)
       let inputX = 0 // -1 = Esquerda, +1 = Direita
       let inputZ = 0 // +1 = Frente, -1 = Trás
 
       if (gp.connected) {
         if (Math.abs(gp.steerX) > 0.15) inputX = gp.steerX
-        if (Math.abs(gp.stickY) > 0.15) inputZ = -gp.stickY // empurrar para frente (-stickY) = frente (+1)
+        if (Math.abs(gp.stickY) > 0.15) inputZ = -gp.stickY // frente (-stickY) = +1, trás (+stickY) = -1
         if (gp.dpadUp)    inputZ = +1
         if (gp.dpadDown)  inputZ = -1
         if (gp.dpadLeft)  inputX = -1
@@ -2726,39 +2725,34 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         if (this.touch.throttle) inputZ = this.touch.throttle
       }
 
-      // Se nenhum direcional for inclinado, o impulso vai direto para a FRENTE do carro
+      // Se nenhum direcional for inclinado, empurra para a FRENTE do carro
       if (Math.abs(inputX) < 0.15 && Math.abs(inputZ) < 0.15) {
         inputZ = 1.0
       }
 
-      // Converte o direcional do controle para o espaço da arena conforme a rotação do carro
-      const sinY = Math.sin(pc.yaw), cosY = Math.cos(pc.yaw)
-      // inputZ > 0 é FRENTE (+sinY, +cosY)
-      // inputX > 0 é DIREITA (+cosY, -sinY)
-      let boostDirX = inputX * cosY + inputZ * sinY
-      let boostDirZ = -inputX * sinY + inputZ * cosY
+      // Converte o direcional para o espaço da arena mantendo a orientação do carro
+      const fwdX = Math.sin(pc.yaw), fwdZ = Math.cos(pc.yaw)
+      const rightX = Math.cos(pc.yaw), rightZ = -Math.sin(pc.yaw)
+
+      // Se inputZ for negativo (puxar direcional para trás), o impulso é exatamente para TRÁS!
+      let boostDirX = fwdX * inputZ + rightX * inputX
+      let boostDirZ = fwdZ * inputZ + rightZ * inputX
 
       const dirLen = Math.hypot(boostDirX, boostDirZ) || 1
       boostDirX /= dirLen
       boostDirZ /= dirLen
 
-      // Impulso horizontal firme na direção que o jogador apontou
-      const nitroAirThrust = 62 * dt
+      // Impulso horizontal firme
+      const nitroAirThrust = 68 * dt
       pc.velX = (pc.velX || 0) + boostDirX * nitroAirThrust
       pc.velZ = (pc.velZ || 0) + boostDirZ * nitroAirThrust
 
-      // SEM sustentação vertical para NÃO ficar voando — gravidade atua normalmente
-      const maxAirSpd = 46
+      const maxAirSpd = 50
       const curAirSpd = Math.hypot(pc.velX, pc.velZ)
       if (curAirSpd > maxAirSpd) {
         pc.velX = (pc.velX / curAirSpd) * maxAirSpd
         pc.velZ = (pc.velZ / curAirSpd) * maxAirSpd
       }
-
-      // Alinha suavemente o nariz do carro com a direção do impulso
-      const targetYaw = Math.atan2(boostDirX, boostDirZ)
-      const diffYaw = Math.atan2(Math.sin(targetYaw - pc.yaw), Math.cos(targetYaw - pc.yaw))
-      pc.yaw += diffYaw * Math.min(1.0, 9 * dt)
 
       if (this.isTraining) pc.boost = 100
       else pc.boost = Math.max(0, pc.boost - 32 * dt)
@@ -2811,16 +2805,16 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           const thrustZ = (-inputX * sinY + inputZ * cosY) * flipThrust
           pc.velX = pc.velX * 0.35 + thrustX
           pc.velZ = pc.velZ * 0.35 + thrustZ
-          // Sustentação vertical para o flip completar no ar sem tocar o solo prematuramente
+          // Impulso vertical para o flip subir alto e alcançar a bola
           pc.pos.y = Math.max(pc.pos.y, 1.4)
-          pc.velY = Math.max(pc.velY, 5.5)
+          pc.velY = Math.max(pc.velY + 8.5, 12.0)
           pc.flipDirX = inputX
           pc.flipDirZ = inputZ
           pc.flipTimer = 0.001
           pc.flipLocked = true
         } else {
-          // SEM DIREÇÃO → pulo duplo reto para CIMA (mais alto)
-          pc.velY = this.studioParams.jumpForce * 1.3
+          // SEM DIREÇÃO → pulo duplo reto para CIMA (bem mais alto como no Turbo Soccer original)
+          pc.velY = Math.max(pc.velY + this.studioParams.jumpForce * 1.1, this.studioParams.jumpForce * 1.5)
           pc.flipLocked = false
         }
         pc.jumpCount = 2
@@ -2828,8 +2822,9 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       }
     }
 
-    // Controle do timer de pulo (sem impulso vertical excessivo para não ficar voando)
-    if (pc.jumpHoldTimer > 0 && !pc.grounded) {
+    // Sustentação dinâmica do 1º pulo ao segurar A/Espaço
+    if (jumpNow && pc.jumpHoldTimer > 0 && !pc.grounded && pc.jumpCount === 1) {
+      pc.velY += 30 * dt
       pc.jumpHoldTimer -= dt
     }
 
@@ -3023,8 +3018,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     const limX = FIELD_W / 2 - 2.8
     const limZ = FIELD_L / 2 - 2.8
 
-    // Trava de altura estrita: carros NUNCA chegam no teto nem sobem nas arquibancadas
-    const MAX_CAR_HEIGHT = 4.2
+    // Trava de altura de segurança: permite pulos duplos altos e defesas aéreas, mas impede o carro de chegar no teto (CEIL_H = 46)
+    const MAX_CAR_HEIGHT = 22.0
     if (car.pos.y > MAX_CAR_HEIGHT) {
       car.pos.y = MAX_CAR_HEIGHT
       if (car.velY > 0) car.velY = 0
@@ -3863,8 +3858,14 @@ private resolveCarCarCollision() {
       car.jumpHoldTimer = 0.20
       this.audio.playDash()
       this.emitTireSmoke(car, true)
-    } else if (car.jumpHoldTimer > 0 && !car.grounded) {
+    } else if (input.jump && car.jumpHoldTimer > 0 && !car.grounded && car.jumpCount === 1) {
+      car.velY += 30 * dt
       car.jumpHoldTimer -= dt
+    } else if (input.jump && !car.grounded && car.jumpCount === 1) {
+      // 2º pulo (pulo duplo alto)
+      car.velY = Math.max(car.velY + this.studioParams.jumpForce * 1.1, this.studioParams.jumpForce * 1.5)
+      car.jumpCount = 2
+      this.audio.playDash()
     }
 
     // Nitro no ar (remoto / predição na direção do controle)
@@ -3874,18 +3875,19 @@ private resolveCarCarCollision() {
       if (Math.abs(inputX) < 0.15 && Math.abs(inputZ) < 0.15) {
         inputZ = 1.0
       }
-      const sinY = Math.sin(car.yaw), cosY = Math.cos(car.yaw)
-      let boostDirX = inputX * cosY + inputZ * sinY
-      let boostDirZ = -inputX * sinY + inputZ * cosY
+      const fwdX = Math.sin(car.yaw), fwdZ = Math.cos(car.yaw)
+      const rightX = Math.cos(car.yaw), rightZ = -Math.sin(car.yaw)
+      let boostDirX = fwdX * inputZ + rightX * inputX
+      let boostDirZ = fwdZ * inputZ + rightZ * inputX
       const dirLen = Math.hypot(boostDirX, boostDirZ) || 1
       boostDirX /= dirLen
       boostDirZ /= dirLen
 
-      const nitroAirThrust = 62 * dt
+      const nitroAirThrust = 68 * dt
       car.velX = (car.velX || 0) + boostDirX * nitroAirThrust
       car.velZ = (car.velZ || 0) + boostDirZ * nitroAirThrust
 
-      const maxAirSpd = 46
+      const maxAirSpd = 50
       const curAirSpd = Math.hypot(car.velX, car.velZ)
       if (curAirSpd > maxAirSpd) {
         car.velX = (car.velX / curAirSpd) * maxAirSpd
