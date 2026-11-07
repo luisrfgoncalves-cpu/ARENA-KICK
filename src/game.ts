@@ -369,15 +369,16 @@ export class Game {
           this.phase = 'COUNTDOWN'
           this.resetPositions()
           if (this.cfg.mode === 'online' && this.cfg.network?.isHost()) {
+            const { x: ax, y: ay, w: aw, h: ah } = this.arena
             this.cfg.network.send({
               t: performance.now(),
               event: 'countdown',
               countdown: 2,
               ball: {
-                x: this.ball.position.x,
-                y: this.ball.position.y,
-                vx: this.ball.velocity.x,
-                vy: this.ball.velocity.y
+                x: (this.ball.position.x - ax) / aw,
+                y: (this.ball.position.y - ay) / ah,
+                vx: this.ball.velocity.x / aw,
+                vy: this.ball.velocity.y / ah
               }
             })
           }
@@ -626,22 +627,23 @@ export class Game {
       if (this.netSyncTimer > 1 / 30) {
         this.netSyncTimer = 0
         const isHost = this.cfg.network.isHost()
+        const { x: ax, y: ay, w: aw, h: ah } = this.arena
         const payload: NetSyncPayload = {
           t: performance.now(),
           p1: {
-            x: this.p1.body.position.x,
-            y: this.p1.body.position.y,
-            vx: this.p1.body.velocity.x,
-            vy: this.p1.body.velocity.y,
+            x: (this.p1.body.position.x - ax) / aw,
+            y: (this.p1.body.position.y - ay) / ah,
+            vx: this.p1.body.velocity.x / aw,
+            vy: this.p1.body.velocity.y / ah,
             dash: this.p1.dashActive
           }
         }
         if (isHost) {
           payload.ball = {
-            x: this.ball.position.x,
-            y: this.ball.position.y,
-            vx: this.ball.velocity.x,
-            vy: this.ball.velocity.y
+            x: (this.ball.position.x - ax) / aw,
+            y: (this.ball.position.y - ay) / ah,
+            vx: this.ball.velocity.x / aw,
+            vy: this.ball.velocity.y / ah
           }
           payload.scores = { p1: this.scoreP1, p2: this.scoreP2 }
         }
@@ -752,6 +754,21 @@ export class Game {
     const spin = (p.dashDir.y || 0) * 0.42 * (isP1 ? 1 : -1)
     Matter.Body.setAngularVelocity(this.ball, spin)
 
+    // Se for cliente online, avisa o host imediatamente com coordenadas normalizadas
+    if (this.cfg.mode === 'online' && this.cfg.network && !this.cfg.network.isHost()) {
+      const { w: aw, h: ah } = this.arena
+      this.cfg.network.send({
+        t: performance.now(),
+        event: 'kick',
+        ball: {
+          x: (this.ball.position.x - this.arena.x) / aw,
+          y: (this.ball.position.y - this.arena.y) / ah,
+          vx: (dir.x * force) / aw,
+          vy: (dir.y * force) / ah
+        }
+      })
+    }
+
     this.audio.playPowerHit()
     this.particles.emitHit(this.ball.position.x, this.ball.position.y, dir.x * force, dir.y * force)
     this.renderer.triggerShake(6, 0.16)
@@ -769,6 +786,21 @@ export class Game {
     })
     const spin = (p.dashDir.y || 0) * 0.65 * powerRatio * (p === this.p1 ? 1 : -1)
     Matter.Body.setAngularVelocity(this.ball, spin)
+
+    // Se for cliente online, avisa o host imediatamente com coordenadas normalizadas
+    if (this.cfg.mode === 'online' && this.cfg.network && !this.cfg.network.isHost()) {
+      const { w: aw, h: ah } = this.arena
+      this.cfg.network.send({
+        t: performance.now(),
+        event: 'kick',
+        ball: {
+          x: (this.ball.position.x - this.arena.x) / aw,
+          y: (this.ball.position.y - this.arena.y) / ah,
+          vx: (dir.x * force) / aw,
+          vy: (dir.y * force) / ah
+        }
+      })
+    }
 
     this.audio.playPowerHit()
     this.particles.emitPowerShot(this.ball.position.x, this.ball.position.y, dir.x * force, dir.y * force)
@@ -811,16 +843,17 @@ export class Game {
 
     // Host autoritativo notifica o cliente imediatamente
     if (this.cfg.mode === 'online' && this.cfg.network?.isHost()) {
+      const { x: ax, y: ay, w: aw, h: ah } = this.arena
       this.cfg.network.send({
         t: performance.now(),
         event: 'goal',
         whoScored: scorer,
         scores: { p1: this.scoreP1, p2: this.scoreP2 },
         ball: {
-          x: this.ball.position.x,
-          y: this.ball.position.y,
-          vx: this.ball.velocity.x,
-          vy: this.ball.velocity.y
+          x: (this.ball.position.x - ax) / aw,
+          y: (this.ball.position.y - ay) / ah,
+          vx: this.ball.velocity.x / aw,
+          vy: this.ball.velocity.y / ah
         }
       })
     }
@@ -870,21 +903,31 @@ export class Game {
     this.goalResetTimer = 2.0
   }
 
-  private mirrorX(x: number) { return 2 * this.arena.x + this.arena.w - x }
-  private mirrorY(y: number) { return 2 * this.arena.y + this.arena.h - y }
-
   private handleNetworkData(payload: NetSyncPayload) {
     const isHost = this.cfg.network?.isHost()
+    const { x: ax, y: ay, w: aw, h: ah } = this.arena
 
     if (payload.p1) {
-      Matter.Body.setPosition(this.p2.body, {
-        x: this.mirrorX(payload.p1.x),
-        y: this.mirrorY(payload.p1.y)
-      })
-      Matter.Body.setVelocity(this.p2.body, {
-        x: -payload.p1.vx,
-        y: -payload.p1.vy
-      })
+      // Coordenadas normalizadas [0, 1] relativas à arena
+      // Eixo X é espelhado (1.0 - normX) para cada jogador defender sua esquerda e atacar a direita
+      // Eixo Y NÃO é invertido (normY direto) pois ambos os jogadores veem o topo no topo e o chão embaixo!
+      const posX = ax + aw * (1.0 - payload.p1.x)
+      const posY = ay + ah * payload.p1.y
+      const velX = -payload.p1.vx * aw
+      const velY = payload.p1.vy * ah
+
+      Matter.Body.setPosition(this.p2.body, { x: posX, y: posY })
+      Matter.Body.setVelocity(this.p2.body, { x: velX, y: velY })
+      this.p2.dashActive = !!payload.p1.dash
+    }
+
+    // Host recebe evento de chute do cliente e aplica impulso autoritativo na bola
+    if (isHost && payload.event === 'kick' && payload.ball) {
+      const kickVx = -payload.ball.vx * aw
+      const kickVy = payload.ball.vy * ah
+      Matter.Body.setVelocity(this.ball, { x: kickVx, y: kickVy })
+      this.lastToucher = 'p2'
+      this.audio.playPowerHit()
     }
 
     if (!isHost) {
@@ -904,14 +947,13 @@ export class Game {
 
       // 3. Cliente reconcilia bola enviada pela autoridade (host)
       if (payload.ball) {
-        Matter.Body.setPosition(this.ball, {
-          x: this.mirrorX(payload.ball.x),
-          y: this.mirrorY(payload.ball.y)
-        })
-        Matter.Body.setVelocity(this.ball, {
-          x: -payload.ball.vx,
-          y: -payload.ball.vy
-        })
+        const ballX = ax + aw * (1.0 - payload.ball.x)
+        const ballY = ay + ah * payload.ball.y
+        const ballVx = -payload.ball.vx * aw
+        const ballVy = payload.ball.vy * ah
+
+        Matter.Body.setPosition(this.ball, { x: ballX, y: ballY })
+        Matter.Body.setVelocity(this.ball, { x: ballVx, y: ballVy })
       }
 
       // 4. Fallback de segurança para sincronização de placar caso o evento UDP atrase

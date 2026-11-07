@@ -42,7 +42,7 @@ export interface NetSyncPayload {
   p4?: { x: number; y: number; vx: number; vy: number; dash: boolean }
   ball?: { x: number; y: number; z?: number; vx: number; vy: number; vz?: number }
   scores?: { p1: number; p2: number }
-  event?: 'goal' | 'countdown' | 'rematch' | 'slot_assign' | 'start_game' | 'room_full' | 'handshake' | 'heartbeat'
+  event?: 'goal' | 'countdown' | 'rematch' | 'slot_assign' | 'start_game' | 'room_full' | 'handshake' | 'heartbeat' | 'kick'
   message?: string
   assignedSlot?: number
   totalPlayers?: number
@@ -239,6 +239,7 @@ export class NetworkManager {
     })
 
     conn.on('data', (data) => {
+      this.lastHeartbeatReceived = performance.now()
       const payload = data as NetSyncPayload
 
       // Handshake Bilateral
@@ -303,6 +304,7 @@ export class NetworkManager {
     } as NetSyncPayload)
 
     conn.on('data', (data) => {
+      this.lastHeartbeatReceived = performance.now()
       const payload = data as NetSyncPayload
 
       // Handshake Bilateral
@@ -484,8 +486,8 @@ export class NetworkManager {
     this.heartbeatCheckTimer = setInterval(() => {
       if (this.state !== 'MATCH_RUNNING') return
       const elapsed = performance.now() - this.lastHeartbeatReceived
-      if (elapsed > 3000) {
-        this.handleConnectionDrop('Conexão perdida por inatividade (timeout de heartbeat > 3.0s).')
+      if (elapsed > 12000) {
+        this.handleConnectionDrop('Conexão perdida por inatividade (timeout de heartbeat > 12s).')
       }
     }, 500)
   }
