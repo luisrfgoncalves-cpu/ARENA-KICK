@@ -14,7 +14,18 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Luckiest+Guy&family=Baloo+2:wght@500;600;700;800&display=swap');
 
-    * { margin:0; padding:0; box-sizing:border-box; }
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    #game-canvas, #turbo3d-container, #turbo-touch-controls, #virtual-joystick-zone, #virtual-touch-buttons {
+      touch-action: none !important;
+      -webkit-user-select: none;
+      user-select: none;
+    }
 
     :root {
       --ink: #070b16;

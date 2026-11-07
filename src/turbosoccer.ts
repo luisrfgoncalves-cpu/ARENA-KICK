@@ -127,6 +127,7 @@ export class TurboSoccerGame {
   private pauseOverlay: HTMLElement | null = null
 
   private isTouchDevice  = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  private isMobile       = 'ontouchstart' in window || navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   private touch          = { throttle: 0, steer: 0, jump: false, boost: false, drift: false, roll: false }
 
   private gamepad        = new GamepadManager()
@@ -339,15 +340,16 @@ export class TurboSoccerGame {
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.3, 1000)
 
-    // 3. WebGLRenderer com Cores Vivas
+    // 3. WebGLRenderer com Cores Vivas & Otimização Mobile
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !this.isMobile,
       powerPreference: 'high-performance',
+      precision: this.isMobile ? 'mediump' : 'highp',
     })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.25 : 1.75))
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.type = this.isMobile ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.15
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -596,7 +598,8 @@ export class TurboSoccerGame {
     const sun = new THREE.DirectionalLight(0xfff6dd, isNight ? 0.55 : this.studioParams.sunIntensity)
     sun.position.set(45, 80, 50)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    const shadowRes = this.isMobile ? 1024 : 2048
+    sun.shadow.mapSize.set(shadowRes, shadowRes)
     sun.shadow.bias = -0.0003
     const d = 65
     sun.shadow.camera.left = -d
@@ -1756,6 +1759,7 @@ export class TurboSoccerGame {
 
   private updateCrowd(dt: number) {
     if (!this.crowdInstances || !this.crowdInstances.length) return
+    if (this.isMobile) return // Plateia estática no mobile para economizar draw calls e matrizes WebGL
     // Throttle crowd updates to ~12 FPS to eliminate micro-stutters and lag
     this.crowdUpdateTimer += dt
     if (this.crowdUpdateTimer < 0.08) return
@@ -2019,48 +2023,116 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
   }
 
   private buildTouchControls(root: HTMLElement) {
-    if (!this.isTouchDevice) return
+    if (!this.isTouchDevice && !this.isMobile) return
     const wrap = document.createElement('div')
     wrap.id = 'turbo-touch-controls'
-    wrap.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:120;'
+    wrap.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:120;touch-action:none;'
 
-    const mk = (id: string, label: string, style: string) => {
+    const mkBtn = (id: string, text: string, bg: string, color: string, size: number, fsize: number) => {
       const b = document.createElement('button')
       b.id = id
-      b.textContent = label
-      b.style.cssText =
-        'position:absolute;pointer-events:all;border-radius:50%;border:2px solid rgba(255,255,255,0.5);' +
-        'background:rgba(15,23,42,0.7);color:white;font-weight:900;user-select:none;touch-action:none;' + style
-      wrap.appendChild(b)
+      b.innerHTML = text
+      b.style.cssText = `
+        width:${size}px;height:${size}px;border-radius:50%;
+        background:${bg};color:${color};border:3px solid #070b16;
+        box-shadow:0 5px 0 #070b16;font-family:'Luckiest Guy',cursive;
+        font-size:${fsize}px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        touch-action:none;user-select:none;-webkit-touch-callout:none;cursor:pointer;
+        transition:transform .08s ease;text-shadow:1px 1px 0 rgba(0,0,0,0.4);
+      `
       return b
     }
 
-    const left  = mk('tt-left',  '◄', 'left:22px;bottom:150px;width:64px;height:64px;font-size:22px;')
-    const right = mk('tt-right', '►', 'left:98px;bottom:150px;width:64px;height:64px;font-size:22px;')
-    const accel = mk('tt-accel', '▲', 'right:22px;bottom:230px;width:64px;height:64px;font-size:22px;')
-    const brake = mk('tt-brake', '▼', 'right:22px;bottom:150px;width:64px;height:64px;font-size:22px;')
-    const boost = mk('tt-boost', 'N2O', 'right:98px;bottom:120px;width:64px;height:64px;font-size:12px;')
-    const jump  = mk('tt-jump',  'FLIP', 'right:22px;bottom:72px;width:64px;height:64px;font-size:12px;')
-    const drift = mk('tt-drift', 'DRIFT', 'right:22px;bottom:34px;width:64px;height:64px;font-size:10px;')
-    const roll  = mk('tt-roll',  'ROLL',  'right:98px;bottom:34px;width:64px;height:64px;font-size:10px;')
+    // CLUSTER ESQUERDO: DIREÇÃO
+    const leftCluster = document.createElement('div')
+    leftCluster.style.cssText = 'position:absolute;bottom:20px;left:20px;display:flex;gap:12px;pointer-events:all;'
+    const btnLeft = mkBtn('tt-left', '◄', 'rgba(30,41,69,0.92)', '#fff', 66, 26)
+    const btnRight = mkBtn('tt-right', '►', 'rgba(30,41,69,0.92)', '#fff', 66, 26)
+    leftCluster.appendChild(btnLeft)
+    leftCluster.appendChild(btnRight)
+    wrap.appendChild(leftCluster)
+
+    // CLUSTER DIREITO: AÇÕES ERGONÔMICAS EM ARCO
+    const rightCluster = document.createElement('div')
+    rightCluster.style.cssText = 'position:absolute;bottom:14px;right:14px;width:240px;height:180px;pointer-events:none;'
+
+    // ACELERAR
+    const btnAccel = mkBtn('tt-accel', '▲<br><span style="font-size:10px;">GAS</span>', 'linear-gradient(135deg,#22c55e,#15803d)', '#022c11', 72, 22)
+    btnAccel.style.position = 'absolute'
+    btnAccel.style.right = '10px'
+    btnAccel.style.bottom = '75px'
+    btnAccel.style.pointerEvents = 'all'
+
+    // PULO / FLIP
+    const btnJump = mkBtn('tt-jump', 'PULO<br><span style="font-size:9px;">FLIP</span>', 'linear-gradient(135deg,#ffd23f,#eab308)', '#070b16', 66, 13)
+    btnJump.style.position = 'absolute'
+    btnJump.style.right = '95px'
+    btnJump.style.bottom = '78px'
+    btnJump.style.pointerEvents = 'all'
+
+    // NITRO / N2O
+    const btnBoost = mkBtn('tt-boost', '🚀<br><span style="font-size:9px;">N2O</span>', 'linear-gradient(135deg,#ff7a00,#ea580c)', '#fff', 60, 16)
+    btnBoost.style.position = 'absolute'
+    btnBoost.style.right = '58px'
+    btnBoost.style.bottom = '158px'
+    btnBoost.style.pointerEvents = 'all'
+
+    // RÉ / FREIO
+    const btnBrake = mkBtn('tt-brake', '▼<br><span style="font-size:9px;">RÉ</span>', 'linear-gradient(135deg,#ef4444,#b91c1c)', '#fff', 54, 18)
+    btnBrake.style.position = 'absolute'
+    btnBrake.style.right = '18px'
+    btnBrake.style.bottom = '8px'
+    btnBrake.style.pointerEvents = 'all'
+
+    // DRIFT
+    const btnDrift = mkBtn('tt-drift', 'DRIFT', 'rgba(30,41,69,0.92)', '#38bdf8', 52, 10)
+    btnDrift.style.position = 'absolute'
+    btnDrift.style.right = '85px'
+    btnDrift.style.bottom = '10px'
+    btnDrift.style.pointerEvents = 'all'
+
+    // ROLL
+    const btnRoll = mkBtn('tt-roll', 'ROLL', 'rgba(30,41,69,0.92)', '#c084fc', 50, 10)
+    btnRoll.style.position = 'absolute'
+    btnRoll.style.right = '148px'
+    btnRoll.style.bottom = '12px'
+    btnRoll.style.pointerEvents = 'all'
+
+    rightCluster.appendChild(btnAccel)
+    rightCluster.appendChild(btnJump)
+    rightCluster.appendChild(btnBoost)
+    rightCluster.appendChild(btnBrake)
+    rightCluster.appendChild(btnDrift)
+    rightCluster.appendChild(btnRoll)
+    wrap.appendChild(rightCluster)
 
     root.appendChild(wrap)
 
     const bind = (el: HTMLElement, on: () => void, off: () => void) => {
-      el.addEventListener('pointerdown', e => { e.preventDefault(); on() })
-      el.addEventListener('pointerup', e => { e.preventDefault(); off() })
-      el.addEventListener('pointerleave', off)
-      el.addEventListener('pointercancel', off)
+      const start = (e: Event) => {
+        e.preventDefault()
+        el.style.transform = 'translateY(3px) scale(0.95)'
+        on()
+      }
+      const end = (e: Event) => {
+        e.preventDefault()
+        el.style.transform = 'none'
+        off()
+      }
+      el.addEventListener('pointerdown', start)
+      el.addEventListener('pointerup', end)
+      el.addEventListener('pointerleave', end)
+      el.addEventListener('pointercancel', end)
     }
 
-    bind(left,  () => { this.touch.steer = -1 }, () => { if (this.touch.steer === -1) this.touch.steer = 0 })
-    bind(right, () => { this.touch.steer = 1 },  () => { if (this.touch.steer === 1) this.touch.steer = 0 })
-    bind(accel, () => { this.touch.throttle = 1 },  () => { if (this.touch.throttle === 1) this.touch.throttle = 0 })
-    bind(brake, () => { this.touch.throttle = -1 }, () => { if (this.touch.throttle === -1) this.touch.throttle = 0 })
-    bind(boost, () => { this.touch.boost = true },  () => { this.touch.boost = false })
-    bind(jump,  () => { this.touch.jump = true },   () => { this.touch.jump = false })
-    bind(drift, () => { this.touch.drift = true },  () => { this.touch.drift = false })
-    bind(roll,  () => { this.touch.roll = true },    () => { this.touch.roll = false })
+    bind(btnLeft,  () => { this.touch.steer = -1 }, () => { if (this.touch.steer === -1) this.touch.steer = 0 })
+    bind(btnRight, () => { this.touch.steer = 1 },  () => { if (this.touch.steer === 1) this.touch.steer = 0 })
+    bind(btnAccel, () => { this.touch.throttle = 1 },  () => { if (this.touch.throttle === 1) this.touch.throttle = 0 })
+    bind(btnBrake, () => { this.touch.throttle = -1 }, () => { if (this.touch.throttle === -1) this.touch.throttle = 0 })
+    bind(btnBoost, () => { this.touch.boost = true },  () => { this.touch.boost = false })
+    bind(btnJump,  () => { this.touch.jump = true },   () => { this.touch.jump = false })
+    bind(btnDrift, () => { this.touch.drift = true },  () => { this.touch.drift = false })
+    bind(btnRoll,  () => { this.touch.roll = true },    () => { this.touch.roll = false })
   }
 
 
@@ -2074,7 +2146,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     if (!this.paused) {
       if (this.isReplaying) {
         this.updateReplayPlayback(dt)
-        this.outlineEffect.render(this.scene, this.camera)
+        if (this.isMobile) {
+          this.renderer.render(this.scene, this.camera)
+        } else {
+          this.outlineEffect.render(this.scene, this.camera)
+        }
         return
       }
 
@@ -2131,8 +2207,12 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       this.audio.updateEngine(0, false)
     }
 
-    // Renderiza com Contorno Cartoon Cel-Shaded
-    this.outlineEffect.render(this.scene, this.camera)
+    // Renderiza cena: no desktop usa OutlineEffect cel-shaded; no mobile usa single-pass ultra veloz (60 FPS)
+    if (this.isMobile) {
+      this.renderer.render(this.scene, this.camera)
+    } else {
+      this.outlineEffect.render(this.scene, this.camera)
+    }
   }
 
   private updateCountdownDisplay() {

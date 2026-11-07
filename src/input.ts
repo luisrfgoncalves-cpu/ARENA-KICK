@@ -52,10 +52,12 @@ export function initVirtualJoystick(container: HTMLElement = document.body) {
 
     const btnP = document.getElementById('touch-btn-power')
     const btnD = document.getElementById('touch-btn-dash')
-    btnP?.addEventListener('touchstart', (e) => { e.preventDefault(); touchPower = true })
-    btnP?.addEventListener('touchend', (e) => { e.preventDefault(); touchPower = false })
-    btnD?.addEventListener('touchstart', (e) => { e.preventDefault(); touchDash = true })
-    btnD?.addEventListener('touchend', (e) => { e.preventDefault(); touchDash = false })
+    btnP?.addEventListener('touchstart', (e) => { e.preventDefault(); touchPower = true }, { passive: false })
+    btnP?.addEventListener('touchend', (e) => { e.preventDefault(); touchPower = false }, { passive: false })
+    btnP?.addEventListener('touchcancel', () => { touchPower = false })
+    btnD?.addEventListener('touchstart', (e) => { e.preventDefault(); touchDash = true }, { passive: false })
+    btnD?.addEventListener('touchend', (e) => { e.preventDefault(); touchDash = false }, { passive: false })
+    btnD?.addEventListener('touchcancel', () => { touchDash = false })
 
     const manager = create({
       zone,
