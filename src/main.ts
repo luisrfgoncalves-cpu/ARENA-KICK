@@ -419,12 +419,13 @@ function generateRoomCode() {
   return `ARENA-${s}`
 }
 
-function handleOnlineDisconnect() {
+function handleOnlineDisconnect(customReason?: string) {
   const net = netManager
   netManager = null
   if (net) {
     net.onConnected = undefined
     net.onDisconnected = undefined
+    net.onConnectionLost = undefined
     net.onError = undefined
     net.destroy()
   }
@@ -438,8 +439,9 @@ function handleOnlineDisconnect() {
   }
   resetOnlineUI()
   showScreen('online')
-  setOnlineStatus('global', 'Host desconectado ou conexão encerrada.', '#ff2d78')
-  showToast('O host encerrou ou desconectou da sala.')
+  const msg = customReason || 'Conexão encerrada ou timeout com o adversário.'
+  setOnlineStatus('global', msg, '#ff2d78')
+  showToast(msg)
 }
 
 function createOnlineNetwork() {
@@ -450,7 +452,10 @@ function createOnlineNetwork() {
       setOnlineStatus('global', msg, '#ff2d78')
       showToast(msg)
     }
-    net.onDisconnected = handleOnlineDisconnect
+    net.onConnectionLost = (reason) => {
+      handleOnlineDisconnect(reason)
+    }
+    net.onDisconnected = () => handleOnlineDisconnect()
     return net
   })
 }
@@ -510,7 +515,11 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
     currentHostRoomCode = code
 
     const countBadge = document.getElementById('online-player-count-badge')
-    const launchBtn = document.getElementById('btn-online-launch')
+    const launchBtn = document.getElementById('btn-online-launch') as HTMLButtonElement | null
+    if (launchBtn) {
+      launchBtn.disabled = true
+      launchBtn.style.opacity = '0.5'
+    }
 
     const chosenFormat = selectedOnlineGame === 'turbo' ? selectedOnlineTurboFormat : selectedOnlineBBFormat
     const maxP = selectedOnlineGame === 'turbo' ? (chosenFormat === '4v4' ? 8 : chosenFormat === '3v3' ? 6 : chosenFormat === '2v2' ? 4 : 2) : (chosenFormat === '2v2' ? 4 : 2)
@@ -518,34 +527,45 @@ document.getElementById('btn-online-host')!.addEventListener('click', async () =
 
     netManager.onPlayerCountChange = (count) => {
       if (countBadge) countBadge.textContent = `👥 ${count} Jogadores Conectados`
-      setOnlineStatus('host', `✅ ${count} jogador(es) na sala. Pode aguardar mais amigos ou iniciar!`, '#00ff88')
       void updatePublicRoomPlayerCount(code, count)
       refreshLobby()
     }
 
-    launchBtn?.addEventListener('click', () => {
-      if (!netManager || !netManager.isHost()) return
-      void updatePublicRoomPlayerCount(code, netManager.getPlayerCount(), 'in_game')
-      refreshLobby()
-      const count = netManager.getPlayerCount()
-      netManager.send({
-        t: performance.now(),
-        event: 'start_game',
-        gameType: selectedOnlineGame,
-        format: chosenFormat,
-        totalPlayers: count,
-        hostTeam: selectedTeamP1
-      })
-      showToast(`Iniciando ${chosenFormat} (${count} pessoas)!`)
-      if (selectedOnlineGame === 'turbo') {
+    // Host Ready: Handshake Bilateral validado com sucesso!
+    netManager.onHostReady = (rtt) => {
+      if (launchBtn) {
+        launchBtn.disabled = false
+        launchBtn.style.opacity = '1'
+      }
+      setOnlineStatus('host', `✅ Adversário pronto e validado! (Ping: ${rtt}ms). Clique abaixo para iniciar.`, '#00ff88')
+      showToast(`Conexão confirmada (Ping: ${rtt}ms)! Pronto para jogar.`)
+    }
+
+    // Match Start: Inicia em ambos os dispositivos simultaneamente após confirmação mútua
+    netManager.onMatchStart = (payload) => {
+      const fmt = payload.format || chosenFormat
+      showToast(`Partida ${fmt} iniciada!`)
+      if (payload.gameType === 'turbo') {
         const tuning = readTurboTuning()
         tuning.matchFormat = '1v1'
         showScreen('turbo3d')
-        startTurboSoccer3D(selectedCar, tuning, netManager)
+        startTurboSoccer3D(selectedCar, tuning, netManager ?? undefined)
       } else {
         selectedBBFormat = selectedOnlineBBFormat
         startOnlineMatch()
       }
+    }
+
+    launchBtn?.addEventListener('click', () => {
+      if (!netManager || !netManager.isHost()) return
+      if (netManager.getState() !== 'HOST_READY' && netManager.getState() !== 'MATCH_READY') {
+        showToast('Aguarde a validação da conexão com o adversário...')
+        return
+      }
+      void updatePublicRoomPlayerCount(code, netManager.getPlayerCount(), 'in_game')
+      refreshLobby()
+      showToast('Iniciando partida...')
+      netManager.launchMatch(selectedOnlineGame, chosenFormat, selectedTeamP1)
     })
 
     await netManager.init(code)
@@ -621,24 +641,30 @@ async function handleJoinRoom(asSpectator = false) {
     netManager = await createOnlineNetwork()
     await netManager.init()
 
-    netManager.onDataReceived = (payload) => {
-      if (payload.event === 'start_game') {
-        const fmt = payload.format || '1v1'
-        if (payload.hostTeam) {
-          onlineHostTeam = payload.hostTeam
-        }
-        showToast(asSpectator ? `👁️ Transmitindo partida ${fmt} ao vivo!` : `Partida ${fmt} iniciada pelo Host!`)
-        if (payload.gameType === 'turbo') {
-          const tuning = readTurboTuning()
-          if (payload.format) tuning.matchFormat = payload.format as TurboMatchFormat
-          if (asSpectator) tuning.spectatorMode = true
-          tuning.matchFormat = '1v1'   // force 1v1 for online
-          showScreen('turbo3d')
-          startTurboSoccer3D(selectedCar, tuning, asSpectator ? undefined : (netManager ?? undefined))
-        } else {
-          if (payload.format) selectedBBFormat = payload.format as '1v1' | '2v2'
-          startOnlineMatch()
-        }
+    netManager.onStateChange = (st, rtt) => {
+      if (st === 'HANDSHAKING') {
+        setOnlineStatus('join', 'Validando tráfego bilateral de rede (Handshake)...', '#00cfff')
+      } else if (st === 'CLIENT_READY') {
+        setOnlineStatus('join', `✅ Conectado e validado! (Ping: ${rtt}ms). Aguardando o Host clicar em Iniciar...`, '#00ff88')
+      }
+    }
+
+    netManager.onMatchStart = (payload) => {
+      const fmt = payload.format || '1v1'
+      if (payload.hostTeam) {
+        onlineHostTeam = payload.hostTeam
+      }
+      showToast(asSpectator ? `👁️ Transmitindo partida ${fmt} ao vivo!` : `Partida ${fmt} iniciada pelo Host!`)
+      if (payload.gameType === 'turbo') {
+        const tuning = readTurboTuning()
+        if (payload.format) tuning.matchFormat = payload.format as TurboMatchFormat
+        if (asSpectator) tuning.spectatorMode = true
+        tuning.matchFormat = '1v1'   // force 1v1 for online
+        showScreen('turbo3d')
+        startTurboSoccer3D(selectedCar, tuning, asSpectator ? undefined : (netManager ?? undefined))
+      } else {
+        if (payload.format) selectedBBFormat = payload.format as '1v1' | '2v2'
+        startOnlineMatch()
       }
     }
 
@@ -647,7 +673,6 @@ async function handleJoinRoom(asSpectator = false) {
     }
 
     await netManager.joinRoom(code, asSpectator)
-    setOnlineStatus('join', asSpectator ? '👁️ Modo Espectador ativo! A transmissão iniciará assim que o Host começar.' : 'Conectado com sucesso! Aguardando o Host clicar em Iniciar...', '#a855f7')
   } catch (err: any) {
     console.error('[Online] Falha ao entrar:', err)
     const msg = err?.message || ''

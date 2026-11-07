@@ -120,6 +120,12 @@ export class TurboNetworkController {
       prevDisconnect?.()
       this.onPeerDisconnected?.()
     }
+
+    const prevConnLost = this.network.onConnectionLost
+    this.network.onConnectionLost = (reason) => {
+      prevConnLost?.(reason)
+      this.onPeerDisconnected?.()
+    }
   }
 
   // ============================================================

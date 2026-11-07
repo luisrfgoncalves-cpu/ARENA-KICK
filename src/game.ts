@@ -18,7 +18,7 @@ import {
   vnorm,
   vsub
 } from './physics'
-import { InputManager, PlayerInput } from './input'
+import { InputManager, PlayerInput, getLastValidDirection, setLastValidDirection } from './input'
 import { BotAI } from './bot'
 import { Renderer } from './renderer'
 import { AudioManager, initAudio } from './audio'
@@ -665,6 +665,12 @@ export class Game {
       moveX /= len
       moveY /= len
       p.dashDir = { x: moveX, y: moveY }
+      if (p === this.p1) setLastValidDirection(p.dashDir)
+    } else if (p === this.p1) {
+      const lastDir = getLastValidDirection()
+      if (Math.hypot(lastDir.x, lastDir.y) > 0.1) {
+        p.dashDir = lastDir
+      }
     }
 
     // Dash
