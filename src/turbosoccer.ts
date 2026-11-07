@@ -2699,48 +2699,71 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     const jumpJustPressed = jumpNow && !this.jumpHeld
     this.jumpHeld = jumpNow
 
-    // ── VOO LIVRE AÉREO (A + BOOST no ar — como no Turbo Soccer/RL original) ──
-    // Enquanto BOOST estiver pressionado no ar, o carro voa na direção do analógico
-    const boostNowForAerial = (gp.connected && gp.boost) || this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touch.boost
-    if (!pc.grounded && boostNowForAerial && pc.boost > 0 && !this.aerialBoostHeld) {
-      this.aerialBoostHeld = true
-    }
-    if (this.aerialBoostHeld && boostNowForAerial && !pc.grounded && pc.boost > 0) {
-      // Thrust aéreo direcional — aplica força na direção do analógico / tecla
-      const thrustForce = 18 * dt
-      let thrustX = 0
-      let thrustZ = 0
+    // ── NITRO NO AR DIRECIONAL (Pulo + Nitro vai na direção do analógico/controle) ──
+    const isNitroPressed = (gp.connected && gp.boost) || this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touch.boost
+    if (!pc.grounded && isNitroPressed && pc.boost > 0) {
+      // Lê o direcional colocado no controle (Analógico esquerdo / D-pad / Teclas / Toque)
+      let inputX = 0 // -1 = Esquerda, +1 = Direita
+      let inputZ = 0 // +1 = Frente, -1 = Trás
+
       if (gp.connected) {
-        if (Math.abs(gp.steerX) > 0.15) thrustX = gp.steerX
-        if (gp.rtThrottle > 0.1) thrustZ = -gp.rtThrottle  // RT = empurra para frente
-        if (gp.ltBrake > 0.1)    thrustZ = gp.ltBrake       // LT = empurra para trás
+        if (Math.abs(gp.steerX) > 0.15) inputX = gp.steerX
+        if (Math.abs(gp.stickY) > 0.15) inputZ = -gp.stickY // empurrar para frente (-stickY) = frente (+1)
+        if (gp.dpadUp)    inputZ = +1
+        if (gp.dpadDown)  inputZ = -1
+        if (gp.dpadLeft)  inputX = -1
+        if (gp.dpadRight) inputX = +1
+        if (inputZ === 0) {
+          if (gp.rtThrottle > 0.15) inputZ = +1
+          if (gp.ltBrake > 0.15)    inputZ = -1
+        }
       } else {
-        if (this.keys['KeyA'] || this.keys['ArrowLeft'])  thrustX = -1
-        if (this.keys['KeyD'] || this.keys['ArrowRight']) thrustX = +1
-        if (this.keys['KeyW'] || this.keys['ArrowUp'])    thrustZ = -1
-        if (this.keys['KeyS'] || this.keys['ArrowDown'])  thrustZ = +1
-        thrustX += this.touch.steer
-        thrustX = Math.max(-1, Math.min(1, thrustX))
+        if (this.keys['KeyW'] || this.keys['ArrowUp'])    inputZ = +1
+        if (this.keys['KeyS'] || this.keys['ArrowDown'])  inputZ = -1
+        if (this.keys['KeyA'] || this.keys['ArrowLeft'])  inputX = -1
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) inputX = +1
+        if (this.touch.steer)    inputX = this.touch.steer
+        if (this.touch.throttle) inputZ = this.touch.throttle
       }
-      // Aplica thrust no eixo do carro (mundo)
+
+      // Se nenhum direcional for inclinado, o impulso vai direto para a FRENTE do carro
+      if (Math.abs(inputX) < 0.15 && Math.abs(inputZ) < 0.15) {
+        inputZ = 1.0
+      }
+
+      // Converte o direcional do controle para o espaço da arena conforme a rotação do carro
       const sinY = Math.sin(pc.yaw), cosY = Math.cos(pc.yaw)
-      pc.velX = (pc.velX || 0) + (thrustX * cosY + thrustZ * sinY) * thrustForce * 60
-      pc.velZ = (pc.velZ || 0) + (-thrustX * sinY + thrustZ * cosY) * thrustForce * 60
-      pc.velY += thrustForce * 50  // leve impulso para cima também (mantém altitude)
-      // Clamp para não voar demais
-      const maxAerialSpd = 55
-      const aerSpd = Math.hypot(pc.velX, pc.velZ)
-      if (aerSpd > maxAerialSpd) {
-        pc.velX = (pc.velX / aerSpd) * maxAerialSpd
-        pc.velZ = (pc.velZ / aerSpd) * maxAerialSpd
+      // inputZ > 0 é FRENTE (+sinY, +cosY)
+      // inputX > 0 é DIREITA (+cosY, -sinY)
+      let boostDirX = inputX * cosY + inputZ * sinY
+      let boostDirZ = -inputX * sinY + inputZ * cosY
+
+      const dirLen = Math.hypot(boostDirX, boostDirZ) || 1
+      boostDirX /= dirLen
+      boostDirZ /= dirLen
+
+      // Impulso horizontal firme na direção que o jogador apontou
+      const nitroAirThrust = 62 * dt
+      pc.velX = (pc.velX || 0) + boostDirX * nitroAirThrust
+      pc.velZ = (pc.velZ || 0) + boostDirZ * nitroAirThrust
+
+      // SEM sustentação vertical para NÃO ficar voando — gravidade atua normalmente
+      const maxAirSpd = 46
+      const curAirSpd = Math.hypot(pc.velX, pc.velZ)
+      if (curAirSpd > maxAirSpd) {
+        pc.velX = (pc.velX / curAirSpd) * maxAirSpd
+        pc.velZ = (pc.velZ / curAirSpd) * maxAirSpd
       }
-      pc.velY = Math.min(pc.velY, 20)
-      pc.boost = Math.max(0, pc.boost - 28 * dt)
+
+      // Alinha suavemente o nariz do carro com a direção do impulso
+      const targetYaw = Math.atan2(boostDirX, boostDirZ)
+      const diffYaw = Math.atan2(Math.sin(targetYaw - pc.yaw), Math.cos(targetYaw - pc.yaw))
+      pc.yaw += diffYaw * Math.min(1.0, 9 * dt)
+
+      if (this.isTraining) pc.boost = 100
+      else pc.boost = Math.max(0, pc.boost - 32 * dt)
       pc.showFlame(true)
-    } else {
-      this.aerialBoostHeld = false
     }
-    if (pc.grounded) this.aerialBoostHeld = false
 
     // ── PULO 1 e PULO 2 / FLIP DIRECIONAL (como no Turbo Soccer original) ──
     if (jumpJustPressed) {
@@ -2805,9 +2828,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       }
     }
 
-    // Sustentação do 1º pulo se o jogador mantiver pressionado (Pulo Variável / Super Jump)
-    if (jumpNow && pc.jumpHoldTimer > 0 && !pc.grounded && pc.jumpCount === 1) {
-      pc.velY += 40 * dt
+    // Controle do timer de pulo (sem impulso vertical excessivo para não ficar voando)
+    if (pc.jumpHoldTimer > 0 && !pc.grounded) {
       pc.jumpHoldTimer -= dt
     }
 
@@ -2997,34 +3019,39 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       }
     }
 
-    // ── MOVIMENTO HORIZONTAL NO SOLO & WALL RIDING (Rocket League Style) ──
+    // ── MOVIMENTO HORIZONTAL NO SOLO & BARREIRAS DO CAMPO (Sem subir paredes/teto/arquibancadas) ──
     const limX = FIELD_W / 2 - 2.8
     const limZ = FIELD_L / 2 - 2.8
-    const nearWallX = Math.abs(car.pos.x) >= limX - 1.2
-    const nearWallZ = Math.abs(car.pos.z) >= limZ - 1.2 && Math.abs(car.pos.x) > GOAL_W / 2
 
-    // Wall Riding: quando o carro atinge as paredes com velocidade, sobe a rampa curva e anda na parede
-    if ((nearWallX || nearWallZ) && Math.abs(car.speed) > 0.35) {
-      const climbSpeed = Math.abs(car.speed) * 28 * dt
-      car.pos.y = Math.min(CEIL_H - 2.5, car.pos.y + climbSpeed)
-      car.grounded = true // permite pular da parede!
-      car.jumpCount = 0
-      if (nearWallX) {
-        const wallSide = Math.sign(car.pos.x)
-        car.rollAngle = -wallSide * Math.PI * 0.45 // inclina as rodas contra a parede
-      }
+    // Trava de altura estrita: carros NUNCA chegam no teto nem sobem nas arquibancadas
+    const MAX_CAR_HEIGHT = 4.2
+    if (car.pos.y > MAX_CAR_HEIGHT) {
+      car.pos.y = MAX_CAR_HEIGHT
+      if (car.velY > 0) car.velY = 0
+    }
+
+    // Colisão com as paredes de vidro da arena: o carro para e rebate suavemente, sem escalar paredes
+    if (Math.abs(car.pos.x) >= limX) {
+      car.pos.x = Math.sign(car.pos.x) * limX
+      car.speed *= 0.55
+      if (!car.grounded) car.velX = -car.velX * 0.3
+    }
+    if (Math.abs(car.pos.z) >= limZ && Math.abs(car.pos.x) > GOAL_W / 2) {
+      car.pos.z = Math.sign(car.pos.z) * limZ
+      car.speed *= 0.55
+      if (!car.grounded) car.velZ = -car.velZ * 0.3
     }
 
     if (car.grounded) {
       const spd = car.speed * 50 * dt
       car.pos.x += Math.sin(car.yaw) * spd
       car.pos.z += Math.cos(car.yaw) * spd
+      car.pitch = 0
+      car.rollAngle = 0
+    } else {
       car.pitch = car.aerialPitch
+      car.rollAngle = car.isRolling ? car.rollAngle : car.aerialRoll
     }
-
-    // Aplica pitch/roll visual aereo
-    car.pitch     = car.aerialPitch
-    car.rollAngle = car.isRolling ? car.rollAngle : (nearWallX && car.pos.y > 1.0 ? car.rollAngle : car.aerialRoll)
 
     car.pos.x = Math.max(-limX, Math.min(limX, car.pos.x))
     car.pos.z = Math.max(-limZ, Math.min(limZ, car.pos.z))
@@ -3836,9 +3863,34 @@ private resolveCarCarCollision() {
       car.jumpHoldTimer = 0.20
       this.audio.playDash()
       this.emitTireSmoke(car, true)
-    } else if (input.jump && car.jumpHoldTimer > 0 && !car.grounded && car.jumpCount === 1) {
-      car.velY += 40 * dt
+    } else if (car.jumpHoldTimer > 0 && !car.grounded) {
       car.jumpHoldTimer -= dt
+    }
+
+    // Nitro no ar (remoto / predição na direção do controle)
+    if (isBoosting && !car.grounded) {
+      let inputX = input.steer
+      let inputZ = input.throttle
+      if (Math.abs(inputX) < 0.15 && Math.abs(inputZ) < 0.15) {
+        inputZ = 1.0
+      }
+      const sinY = Math.sin(car.yaw), cosY = Math.cos(car.yaw)
+      let boostDirX = inputX * cosY + inputZ * sinY
+      let boostDirZ = -inputX * sinY + inputZ * cosY
+      const dirLen = Math.hypot(boostDirX, boostDirZ) || 1
+      boostDirX /= dirLen
+      boostDirZ /= dirLen
+
+      const nitroAirThrust = 62 * dt
+      car.velX = (car.velX || 0) + boostDirX * nitroAirThrust
+      car.velZ = (car.velZ || 0) + boostDirZ * nitroAirThrust
+
+      const maxAirSpd = 46
+      const curAirSpd = Math.hypot(car.velX, car.velZ)
+      if (curAirSpd > maxAirSpd) {
+        car.velX = (car.velX / curAirSpd) * maxAirSpd
+        car.velZ = (car.velZ / curAirSpd) * maxAirSpd
+      }
     }
 
     this.applyCarPhysics(car, dt)
