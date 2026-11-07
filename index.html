@@ -328,7 +328,12 @@
 
     /* ══════════════════════════════════════════════════════════
        GARAGEM 3D — DASHBOARD ELEGANTE DIVIDIDO (SPLIT CONSOLE)
+       NUNCA CORTA: Scrollbar Temática + Barra de Ação Flutuante
        ══════════════════════════════════════════════════════════ */
+    #screen-garage-3d {
+      padding-bottom: 95px !important;
+    }
+
     .garage-container {
       width: min(1080px, 96vw);
       display: grid;
@@ -340,6 +345,7 @@
     @media (max-width: 860px) {
       .garage-container {
         grid-template-columns: 1fr;
+        gap: 14px;
       }
     }
 
@@ -351,13 +357,13 @@
       box-shadow: 0 8px 0 var(--ink);
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     #garage-preview-stage {
       position: relative;
       width: 100%;
-      height: 280px;
+      height: clamp(190px, 23vh, 250px);
       border-radius: 18px;
       overflow: hidden;
       border: 3px solid var(--ink);
@@ -432,20 +438,39 @@
       background: var(--card-bg);
       border: 3px solid var(--ink);
       border-radius: 22px;
-      padding: 16px 20px;
+      padding: 14px 18px;
       box-shadow: 0 8px 0 var(--ink);
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .setting-section-title {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       letter-spacing: 1px;
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+
+    .garage-action-bar {
+      position: sticky;
+      bottom: 12px;
+      z-index: 100;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: rgba(7, 11, 22, 0.92);
+      border: 3px solid var(--ink);
+      border-radius: 22px;
+      padding: 10px 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: min(1080px, 96vw);
+      margin-top: 6px;
     }
 
     .pills-row {
@@ -676,7 +701,7 @@
     <div class="arcade-card turbo-card" id="btn-turbo-3d">
       <div class="card-cover cover-turbo">
         <span class="card-badge" style="background:var(--neon-orange);">★ 3D DESTAQUE</span>
-        <div class="card-art-hero">🏎️⚽💨</div>
+        <div class="card-art-hero"><span style="font-size:54px; filter:drop-shadow(0 0 18px rgba(255,122,0,0.85));">🏎️</span><span style="font-size:26px; margin-left:-6px; filter:drop-shadow(0 0 12px rgba(255,210,63,0.9));">⚡</span></div>
       </div>
       <div class="card-content">
         <div class="card-title">TURBO SOCCER 3D</div>
@@ -694,7 +719,7 @@
     <div class="arcade-card bot-card" id="btn-vs-bot">
       <div class="card-cover cover-bot">
         <span class="card-badge" style="background:#0284c7;">🤖 1P ARCADE</span>
-        <div class="card-art-hero">⚽🤖⚡</div>
+        <div class="card-art-hero"><span style="font-size:54px; filter:drop-shadow(0 0 18px rgba(0,210,255,0.85));">🤖</span><span style="font-size:26px; margin-left:-6px; filter:drop-shadow(0 0 12px rgba(34,197,94,0.9));">⚽</span></div>
       </div>
       <div class="card-content">
         <div class="card-title">BEATBALL VS BOT</div>
@@ -712,7 +737,7 @@
     <div class="arcade-card local-card" id="btn-local-2p">
       <div class="card-cover cover-local">
         <span class="card-badge" style="background:#db2777;">⚔️ 2P LOCAL</span>
-        <div class="card-art-hero">🟢💥🔴</div>
+        <div class="card-art-hero"><span style="font-size:54px; filter:drop-shadow(0 0 18px rgba(255,51,119,0.85));">⚔️</span><span style="font-size:26px; margin-left:-6px; filter:drop-shadow(0 0 12px rgba(255,210,63,0.9));">🔥</span></div>
       </div>
       <div class="card-content">
         <div class="card-title">BEATBALL 2P LOCAL</div>
@@ -730,7 +755,7 @@
     <div class="arcade-card online-card" id="btn-online-1v1">
       <div class="card-cover cover-online">
         <span class="card-badge" style="background:#059669;">🌐 MULTIPLAYER</span>
-        <div class="card-art-hero">🌍⚽🔗</div>
+        <div class="card-art-hero"><span style="font-size:54px; filter:drop-shadow(0 0 18px rgba(34,197,94,0.85));">🌐</span><span style="font-size:26px; margin-left:-6px; filter:drop-shadow(0 0 12px rgba(0,210,255,0.9));">🏆</span></div>
       </div>
       <div class="card-content">
         <div class="card-title">MULTIPLAYER ONLINE</div>
@@ -928,10 +953,10 @@
     </div>
   </div>
 
-  <div class="action-bar">
-    <button class="btn btn-orange" id="btn-start-turbo-match">⚡ ACELERAR PARA O ESTÁDIO</button>
-    <button class="btn btn-secondary" id="btn-training-turbo" style="border-color:var(--neon-cyan); color:var(--neon-cyan);">🎯 TREINO LIVRE</button>
-    <button class="btn btn-secondary" id="btn-back-garage-menu">← MENU</button>
+  <div class="garage-action-bar">
+    <button class="btn btn-orange" id="btn-start-turbo-match" style="padding:12px 28px; font-size:15px;">⚡ ACELERAR PARA O ESTÁDIO</button>
+    <button class="btn btn-secondary" id="btn-training-turbo" style="border-color:var(--neon-cyan); color:var(--neon-cyan); padding:12px 20px;">🎯 TREINO LIVRE</button>
+    <button class="btn btn-secondary" id="btn-back-garage-menu" style="padding:12px 20px;">← MENU</button>
   </div>
 </div>
 
@@ -1085,6 +1110,11 @@
       navigator.serviceWorker.register('/sw.js').catch((err) => console.log('SW reg error:', err))
     })
   }
+
+  // Blindagem Mobile: Previne zoom acidental por duplo toque e gestos no Safari iOS / Android
+  document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('dblclick', function(e) { e.preventDefault(); }, { passive: false });
 </script>
 <script type="module" src="/src/main.ts"></script>
 </body>

@@ -504,15 +504,22 @@ export class TurboSoccerGame {
         this.setTrainingMode(true)
       }
 
-      // Carrega modelos 3D em segundo plano
-      void this.playerCar.loadModel(this.selectedCarModelId)
+      // Carrega modelos 3D reais (GLB) para todos os carros — variedade total sem caixas geométricas
+      const botModelPool = ['buggy', 'ferrari', 'toycar', 'cartoon-yellow', 'cartoon-green', 'cartoon-purple', 'cartoon-moto', 'sportscar']
+      const loadPromises: Promise<any>[] = []
+
+      loadPromises.push(this.playerCar.loadModel(this.selectedCarModelId))
       for (let i = 1; i < this.orangeCars.length; i++) {
-        void this.orangeCars[i].loadModel(this.selectedCarModelId)
+        const allyModel = botModelPool[(i - 1) % botModelPool.length]
+        loadPromises.push(this.orangeCars[i].loadModel(allyModel))
       }
-      void this.botCar.loadModel('cartoon-yellow')
+      const primaryBotModel = this.selectedCarModelId === 'buggy' ? 'ferrari' : 'buggy'
+      loadPromises.push(this.botCar.loadModel(primaryBotModel))
       for (let i = 1; i < this.blueCars.length; i++) {
-        void this.blueCars[i].loadModel('cartoon-yellow')
+        const botModel = botModelPool[(i + 1) % botModelPool.length]
+        loadPromises.push(this.blueCars[i].loadModel(botModel))
       }
+      void Promise.allSettled(loadPromises)
     } catch (err) {
       console.error('[TurboSoccer] Falha crítica no initAsync:', err)
     }
@@ -2199,20 +2206,21 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     root.appendChild(wrap)
 
     const bind = (el: HTMLElement, on: () => void, off: () => void) => {
-      const start = (e: Event) => {
+      const start = (e: PointerEvent) => {
         e.preventDefault()
-        el.style.transform = 'translateY(3px) scale(0.95)'
+        try { el.setPointerCapture(e.pointerId) } catch {}
+        el.style.transform = 'translateY(3px) scale(0.94)'
         on()
       }
-      const end = (e: Event) => {
+      const end = (e: PointerEvent) => {
         e.preventDefault()
+        try { el.releasePointerCapture(e.pointerId) } catch {}
         el.style.transform = 'none'
         off()
       }
-      el.addEventListener('pointerdown', start)
-      el.addEventListener('pointerup', end)
-      el.addEventListener('pointerleave', end)
-      el.addEventListener('pointercancel', end)
+      el.addEventListener('pointerdown', start as any)
+      el.addEventListener('pointerup', end as any)
+      el.addEventListener('pointercancel', end as any)
     }
 
     bind(btnLeft,  () => { this.touch.steer = -1 }, () => { if (this.touch.steer === -1) this.touch.steer = 0 })
@@ -2301,6 +2309,18 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       this.updateHUD(dt)
       for (const car of this.allCars) car.update(dt)
       this.audio.updateEngine(Math.min(1, Math.abs(this.playerCar.speed) / 1.3), this.playerBoosting)
+
+      // Atualiza o Listener do Áudio Espacial 3D (Howler) com a posição e orientação real da Câmera
+      const camDir = new THREE.Vector3()
+      this.camera.getWorldDirection(camDir)
+      this.audio.updateListener(
+        this.camera.position.x,
+        this.camera.position.y,
+        this.camera.position.z,
+        camDir.x,
+        camDir.y,
+        camDir.z
+      )
     } else {
       this.audio.updateEngine(0, false)
     }
@@ -3265,20 +3285,16 @@ private resolveCarCarCollision() {
           this.triggerImpactFlash(hitPt)
           this.emitCartoonStarBurst(hitPt, 14, 0xffd23f)
 
-          // ── SOM EM CAMADAS PELO IMPACTO CARRO-CARRO ──
+          // ── SOM ESPACIAL 3D EM CAMADAS PELO IMPACTO CARRO-CARRO ──
           const impactCarSpeed = approach
+          this.audio.playCollisionTiered(impactCarSpeed * 30, hitPt.x, hitPt.y, hitPt.z)
           if (impactCarSpeed > 1.5) {
-            // ÉPICO: demolição em alta velocidade
             this.audio.playDemo()
             this.triggerCameraShake(1.0)
             this.emitCartoonStarBurst(hitPt, 18, 0xff3300)
           } else if (impactCarSpeed > 0.75) {
-            // MÉDIO: colisão forte
-            this.audio.playPowerHit()
             this.triggerCameraShake(0.45)
           } else {
-            // LEVE: batida suave
-            this.audio.playHit()
             this.triggerCameraShake(0.2)
           }
 
@@ -3708,20 +3724,15 @@ private resolveCarCarCollision() {
         b.vel.z = Math.cos(car.yaw) * powerF + nz * 10
         b.vel.y = Math.max(6.0, 10.0 + ny * 16)
         this.triggerCameraShake(0.55)
-        // ── SOM EM CAMADAS PELO IMPACTO TOTAL ──
+        // ── SOM ESPACIAL 3D EM CAMADAS PELO IMPACTO TOTAL CARRO-BOLA ──
         const impactSpeedBumper = b.vel.length() + carSpd
+        this.audio.playCollisionTiered(impactSpeedBumper, b.pos.x, b.pos.y, b.pos.z)
         if (impactSpeedBumper > 55) {
-          // ÉPICO: velocidade demo — explosão + shake max + starburst
           this.audio.playDemo()
           this.triggerCameraShake(1.0)
           this.emitCartoonStarBurst(b.pos, 18, 0xff3300)
         } else if (impactSpeedBumper > 28) {
-          // MÉDIO: power hit com shake moderado
-          this.audio.playPowerHit()
           this.triggerCameraShake(0.4)
-        } else {
-          // LEVE: som de hit suave
-          this.audio.playHit()
         }
         this.triggerImpactFlash(b.pos)
         this.emitCartoonStarBurst(b.pos, 14, 0xffd23f)
@@ -3733,24 +3744,20 @@ private resolveCarCarCollision() {
         b.vel.z = nz * 10
         b.vel.y = Math.max(2.5, ny * 8)
       } else {
-        // Colisão padrão lateral/traseira — também tiered
+        // Colisão padrão lateral/traseira — também tiered e espacial
         const impF = 18 + carSpd * 22
         b.vel.x = nx * impF + Math.sin(car.yaw) * carSpd * 12
         b.vel.z = nz * impF + Math.cos(car.yaw) * carSpd * 12
         b.vel.y = Math.max(b.vel.y, 5.0 + ny * 12)
         const impactSpeedLateral = b.vel.length() + carSpd
+        this.audio.playCollisionTiered(impactSpeedLateral, b.pos.x, b.pos.y, b.pos.z)
         if (impactSpeedLateral > 55) {
-          // ÉPICO
           this.audio.playDemo()
           this.triggerCameraShake(1.0)
           this.emitCartoonStarBurst(b.pos, 18, 0xff3300)
         } else if (impactSpeedLateral > 28) {
-          // MÉDIO
-          this.audio.playPowerHit()
           this.triggerCameraShake(0.4)
         } else {
-          // LEVE
-          this.audio.playHit()
           this.triggerCameraShake(0.25)
         }
       }
@@ -4479,9 +4486,12 @@ private resolveCarCarCollision() {
     const root = document.getElementById('turbo-hud-root')
     if (root) root.remove()
 
-    // Remove todos os carros da cena
+    // Remove todos os carros e sombras da cena
     for (const car of this.allCars) {
       this.scene.remove(car.group)
+      if ((car as any).shadowMesh && (car as any).shadowMesh.parent) {
+        (car as any).shadowMesh.parent.remove((car as any).shadowMesh)
+      }
     }
     this.allCars = []
     this.orangeCars = []
@@ -4550,7 +4560,20 @@ export class CarObject {
     this.scene     = scene
     this.teamColor = color
     this.isBot     = isBot
-    this.buildSculptedCar()
+
+    // Sombra permanente no solo
+    this.shadowMesh = new THREE.Mesh(
+      new THREE.CircleGeometry(2.8, 24),
+      new THREE.MeshBasicMaterial({ color: 0x060b14, transparent: true, opacity: 0.45 })
+    )
+    this.shadowMesh.rotation.x = -Math.PI / 2
+    this.shadowMesh.position.set(this.pos.x, 0.04, this.pos.z)
+    this.scene.add(this.shadowMesh)
+
+    // Fogo de Nitro Traseiro
+    this.flameGroup = this.buildFlame()
+    this.group.add(this.flameGroup)
+
     scene.add(this.group)
   }
 
@@ -4565,7 +4588,6 @@ export class CarObject {
     this.group.rotation.y = this.yaw
     this.group.rotation.x = this.pitch
     this.group.rotation.z = this.rollAngle
-
 
     if (this.shadowMesh) {
       this.shadowMesh.position.set(this.pos.x, 0.04, this.pos.z)
@@ -4591,226 +4613,94 @@ export class CarObject {
           resolve()
         }
       }
-      // Timeout de segurança: se o carregamento demorar, segue com o carro escupido
-      setTimeout(done, 2500)
+      setTimeout(done, 3500)
 
       const loader = new GLTFLoader()
+      const applyGltf = (gltf: any) => {
+        try {
+          while (this.group.children.length > 0) {
+            this.group.remove(this.group.children[0])
+          }
+          this.wheels = []
+          this.steerWheels = []
+
+          const model = gltf.scene.clone(true)
+          model.updateMatrixWorld(true)
+          let bbox = new THREE.Box3().setFromObject(model)
+          const rawSize = bbox.getSize(new THREE.Vector3())
+
+          if (rawSize.x > rawSize.z) model.rotation.y = -Math.PI / 2
+
+          // Normaliza o comprimento para ~5.2 m (porte ágil e esportivo)
+          const longLen = Math.max(rawSize.x, rawSize.z)
+          if (longLen > 0.0001) model.scale.setScalar(5.2 / longLen)
+
+          model.updateMatrixWorld(true)
+          bbox = new THREE.Box3().setFromObject(model)
+          model.position.y = Number.isFinite(bbox.min.y) ? -bbox.min.y + 0.05 : 0.15
+
+          model.traverse((child: any) => {
+            const cname = (child.name || '').toLowerCase()
+            if (cname.includes('wheel') || cname.includes('tire') || cname.includes('roda')) {
+              this.wheels.push(child)
+              if (cname.includes('front') || cname.includes('f_') || cname.includes('diant')) {
+                this.steerWheels.push(child)
+              }
+            }
+
+            if (child.isMesh) {
+              child.castShadow = true
+              child.receiveShadow = true
+              const mesh = child as THREE.Mesh
+              const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
+              if (origMat) {
+                const origColor = origMat.color && typeof origMat.color.clone === 'function'
+                  ? origMat.color.clone()
+                  : new THREE.Color(this.teamColor)
+                const origMap = origMat.map || null
+                mesh.material = new THREE.MeshToonMaterial({
+                  color: origColor,
+                  map: origMap,
+                  gradientMap: TOON_GRADIENT
+                })
+              }
+            }
+          })
+
+          this.group.add(model)
+
+          // Luz Neon Underglow no chão sob o veículo
+          const underglow = new THREE.PointLight(this.teamColor, 2.2, 9)
+          underglow.position.set(0, 0.4, 0)
+          this.group.add(underglow)
+
+          // Fogo de Nitro Traseiro
+          this.flameGroup = this.buildFlame()
+          this.flameGroup.position.set(0, 0.1, 0)
+          this.group.add(this.flameGroup)
+
+          done()
+        } catch (err) {
+          console.warn('[CarObject] Erro aplicando modelo:', err)
+          done()
+        }
+      }
+
       loader.load(
         file,
-        (gltf) => {
-          try {
-            while (this.group.children.length > 0) {
-              this.group.remove(this.group.children[0])
-            }
-            this.wheels = []
-            this.steerWheels = []
-
-            const model = gltf.scene
-            model.updateMatrixWorld(true)
-            let bbox = new THREE.Box3().setFromObject(model)
-            const rawSize = bbox.getSize(new THREE.Vector3())
-
-            if (rawSize.x > rawSize.z) model.rotation.y = -Math.PI / 2
-
-            // Normaliza o comprimento para ~5.2 m (porte ágil e esportivo)
-            const longLen = Math.max(rawSize.x, rawSize.z)
-            if (longLen > 0.0001) model.scale.setScalar(5.2 / longLen)
-
-            model.updateMatrixWorld(true)
-            bbox = new THREE.Box3().setFromObject(model)
-            model.position.y = Number.isFinite(bbox.min.y) ? -bbox.min.y + 0.05 : 0.15
-
-            model.traverse((child) => {
-              const cname = (child.name || '').toLowerCase()
-              if (cname.includes('wheel') || cname.includes('tire') || cname.includes('roda')) {
-                this.wheels.push(child as any)
-                if (cname.includes('front') || cname.includes('f_') || cname.includes('diant')) {
-                  this.steerWheels.push(child as any)
-                }
-              }
-
-              if ((child as THREE.Mesh).isMesh) {
-                child.castShadow = true
-                child.receiveShadow = true
-                const mesh = child as THREE.Mesh
-                const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
-                if (origMat) {
-                  const origColor = origMat.color && typeof origMat.color.clone === 'function'
-                    ? origMat.color.clone()
-                    : new THREE.Color(this.teamColor)
-                  const origMap = origMat.map || null
-                  mesh.material = new THREE.MeshToonMaterial({
-                    color: origColor,
-                    map: origMap,
-                    gradientMap: TOON_GRADIENT
-                  })
-                }
-              }
-            })
-
-            this.group.add(model)
-
-            // Luz Neon Underglow no chão sob o veículo
-            const underglow = new THREE.PointLight(this.teamColor, 2.2, 9)
-            underglow.position.set(0, 0.4, 0)
-            this.group.add(underglow)
-
-            // Fogo de Nitro Traseiro
-            this.flameGroup = this.buildFlame()
-            this.flameGroup.position.set(0, 0.1, 0)
-            this.group.add(this.flameGroup)
-
-            done()
-          } catch (err) {
-            console.warn('[CarObject] Erro aplicando modelo:', err)
-            this.buildSculptedCar()
-            done()
-          }
-        },
+        (gltf) => applyGltf(gltf),
         undefined,
         () => {
-          // Fallback gracioso se houver falha de rede
-          this.buildSculptedCar()
-          done()
+          if (file !== '/models/vehicle-truck-red.glb') {
+            loader.load('/models/vehicle-truck-red.glb', (fGltf) => applyGltf(fGltf), undefined, () => done())
+          } else {
+            done()
+          }
         }
       )
     })
   }
 
-
-  private buildSculptedCar() {
-    const bodyMat = new THREE.MeshToonMaterial({
-      color: this.teamColor,
-      gradientMap: TOON_GRADIENT
-    })
-    const darkChassiMat = new THREE.MeshToonMaterial({
-      color: 0x0f172a,
-      gradientMap: TOON_GRADIENT
-    })
-    const stripeMat = new THREE.MeshToonMaterial({
-      color: 0xffffff,
-      gradientMap: TOON_GRADIENT
-    })
-    const cabinMat = new THREE.MeshToonMaterial({
-      color: 0x1e293b,
-      gradientMap: TOON_GRADIENT
-    })
-    const rimMat = new THREE.MeshToonMaterial({
-      color: 0xfacc15, // Dourado cartoon
-      gradientMap: TOON_GRADIENT
-    })
-
-    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, px=0, py=0, pz=0, rx=0, ry=0, rz=0) => {
-      const m = new THREE.Mesh(geo, mat)
-      m.castShadow = true
-      m.receiveShadow = true
-      m.position.set(px, py, pz)
-      m.rotation.set(rx, ry, rz)
-      this.group.add(m)
-      return m
-    }
-
-
-    add(new THREE.BoxGeometry(2.8, 0.75, 5.2), bodyMat, 0, 0.65, 0)
-    add(new THREE.BoxGeometry(2.95, 0.25, 5.4), darkChassiMat, 0, 0.2, 0)
-
-
-    add(new THREE.BoxGeometry(2.6, 0.5, 1.9), bodyMat, 0, 0.98, 2.1, 0.12)
-    add(new THREE.BoxGeometry(2.5, 0.35, 0.6), darkChassiMat, 0, 0.45, 2.8)
-
-    // 3. Cockpit / Cabine Toon Arredondada
-    add(new THREE.BoxGeometry(2.2, 0.75, 2.5), cabinMat, 0, 1.6, -0.35, -0.05)
-    // Brilho de reflexo branco no vidro
-    add(new THREE.BoxGeometry(1.8, 0.55, 0.04), stripeMat, 0, 1.62, 0.95, -0.3)
-
-    // 4. Traseira & Spoiler Esportivo
-    add(new THREE.BoxGeometry(2.5, 0.55, 1.1), bodyMat, 0, 1.0, -2.4)
-
-    add(new THREE.BoxGeometry(3.1, 0.15, 0.85), bodyMat, 0, 2.05, -2.55)
-    for (const sx of [-1.55, 1.55]) {
-      add(new THREE.BoxGeometry(0.08, 0.45, 0.9), darkChassiMat, sx, 2.15, -2.55)
-    }
-    for (const sx of [-1.05, 1.05]) {
-      add(new THREE.BoxGeometry(0.12, 0.6, 0.14), darkChassiMat, sx, 1.72, -2.55)
-    }
-
-    // 5. Faixas Duplas de Corrida Brancas no Centro
-    for (const sx of [-0.3, 0.3]) {
-      add(new THREE.BoxGeometry(0.2, 0.05, 4.8), stripeMat, sx, 1.3, 0)
-    }
-
-
-    const ledMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff })
-    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff0044 })
-    for (const sx of [-0.95, 0.95]) {
-      add(new THREE.BoxGeometry(0.5, 0.22, 0.08), ledMat, sx, 0.85, 2.65)
-      add(new THREE.BoxGeometry(0.65, 0.25, 0.08), tailMat, sx, 0.85, -2.65)
-    }
-
-    // Escapamentos Duplos Cartoon
-    const pipeMat = new THREE.MeshToonMaterial({ color: 0x334155, gradientMap: TOON_GRADIENT })
-    const innerPipeMat = new THREE.MeshBasicMaterial({ color: 0xff4400 })
-    for (const sx of [-0.65, 0.65]) {
-      add(new THREE.CylinderGeometry(0.18, 0.18, 0.4, 12), pipeMat, sx, 0.5, -2.75, Math.PI / 2)
-      add(new THREE.CircleGeometry(0.14, 12), innerPipeMat, sx, 0.5, -2.96, 0, Math.PI)
-    }
-
-    // Luz Neon Underglow sob o Chassi Cartoon
-    const underglow = new THREE.PointLight(this.teamColor, 2.0, 8.5)
-    underglow.position.set(0, 0.35, 0)
-    this.group.add(underglow)
-
-    // 7. Rodas Grandes Cartoon
-    const wheelPositions: [number, number, number, boolean][] = [
-      [-1.55, 0.65, 1.6, true],   // Dianteira Esquerda
-      [1.55, 0.65, 1.6, true],    // Dianteira Direita
-      [-1.55, 0.65, -1.6, false], // Traseira Esquerda
-      [1.55, 0.65, -1.6, false]   // Traseira Direita
-    ]
-
-    this.wheels = []
-    this.steerWheels = []
-    const tireGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.6, 24)
-    const tireMat = new THREE.MeshToonMaterial({
-      color: 0x0f172a,
-      gradientMap: TOON_GRADIENT
-    })
-
-    wheelPositions.forEach(([wx, wy, wz, isFront]) => {
-      const wg = new THREE.Group()
-
-      const spinGroup = new THREE.Group()
-      const tire = new THREE.Mesh(tireGeo, tireMat)
-      tire.rotation.z = Math.PI / 2
-      tire.castShadow = true
-      spinGroup.add(tire)
-
-      // Roda com Estrela Amarela Central
-      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.64, 12), rimMat)
-      rim.rotation.z = Math.PI / 2
-      spinGroup.add(rim)
-
-      wg.add(spinGroup)
-      wg.position.set(wx, wy, wz)
-      this.group.add(wg)
-
-      this.wheels.push(spinGroup)
-      if (isFront) this.steerWheels.push(wg)
-    })
-
-    // Fogo de Nitro Traseiro
-    this.flameGroup = this.buildFlame()
-    this.group.add(this.flameGroup)
-
-
-    this.shadowMesh = new THREE.Mesh(
-      new THREE.CircleGeometry(2.9, 24),
-      new THREE.MeshBasicMaterial({ color: 0x0a1020, transparent: true, opacity: 0.4 })
-    )
-    this.shadowMesh.rotation.x = -Math.PI / 2
-    this.shadowMesh.position.set(this.pos.x, 0.04, this.pos.z)
-    this.scene.add(this.shadowMesh)
-  }
 
   private buildFlame(): THREE.Group {
     const fg = new THREE.Group()
