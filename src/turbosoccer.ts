@@ -275,12 +275,15 @@ export class TurboSoccerGame {
   private rumbleActive: { type: RumblePowerup; timeLeft: number } | null = null
   private botRumbleStates: Map<CarObject, { powerup: RumblePowerup | null; timer: number; active: { type: RumblePowerup; timeLeft: number } | null }> = new Map()
 
-  // Instant Replay
-  private replayBuffer: Array<{
+  // Instant Replay (Zero-Allocation Preallocated Ring Buffer para 60 FPS estavel sem GC pauses)
+  private static readonly MAX_REPLAY_FRAMES = 200
+  private replayRingBuffer: Array<{
     ballPos: THREE.Vector3
     ballRot: THREE.Euler
     cars: Array<{ pos: THREE.Vector3; yaw: number; pitch: number; roll: number }>
   }> = []
+  private replayHead = 0
+  private replayTotalStored = 0
   private isReplaying = false
   private replayPlaybackFrames: Array<{
     ballPos: THREE.Vector3
@@ -293,6 +296,16 @@ export class TurboSoccerGame {
   private hudRumbleIcon?: HTMLElement
   private hudRumbleName?: HTMLElement
   private hudRumbleHint?: HTMLElement
+  private hudNitroArc: SVGElement | null = null
+
+  // Scratch vectors reutilizaveis (Zero Allocation no game loop a 60 FPS)
+  private readonly _camTargetPos = new THREE.Vector3()
+  private readonly _camTargetLook = new THREE.Vector3()
+  private readonly _camToBall = new THREE.Vector3()
+  private readonly _camDir = new THREE.Vector3()
+  private readonly _camOd = new THREE.Vector3()
+  private readonly _camOffset = new THREE.Vector3(0, 18, 36)
+  private readonly _camReplayTarget = new THREE.Vector3()
 
   constructor(container: HTMLElement, carModelId = 'octane-cartoon', tuning?: TurboTuning) {
     this.container = container
@@ -316,6 +329,7 @@ export class TurboSoccerGame {
 
     initAudio()
     this.audio = new AudioManager()
+    this.initReplayBuffer()
 
     // Geometria de estrela cartoon (4 pontas expressiva estilo anime/comic)
     const starShape = new THREE.Shape()
@@ -1780,9 +1794,30 @@ export class TurboSoccerGame {
     }
   }
 
+  // Pre-alocação do Ring Buffer de Instant Replay (Zero heap allocations no game loop)
+  private initReplayBuffer() {
+    this.replayRingBuffer = []
+    for (let f = 0; f < TurboSoccerGame.MAX_REPLAY_FRAMES; f++) {
+      const cars = []
+      for (let c = 0; c < 8; c++) {
+        cars.push({
+          pos: new THREE.Vector3(),
+          yaw: 0,
+          pitch: 0,
+          roll: 0
+        })
+      }
+      this.replayRingBuffer.push({
+        ballPos: new THREE.Vector3(),
+        ballRot: new THREE.Euler(),
+        cars
+      })
+    }
+    this.replayHead = 0
+    this.replayTotalStored = 0
+  }
 
   //  HUD ARCADE CARTOON
-
   private buildHUD() {
     const existing = document.getElementById('turbo-hud-root')
     if (existing) existing.remove()
@@ -1933,6 +1968,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     this.hudCtrlMode   = document.getElementById('turbo-ctrl-mode')!
     this.hudCountdown  = document.getElementById('turbo-countdown-text')!
     this.hudCamStatus  = document.getElementById('ballcam-status')!
+    this.hudNitroArc   = (document.getElementById('nitro-arc') as unknown as SVGElement) || null
 
     this.hudReplayBanner = document.getElementById('turbo-replay-banner') || undefined
     this.hudRumbleCard   = document.getElementById('turbo-rumble-card') || undefined
@@ -2179,19 +2215,27 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           this.updateRumble(dt)
         }
 
-        // Buffer do Instant Replay
-        this.replayBuffer.push({
-          ballPos: this.ball.pos.clone(),
-          ballRot: this.ball.mesh.rotation.clone(),
-          cars: this.allCars.map((c) => ({
-            pos: c.pos.clone(),
-            yaw: c.yaw,
-            pitch: c.pitch,
-            roll: c.roll
-          }))
-        })
-        if (this.replayBuffer.length > 200) {
-          this.replayBuffer.shift()
+        // Buffer do Instant Replay - Zero Allocation Ring Buffer (sem garbage collection pauses)
+        const rFrame = this.replayRingBuffer[this.replayHead]
+        if (rFrame) {
+          rFrame.ballPos.copy(this.ball.pos)
+          rFrame.ballRot.copy(this.ball.mesh.rotation)
+          for (let i = 0; i < this.allCars.length; i++) {
+            const c = this.allCars[i]
+            let slot = rFrame.cars[i]
+            if (!slot) {
+              slot = { pos: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0 }
+              rFrame.cars[i] = slot
+            }
+            slot.pos.copy(c.pos)
+            slot.yaw = c.yaw
+            slot.pitch = c.pitch
+            slot.roll = c.roll
+          }
+          this.replayHead = (this.replayHead + 1) % TurboSoccerGame.MAX_REPLAY_FRAMES
+          if (this.replayTotalStored < TurboSoccerGame.MAX_REPLAY_FRAMES) {
+            this.replayTotalStored++
+          }
         }
       } else {
         for (const car of this.allCars) car.freeze()
@@ -3681,52 +3725,51 @@ private resolveCarCarCollision() {
   private updateCamera(dt: number) {
     if (this.spectatorMode) {
       // CÂMERA DE TRANSMISSÃO TV AO VIVO: Acompanha a ação e a bola de forma cinematográfica
-      const targetPos = new THREE.Vector3(FIELD_W * 0.38, 22, this.ball.pos.z * 0.55)
-      const targetLook = this.ball.pos.clone().add(new THREE.Vector3(0, 1.2, 0))
-      this.camCurrentPos.lerp(targetPos, 4 * dt)
-      this.camCurrentLook.lerp(targetLook, 7 * dt)
+      this._camTargetPos.set(FIELD_W * 0.38, 22, this.ball.pos.z * 0.55)
+      this._camTargetLook.copy(this.ball.pos)
+      this._camTargetLook.y += 1.2
+      this.camCurrentPos.lerp(this._camTargetPos, 4 * dt)
+      this.camCurrentLook.lerp(this._camTargetLook, 7 * dt)
       this.camera.position.copy(this.camCurrentPos)
       this.camera.lookAt(this.camCurrentLook)
       return
     }
 
     const pc = this.playerCar
-    let targetPos: THREE.Vector3
-    let targetLook: THREE.Vector3
 
     if (this.isBallCam) {
 
-      const toBall = new THREE.Vector3(this.ball.pos.x - pc.pos.x, 0, this.ball.pos.z - pc.pos.z)
-      const ballDist = toBall.length()
-      const ballDir = ballDist > 0.5 ? toBall.normalize() : new THREE.Vector3(0, 0, -1)
-      const camDir = ballDir.clone().negate()
-
+      this._camToBall.set(this.ball.pos.x - pc.pos.x, 0, this.ball.pos.z - pc.pos.z)
+      const ballDist = this._camToBall.length()
+      if (ballDist > 0.5) {
+        this._camDir.copy(this._camToBall).normalize().negate()
+      } else {
+        this._camDir.set(0, 0, -1)
+      }
 
       const sinH = Math.sin(this.camOrbitH), cosH = Math.cos(this.camOrbitH)
-      const od = new THREE.Vector3(
-        camDir.x * cosH - camDir.z * sinH,
+      this._camOd.set(
+        this._camDir.x * cosH - this._camDir.z * sinH,
         0,
-        camDir.x * sinH + camDir.z * cosH
+        this._camDir.x * sinH + this._camDir.z * cosH
       )
-
 
       const CAM_DIST = this.studioParams.camDist
       const CAM_H    = this.studioParams.camH + this.camOrbitV * 4.0
 
-      targetPos = new THREE.Vector3(
-        pc.pos.x + od.x * CAM_DIST,
+      this._camTargetPos.set(
+        pc.pos.x + this._camOd.x * CAM_DIST,
         pc.pos.y + CAM_H,
-        pc.pos.z + od.z * CAM_DIST
+        pc.pos.z + this._camOd.z * CAM_DIST
       )
 
-
       if (ballDist < 8.0) {
-        targetPos.y += (8.0 - ballDist) * 0.45
+        this._camTargetPos.y += (8.0 - ballDist) * 0.45
       }
 
       // Olha para um ponto ligeiramente acima do meio entre carro e bola
-      targetLook = pc.pos.clone().lerp(this.ball.pos, 0.35)
-      targetLook.y = Math.max(pc.pos.y + 1.8, this.ball.pos.y * 0.45 + 1.6)
+      this._camTargetLook.copy(pc.pos).lerp(this.ball.pos, 0.35)
+      this._camTargetLook.y = Math.max(pc.pos.y + 1.8, this.ball.pos.y * 0.45 + 1.6)
 
     } else {
 
@@ -3734,33 +3777,32 @@ private resolveCarCarCollision() {
       const CAM_H    = this.studioParams.camH + this.camOrbitV * 3.5
 
       const ya = pc.yaw + this.camOrbitH
-      targetPos = new THREE.Vector3(
+      this._camTargetPos.set(
         pc.pos.x - Math.sin(ya) * CAM_DIST,
         pc.pos.y + CAM_H,
         pc.pos.z - Math.cos(ya) * CAM_DIST
       )
 
-
-      targetLook = new THREE.Vector3(
+      this._camTargetLook.set(
         pc.pos.x + Math.sin(pc.yaw) * 6.5,
         pc.pos.y + 2.0,
         pc.pos.z + Math.cos(pc.yaw) * 6.5
       )
     }
 
+    this._camTargetPos.y = Math.max(2.6, this._camTargetPos.y)
 
-    targetPos.y = Math.max(2.6, targetPos.y)
-
-
-    this.camCurrentPos.lerp(targetPos, 12 * dt)
-    this.camCurrentLook.lerp(targetLook, 14 * dt)
+    this.camCurrentPos.lerp(this._camTargetPos, 12 * dt)
+    this.camCurrentLook.lerp(this._camTargetLook, 14 * dt)
 
     this.camera.position.copy(this.camCurrentPos)
     if (this.camShakeIntensity > 0.01) {
       const sx = (Math.random() - 0.5) * 2 * this.camShakeIntensity
       const sy = (Math.random() - 0.5) * 2 * this.camShakeIntensity
       const sz = (Math.random() - 0.5) * 2 * this.camShakeIntensity
-      this.camera.position.add(new THREE.Vector3(sx, sy, sz))
+      this.camera.position.x += sx
+      this.camera.position.y += sy
+      this.camera.position.z += sz
       this.camShakeIntensity = Math.max(0, this.camShakeIntensity - this.camShakeIntensity * this.camShakeDecay * dt)
     }
     this.camera.lookAt(this.camCurrentLook)
@@ -3912,13 +3954,18 @@ private resolveCarCarCollision() {
   }
 
   private startGoalReplay() {
-    if (this.replayBuffer.length < 30) {
+    if (this.replayTotalStored < 30) {
       this.resetKickoff()
       return
     }
 
     this.isReplaying = true
-    this.replayPlaybackFrames = [...this.replayBuffer]
+    this.replayPlaybackFrames = []
+    const startIdx = this.replayTotalStored < TurboSoccerGame.MAX_REPLAY_FRAMES ? 0 : this.replayHead
+    for (let i = 0; i < this.replayTotalStored; i++) {
+      const idx = (startIdx + i) % TurboSoccerGame.MAX_REPLAY_FRAMES
+      this.replayPlaybackFrames.push(this.replayRingBuffer[idx])
+    }
     this.replayPlaybackIdx = 0
 
     if (this.hudReplayBanner) {
@@ -3969,8 +4016,8 @@ private resolveCarCarCollision() {
       c.mesh.rotation.set(cf.pitch, cf.yaw, cf.roll, 'YXZ')
     }
 
-    const camOffset = new THREE.Vector3(0, 18, 36)
-    this.camera.position.lerp(this.ball.pos.clone().add(camOffset), 0.12)
+    this._camReplayTarget.copy(this.ball.pos).add(this._camOffset)
+    this.camera.position.lerp(this._camReplayTarget, 0.12)
     this.camera.lookAt(this.ball.pos)
   }
 
@@ -4260,10 +4307,9 @@ private resolveCarCarCollision() {
     // Nitro
     const bv = Math.floor(this.playerCar.boost)
     this.hudBoost.textContent = String(bv)
-    const arc = document.getElementById('nitro-arc')
-    if (arc) {
-      arc.setAttribute('stroke-dashoffset', String(301.6 * (1 - bv / 100)))
-      arc.setAttribute('stroke', bv > 50 ? '#ff6600' : bv > 25 ? '#ffaa00' : '#ef4444')
+    if (this.hudNitroArc) {
+      this.hudNitroArc.setAttribute('stroke-dashoffset', String(301.6 * (1 - bv / 100)))
+      this.hudNitroArc.setAttribute('stroke', bv > 50 ? '#ff6600' : bv > 25 ? '#ffaa00' : '#ef4444')
     }
 
 
