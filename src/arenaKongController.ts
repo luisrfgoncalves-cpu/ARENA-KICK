@@ -86,6 +86,9 @@ export class KongGorak {
   private _slamBaseY = 0
   private _slamLanded = false
 
+  // Collider de corpo (roda a cada 3 frames para economizar CPU)
+  private _bodyColliderFrame = 0
+
   private scene: THREE.Scene
   private ball: any
   private getCars: () => any[]
@@ -355,6 +358,28 @@ export class KongGorak {
     if ((this.state === 'PATROL' || this.state === 'CHASE_BALL') && this.actionCooldown <= 0) {
       this._evaluateCombat()
     }
+
+    // 5. ─── MELHORIA A: Limites do campo (Kong não sai da arena) ─────────────
+    this.rootGroup.position.x = Math.max(-107, Math.min(107, this.rootGroup.position.x))
+    this.rootGroup.position.z = Math.max(-177, Math.min(177, this.rootGroup.position.z))
+
+    // 6. ─── MELHORIA B: Collider de corpo completo (bola não atravessa o Kong) ─
+    // Roda a cada 3 frames para economizar CPU (Box3.setFromObject é pesado)
+    this._bodyColliderFrame = (this._bodyColliderFrame + 1) % 3
+    if (this._bodyColliderFrame === 0 && this.state !== 'GRAB_BALL' && this.state !== 'HOLD_BALL') {
+      const ballPos = this.getBallPosition()
+      if (ballPos && !this.ball?.userData?.kongHeld) {
+        const kongBox = new THREE.Box3().setFromObject(this.rootGroup)
+        const dist = kongBox.distanceToPoint(ballPos)
+        if (dist < 3.5) {
+          // A bola entrou no volume do corpo — empurra para fora
+          const pushDir = ballPos.clone().sub(this.rootGroup.position)
+          pushDir.y = Math.max(pushDir.y, 0.3)
+          pushDir.normalize().multiplyScalar(32)
+          this.physics.applyImpulse?.(this.ball, pushDir)
+        }
+      }
+    }
   }
 
   // ─── LOCOMOÇÃO FLUIDA ──────────────────────────────────────────────────────
@@ -596,18 +621,23 @@ export class KongGorak {
     const duration = 2.2
     const progress = this.stateTime / duration
 
-    // Pulo vertical no ar (sobe até 14m e cai esmagando na descida)
+    // ─── MELHORIA C: Detecção REAL do chão pelo position.y ──────────────────
+    // Fase de subida + queda: curva senoidal de 0 → 14m → 0
     if (progress < 0.65) {
       const jumpArc = Math.sin((progress / 0.65) * Math.PI)
       this.rootGroup.position.y = this._slamBaseY + jumpArc * 14.0
     } else {
-      this.rootGroup.position.y = this._slamBaseY
+      // Após o pico — desce rápido; força y = 0 quando estiver no chão
+      this.rootGroup.position.y = Math.max(
+        this._slamBaseY,
+        this.rootGroup.position.y - 28.0 * _dt // cai a 28 m/s
+      )
     }
 
-    // Momento exato da colisão da bunda no chão (progress >= 60%)
-    if (!this._slamLanded && progress >= 0.60) {
+    // Detecta toque real no chão: position.y <= slamBaseY + 0.15m (margem mínima)
+    if (!this._slamLanded && this.rootGroup.position.y <= this._slamBaseY + 0.15) {
       this._slamLanded = true
-      this.rootGroup.position.y = this._slamBaseY
+      this.rootGroup.position.y = this._slamBaseY // fixa no chão
       this._radialImpulse()
       this.effects.slam?.(this.rootGroup.position)
     }
