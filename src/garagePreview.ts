@@ -5,6 +5,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { CAR_MODELS } from './carModels'
+import { buildGuinchoTodyVehicle, buildVanGostVehicle } from './customVehicles'
 
 export class GaragePreview {
   private host: HTMLElement
@@ -83,15 +84,28 @@ export class GaragePreview {
 
   setCar(carId: string) {
     this.currentCarId = carId
-    const entry = CAR_MODELS[carId]
     const token = ++this.loadToken
+
+    // Carros personalizados com modelos 3D cartoon de alta fidelidade
+    if (carId === 'guincho-tody') {
+      const res = buildGuinchoTodyVehicle()
+      this.mount(res.group, true)
+      return
+    }
+    if (carId === 'van-gost') {
+      const res = buildVanGostVehicle()
+      this.mount(res.group, true)
+      return
+    }
+
+    const entry = CAR_MODELS[carId]
     const file = (entry && entry.file) ? entry.file : '/models/vehicle-truck-red.glb'
 
     this.loader.load(
       file,
       (gltf) => {
         if (this.disposed || token !== this.loadToken) return
-        this.mount(gltf.scene)
+        this.mount(gltf.scene, false)
       },
       undefined,
       () => {
@@ -99,7 +113,7 @@ export class GaragePreview {
         // Fallback para modelo 3D Kenney padrão em caso de erro de rede
         this.loader.load('/models/vehicle-truck-red.glb', (fallbackGltf) => {
           if (this.disposed || token !== this.loadToken) return
-          this.mount(fallbackGltf.scene)
+          this.mount(fallbackGltf.scene, false)
         })
       }
     )
@@ -120,113 +134,51 @@ export class GaragePreview {
     this.carRoot = null
   }
 
-  private mount(model: THREE.Object3D) {
+  private mount(model: THREE.Object3D, isCustom = false) {
     this.clearCar()
 
     model.updateMatrixWorld(true)
     let bbox = new THREE.Box3().setFromObject(model)
-    const size = bbox.getSize(new THREE.Vector3())
 
-    if (size.x > size.z) model.rotation.y = -Math.PI / 2
+    if (!isCustom) {
+      const size = bbox.getSize(new THREE.Vector3())
+      if (size.x > size.z) model.rotation.y = -Math.PI / 2
 
-    const longLen = Math.max(size.x, size.z)
-    if (longLen > 0.0001) model.scale.setScalar(5.2 / longLen)
+      const longLen = Math.max(size.x, size.z)
+      if (longLen > 0.0001) model.scale.setScalar(5.2 / longLen)
 
-    model.updateMatrixWorld(true)
-    bbox = new THREE.Box3().setFromObject(model)
-    const center = bbox.getCenter(new THREE.Vector3())
-    model.position.x -= center.x
-    model.position.z -= center.z
-    model.position.y -= bbox.min.y
+      model.updateMatrixWorld(true)
+      bbox = new THREE.Box3().setFromObject(model)
+      const center = bbox.getCenter(new THREE.Vector3())
+      model.position.x -= center.x
+      model.position.z -= center.z
+      model.position.y -= bbox.min.y
 
-    model.traverse((child) => {
-      const mesh = child as THREE.Mesh
-      if (!mesh.isMesh) return
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      const cname = (child.name || '').toLowerCase()
-      const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
-      if (origMat) {
-        let origColor = origMat.color ? origMat.color.clone() : new THREE.Color(0xffffff)
-        let origMap = origMat.map || null
-
-        if (this.currentCarId === 'guincho-tody') {
-          if (cname.includes('wheel') || cname.includes('tire')) {
-            origColor = new THREE.Color(0x1e293b)
-          } else if (cname.includes('fender') || cname.includes('bumper')) {
-            origColor = new THREE.Color(0xf97316)
-          } else {
-            origColor = new THREE.Color(0x0284c7)
+      model.traverse((child) => {
+        const mesh = child as THREE.Mesh
+        if (!mesh.isMesh) return
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
+        if (origMat) {
+          let origColor = origMat.color ? origMat.color.clone() : new THREE.Color(0xffffff)
+          let origMap = origMat.map || null
+          if (origMap) {
+            origMap.colorSpace = THREE.SRGBColorSpace
+            origMap.needsUpdate = true
+            origColor = new THREE.Color(0xffffff)
           }
-          origMap = null
-        } else if (this.currentCarId === 'van-gost') {
-          if (cname.includes('wheel') || cname.includes('tire')) {
-            origColor = new THREE.Color(0x1e293b)
-          } else if (cname.includes('detail') || cname.includes('stripe')) {
-            origColor = new THREE.Color(0xdc2626)
-          } else {
-            origColor = new THREE.Color(0xf8fafc)
-          }
-          origMap = null
-        } else if (origMap) {
-          origMap.colorSpace = THREE.SRGBColorSpace
-          origMap.needsUpdate = true
-          origColor = new THREE.Color(0xffffff)
+          mesh.material = new THREE.MeshToonMaterial({
+            color: origColor,
+            map: origMap
+          })
         }
-        mesh.material = new THREE.MeshToonMaterial({
-          color: origColor,
-          map: origMap
-        })
-      }
-    })
-
-    // Adiciona torre e gancho na garagem se for Guincho Tody
-    if (this.currentCarId === 'guincho-tody') {
-      const towGroup = new THREE.Group()
-      const poleGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.6, 8)
-      const poleMat = new THREE.MeshToonMaterial({ color: 0xf97316 })
-      const pole1 = new THREE.Mesh(poleGeo, poleMat)
-      pole1.position.set(-0.55, 1.4, -0.9)
-      pole1.rotation.z = -0.2
-      towGroup.add(pole1)
-      const pole2 = new THREE.Mesh(poleGeo, poleMat)
-      pole2.position.set(0.55, 1.4, -0.9)
-      pole2.rotation.z = 0.2
-      towGroup.add(pole2)
-      const barGeo = new THREE.CylinderGeometry(0.09, 0.09, 1.3, 8)
-      const bar = new THREE.Mesh(barGeo, poleMat)
-      bar.rotation.z = Math.PI / 2
-      bar.position.set(0, 2.1, -0.9)
-      towGroup.add(bar)
-      const hookGeo = new THREE.TorusGeometry(0.22, 0.06, 8, 16, Math.PI * 1.4)
-      const hookMat = new THREE.MeshToonMaterial({ color: 0xfacc15 })
-      const hook = new THREE.Mesh(hookGeo, hookMat)
-      hook.position.set(0, 1.45, -1.2)
-      hook.rotation.x = Math.PI / 2
-      towGroup.add(hook)
-      const beaconGeo = new THREE.CylinderGeometry(0.22, 0.26, 0.3, 12)
-      const beaconMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
-      const beacon = new THREE.Mesh(beaconGeo, beaconMat)
-      beacon.position.set(0, 2.2, 0.4)
-      towGroup.add(beacon)
-      model.add(towGroup)
-    }
-
-    // Adiciona rack e luzes na garagem se for Van Gost
-    if (this.currentCarId === 'van-gost') {
-      const vanGroup = new THREE.Group()
-      const rackGeo = new THREE.BoxGeometry(1.6, 0.12, 2.2)
-      const rackMat = new THREE.MeshToonMaterial({ color: 0x1e293b })
-      const rack = new THREE.Mesh(rackGeo, rackMat)
-      rack.position.set(0, 2.25, -0.2)
-      vanGroup.add(rack)
-      const lightL = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshBasicMaterial({ color: 0x84cc16 }))
-      lightL.position.set(-0.55, 2.38, 0.6)
-      vanGroup.add(lightL)
-      const lightR = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshBasicMaterial({ color: 0xef4444 }))
-      lightR.position.set(0.55, 2.38, 0.6)
-      vanGroup.add(lightR)
-      model.add(vanGroup)
+      })
+    } else {
+      const center = bbox.getCenter(new THREE.Vector3())
+      model.position.x -= center.x
+      model.position.z -= center.z
+      model.position.y -= bbox.min.y
     }
 
     this.carRoot = model
