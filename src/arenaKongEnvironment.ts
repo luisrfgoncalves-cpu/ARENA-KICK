@@ -18,6 +18,35 @@ export interface ArenaKongEnvironmentResult {
   dispose: () => void
 }
 
+/** Cria e anexa imediatamente o backdrop cilíndrico 360° tropical à cena (sem delay) */
+export function createArenaKongInstantBackdrop(
+  scene: THREE.Scene,
+  mode: 'day' | 'night' = 'day'
+): THREE.Mesh {
+  const backdropFile = mode === 'night' ? 'arena-kong-backdrop-night.webp' : 'arena-kong-backdrop-day.webp'
+  const texLoader = new THREE.TextureLoader()
+  const texture = texLoader.load(BASE + backdropFile)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.repeat.set(3, 1)
+
+  const backdropMat = new THREE.MeshBasicMaterial({
+    map: texture,
+    side: THREE.BackSide,
+    depthWrite: false
+  })
+
+  const backdropMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(300, 300, 180, 64, 1, true),
+    backdropMat
+  )
+  backdropMesh.name = 'ArenaKongBackdrop'
+  backdropMesh.position.set(0, 60, 0)
+  backdropMesh.renderOrder = -10
+  scene.add(backdropMesh)
+  return backdropMesh
+}
+
 export async function loadArenaKongEnvironment(
   scene: THREE.Scene,
   { mode = 'day' }: { mode?: 'day' | 'night' } = {}
@@ -66,30 +95,11 @@ export async function loadArenaKongEnvironment(
   await Promise.allSettled([
     loadGLB('arena-kong-stadium-kit.glb', 'ArenaKongStadiumKit'),
     loadGLB('arena-kong-jungle-kit.glb', 'ArenaKongJungleKit'),
-    loadGLB('arena-kong-cliffs-ruins.glb', 'ArenaKongCliffsRuins', [0, 0, -215], [1.2, 1.2, 1.2]),
+    loadGLB('arena-kong-cliffs-ruins.glb', 'ArenaKongCliffsRuins', [0, 0, -215], [1.2, 1.2, 1.2])
   ])
 
-  // Backdrop esférico 360° com floresta tropical e penhascos
-  let backdropMesh: THREE.Mesh | null = null
-  try {
-    const backdropFile = mode === 'night' ? 'arena-kong-backdrop-night.webp' : 'arena-kong-backdrop-day.webp'
-    const texture = await new THREE.TextureLoader().loadAsync(BASE + backdropFile)
-    texture.colorSpace = THREE.SRGBColorSpace
-    texture.wrapS = THREE.RepeatWrapping
-    texture.repeat.set(3, 1)
-
-    backdropMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 48, 24),
-      new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, depthWrite: false })
-    )
-    backdropMesh.name = 'ArenaKongBackdrop'
-    backdropMesh.scale.set(320, 320, 200)
-    backdropMesh.position.set(0, 50, 0)
-    backdropMesh.renderOrder = -10
-    scene.add(backdropMesh)
-  } catch (err) {
-    console.warn('[ArenaKong] Backdrop fallback:', err)
-  }
+  // Cria backdrop 360° instantâneo
+  const backdrop = createArenaKongInstantBackdrop(scene, mode)
 
   const dispose = () => {
     scene.remove(staticLayer)
@@ -98,21 +108,28 @@ export async function loadArenaKongEnvironment(
       if (mesh.isMesh) {
         mesh.geometry?.dispose()
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-        mats.forEach((m) => m?.dispose())
+        mats.forEach((m) => m?.dispose?.())
       }
     })
-    if (backdropMesh) {
-      scene.remove(backdropMesh)
-      backdropMesh.geometry.dispose()
-      ;(backdropMesh.material as THREE.Material)?.dispose()
-      backdropMesh = null
+
+    if (backdrop) {
+      scene.remove(backdrop)
+      backdrop.geometry?.dispose()
+      if (backdrop.material) {
+        const mat = backdrop.material as THREE.MeshBasicMaterial
+        mat.map?.dispose()
+        mat.dispose()
+      }
     }
   }
 
-  return { staticLayer, backdrop: backdropMesh, dispose }
+  return {
+    staticLayer,
+    backdrop,
+    dispose
+  }
 }
 
 export function isInsideArenaKongPlayableArea(position: THREE.Vector3): boolean {
   return Math.abs(position.x) <= ARENA_KONG_PLAYABLE_X && Math.abs(position.z) <= ARENA_KONG_PLAYABLE_Z
 }
-

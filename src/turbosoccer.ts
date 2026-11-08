@@ -13,7 +13,7 @@ import { GamepadManager } from './gamepad'
 import { initAudio, AudioManager, setAudioMuted, isAudioMuted } from './audio'
 import { CAR_MODELS } from './carModels'
 import { buildGuinchoTodyVehicle, buildVanGostVehicle } from './customVehicles'
-import { loadArenaKongEnvironment, ArenaKongEnvironmentResult } from './arenaKongEnvironment'
+import { loadArenaKongEnvironment, ArenaKongEnvironmentResult, createArenaKongInstantBackdrop } from './arenaKongEnvironment'
 import { KongGorak } from './arenaKongController'
 import { dbService } from './supabase'
 import { TurboNetworkController } from './turbonetwork'
@@ -147,8 +147,9 @@ export class TurboSoccerGame {
   private blueCars:      CarObject[] = []  // time azul (inclui botCar)
   private allCars:       CarObject[] = []  // todos os carros para loops
   // ── ARENA KONG: GORILA NEUTRO KONG GORAK & CENÁRIO SELVAGEM ──
-  private kongGorak:     KongGorak | null = null
-  private kongEnvResult: ArenaKongEnvironmentResult | null = null
+  private kongGorak:        KongGorak | null = null
+  private kongEnvResult:    ArenaKongEnvironmentResult | null = null
+  private kongBackdropMesh: THREE.Mesh | null = null
     // ── MOEDAS DE NITRO & OBSTÁCULOS DINÂMICOS ────────────────
   private boostCoins: {
     group: THREE.Group
@@ -712,48 +713,80 @@ export class TurboSoccerGame {
             return
           }
           this.kongEnvResult = env
-        }).catch((err) => console.warn('[ArenaKong] Falha ao carregar ambiente:', err))
+        }).catch((err) => console.warn('[ArenaKong] Falha ao carregar kits de ambiente:', err))
 
         const kongPhysics = {
           applyImpulse: (target: any, impulse: THREE.Vector3) => {
-            if (target === this.ball) {
+            if (target === this.ball || target === this.ball?.mesh) {
               this.ball.vel.add(impulse)
             } else if (target && typeof target.velX !== 'undefined') {
-              target.velX += impulse.x * 0.6
-              target.velZ += impulse.z * 0.6
-              target.velY = Math.max(target.velY, Math.abs(impulse.y) * 0.5)
-              if (typeof target.applySpinOut === 'function') target.applySpinOut(1.4)
+              target.velX += impulse.x
+              target.velZ += impulse.z
+              target.velY = Math.max(target.velY, Math.abs(impulse.y))
+              if (typeof target.applySpinOut === 'function') target.applySpinOut(1.8)
             }
-          }
+          },
+          applyAngularImpulse: (target: any, _ang: THREE.Vector3) => {
+            if (target && typeof target.applySpinOut === 'function') {
+              target.applySpinOut(2.2)
+            }
+          },
+          setKinematic: (target: any, isKinematic: boolean) => {
+            if (target === this.ball || target === this.ball?.mesh) {
+              this.ball.userData = this.ball.userData || {}
+              this.ball.userData.kongHeld = isKinematic
+            }
+          },
+          setSensor: (_target: any, _isSensor: boolean) => {}
         }
 
         const kongCamera = {
           shake: (_duration: number, intensity: number) => this.triggerCameraShake(intensity)
         }
 
+        const kongEffects = {
+          kick: (pos?: THREE.Vector3) => {
+            this.audio.playPowerHit()
+            if (pos) this.emitCartoonStarBurst(pos, 32, 0xfacc15)
+          },
+          punch: (pos?: THREE.Vector3) => {
+            this.audio.playPunchImpact()
+            if (pos) this.emitCartoonStarBurst(pos, 36, 0xef4444)
+          },
+          grab: (pos?: THREE.Vector3) => {
+            this.audio.playDash()
+            if (pos) this.emitCartoonStarBurst(pos, 20, 0x00f0ff)
+          },
+          throw: (pos?: THREE.Vector3) => {
+            this.audio.playPowerHit()
+            this.triggerCameraShake(0.55)
+            if (pos) this.emitCartoonStarBurst(pos, 44, 0x22c55e)
+          },
+          slam: (pos?: THREE.Vector3) => {
+            this.audio.playPunchImpact()
+            this.audio.synthesizeBoom(65, 0.7, 1.3)
+            this.triggerCameraShake(0.95)
+            if (pos) {
+              this.emitCartoonStarBurst(pos, 60, 0x22c55e)
+              this.emitCartoonStarBurst(pos, 30, 0xffffff)
+            }
+          },
+          rage: (_k: number) => {
+            this.audio.synthesizeBoom(85, 0.85, 1.4)
+            this.triggerCameraShake(0.5)
+          }
+        }
+
         this.kongGorak = new KongGorak({
+          scene: this.scene,
           ball: this.ball,
           getCars: () => this.allCars,
           physics: kongPhysics,
           camera: kongCamera,
-          emitParticles: (pos, type) => {
-            if (type === 'stars') this.emitCartoonStarBurst(pos, 24, 0xfbbf24)
-            else if (type === 'shockwave') {
-              this.emitCartoonStarBurst(pos, 48, 0x22c55e)
-              this.emitCartoonStarBurst(pos, 24, 0xffffff)
-            } else {
-              this.emitCartoonStarBurst(pos, 16, 0xa3e635)
-            }
-          },
-          playSFX: (type) => {
-            if (type === 'kick') this.audio.playPowerHit()
-            else if (type === 'punch' || type === 'slam') this.audio.playPunchImpact()
-            else if (type === 'roar') this.audio.synthesizeBoom(80, 0.8, 1.2)
-          }
+          effects: kongEffects
         })
 
         this.scene.add(this.kongGorak.rootGroup)
-        this.kongGorak.rootGroup.position.set(0, 0, 0)
         this.kongGorak.load().catch((err) => console.warn('[KongGorak] Falha ao carregar modelo:', err))
       }
 
@@ -952,7 +985,8 @@ export class TurboSoccerGame {
 
   private buildSkyAndSun() {
     if (this.theme === 'kong') {
-      // Arena Kong tem seu próprio backdrop 360° tropical e relevo externo carregados via arenaKongEnvironment
+      // Backdrop 360° tropical instantâneo para a Arena Kong (garante cenário visível desde o frame 0)
+      this.kongBackdropMesh = createArenaKongInstantBackdrop(this.scene, 'day')
       return
     }
     // ── CENÁRIO PANORÂMICO 360° (HORIZONTE EXTERNO DE PROFUNDIDADE) ──
@@ -5887,6 +5921,16 @@ private resolveCarCarCollision() {
   private updateBall(dt: number) {
     const b = this.ball
 
+    // Se a bola estiver agarrada na mão do Kong Gorak, acompanha a mão sem gravidade
+    if (b.userData?.kongHeld) {
+      b.vel.set(0, 0, 0)
+      if (b.mesh) {
+        b.mesh.getWorldPosition(b.pos)
+      }
+      b.shadow.position.set(b.pos.x, 0.04, b.pos.z)
+      return
+    }
+
     // Gravidade
     b.vel.y -= this.studioParams.gravity * dt
 
@@ -7139,7 +7183,10 @@ private resolveCarCarCollision() {
     this.resetKickoff()
     if (this.kongGorak) {
       this.kongGorak.state = 'PATROL'
-      this.kongGorak.rootGroup.position.set(0, 0, 0)
+      if (this.kongGorak.model) {
+        this.kongGorak.model.position.set(16, 0, 0)
+        this.kongGorak.model.lookAt(0, 0, 0)
+      }
     }
     this.drawScoreboard()
   }
@@ -7378,6 +7425,16 @@ private resolveCarCarCollision() {
     if (this.kongEnvResult) {
       this.kongEnvResult.dispose()
       this.kongEnvResult = null
+    }
+    if (this.kongBackdropMesh) {
+      this.scene.remove(this.kongBackdropMesh)
+      this.kongBackdropMesh.geometry?.dispose()
+      if (this.kongBackdropMesh.material) {
+        const m = this.kongBackdropMesh.material as THREE.MeshBasicMaterial
+        m.map?.dispose()
+        m.dispose()
+      }
+      this.kongBackdropMesh = null
     }
 
     this.renderer.dispose()

@@ -1,0 +1,32 @@
+PROMPT — INTEGRAÇÃO DA ARENA KONG
+
+Adicione uma nova arena chamada Arena Kong ao meu jogo Arena Kick sem substituir ou quebrar a Arena Power-Kick, Arena Cyber, Futsal, Gelo, multiplayer, bots, carros, bola, gols ou controles existentes.
+
+Leia antes de editar:
+
+- arena-kong/environment/README-ARENA-KONG-ENVIRONMENT.md
+- arena-kong/environment/arena-kong-environment-manifest.json
+- arena-kong/environment/arena-kong-environment.js
+- arena-kong-powerkick-reference.md
+
+Use as proporções atuais da Power-Kick: campo 220 x 360, teto 58, abertura do gol 48, altura da trave 17 e profundidade do gol 18. Mantenha os limites jogáveis aproximados X=-107,2..107,2 e Z=-177,2..177,2.
+
+Carregue como cenário estático sem colisão:
+
+- arena-kong/environment/arena-kong-stadium-kit.glb;
+- arena-kong/environment/arena-kong-jungle-kit.glb;
+- arena-kong/environment/arena-kong-cliffs-ruins.glb.
+
+Use arena-kong-backdrop-day.webp durante o dia e arena-kong-backdrop-night.webp durante a noite.
+
+O ambiente deve parecer uma floresta tropical selvagem: árvores gigantes, cipós, rochas, penhascos, ruínas antigas, portões, cachoeiras, neblina, montanhas, tochas, arquibancadas, placares, refletores, dugouts, cercas e estruturas de estádio.
+
+Mantenha o campo livre. Não coloque vegetação, ruínas ou rochas dentro da área de circulação dos carros e da bola. Não adicione colisores aos assets decorativos. Não duplique o cenário quando a partida reiniciar. Carregue os assets uma única vez e descarregue-os ao sair da Arena Kong.
+
+Adicione Arena Kong ao seletor de arenas com o nome ARENA KONG e a descrição FLORESTA SELVAGEM — KONG GORAK.
+
+Preserve o campo, as linhas, os gols, as traves, as redes, os placares, a bola, os carros, os bots, o cronômetro, a pontuação, a câmera, o multiplayer e os controles atuais.
+
+Use o loader arena-kong-environment.js quando a Arena Kong for criada. Adapte os caminhos dos assets apenas se a estrutura atual do projeto exigir isso.
+
+Teste a seleção da arena, carregamento, escala, câmera, iluminação, FPS, colisões, gols, reinício da partida, saída para o menu e retorno para a Power-Kick. Corrija erros de import, GLB, WebGL, CORS, 404, memória, posição e desempenho antes de concluir.

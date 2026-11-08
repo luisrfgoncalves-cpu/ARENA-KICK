@@ -1,0 +1,19 @@
+PROMPT ÚNICO — KONG GORAK + ARENA KONG
+
+Integre o pacote completo da Arena Kong no meu jogo Arena Kick. Leia primeiro ARENA-KONG-PACOTE-COMPLETO.md, PROMPT-KONG-GORAK.txt, PROMPT-ARENA-KONG.txt, os dois READMEs, os manifestos e os arquivos JavaScript. Examine o projeto antes de editar e faça backup ou use o versionamento existente.
+
+Adicione Arena Kong como uma nova arena independente. Não substitua nem quebre a Arena Power-Kick, Arena Cyber, Futsal, Gelo, multiplayer, bots, carros, bola, gols, controles, placares, cronômetro ou pontuação.
+
+Mantenha as proporções do campo atual: 220 x 360, teto 58, abertura do gol 48, altura da trave 17, profundidade 18. Coloque cenário externo fora dos limites jogáveis aproximados X=-107,2..107,2 e Z=-177,2..177,2.
+
+Carregue stadium-kit, jungle-kit e cliffs-ruins como camada estática sem colisão. Use backdrop-day de dia e backdrop-night à noite. Preserve o campo livre e crie uma floresta tropical selvagem com árvores gigantes, cipós, rochas, penhascos, ruínas, portões, cachoeiras, neblina, montanhas, tochas, arquibancadas, placares, refletores, dugouts e cercas.
+
+Carregue arena-kong-gorak-animated.glb para o personagem e use arena-kong-controller.js para PATROL, CHASE_BALL, KICK_BALL, PUNCH_CAR, GRAB_BALL, THROW_BALL, BUTT_SLAM, RAGE e RECOVER. Use AnimationMixer para idle, standing_relax e walk.
+
+Kong Gorak é neutro, não pertence a nenhum time, não marca gols, não recebe pontuação e ataca jogadores e bots igualmente. Ele deve patrulhar, perseguir e bloquear a bola, chutar, bater nos carros, agarrar e arremessar a bola, pular, cair de bunda, causar impacto radial e rugir.
+
+Conecte physics.applyImpulse à física atual. Use colisores simples para corpo, mãos, pés, agarrar e impacto. Adicione cooldowns. Adicione poeira, partículas, tremor de câmera, brilho ciano nos olhos, rugido e sons usando os sistemas atuais.
+
+Não transforme Kong em sprite 2D, não substitua sua textura por uma cor única, não crie colisão em árvores ou ruínas e não duplique o cenário ao reiniciar.
+
+Execute o build e teste seleção da Arena Kong, carregamento, 1v1, bots, 2v2, gols, reinício, Kong contra jogador, Kong contra bot, todos os golpes, câmera, efeitos, saída para o menu e retorno para a Power-Kick. Corrija erros de import, GLB, WebGL, CORS, 404, memória, escala, posição, colisão, animação e desempenho. Só finalize depois de testar no navegador.

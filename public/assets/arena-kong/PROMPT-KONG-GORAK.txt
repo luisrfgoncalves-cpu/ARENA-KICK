@@ -1,0 +1,79 @@
+PROMPT — INTEGRAÇÃO COMPLETA DOS MOVIMENTOS DO KONG GORAK
+
+O objetivo é integrar Kong Gorak no Arena Kick com todos os movimentos pedidos. Não aceite uma versão em que ele apenas desliza, anda como robô ou fica com braços rígidos.
+
+Leia antes de editar:
+- arena-kong/arena-kong-gorak-animated.glb
+- arena-kong/arena-kong-controller.js
+- arena-kong/animation-manifest.json
+- arena-kong/README-ANTIGRAVITY-ARENA-KONG.md
+
+IMPORTANTE SOBRE ANIMAÇÕES:
+O GLB contém clipes reais apenas para idle, standing_relax e walk. As ações de ataque abaixo são controladas proceduralmente pelo JavaScript. Durante um ataque, pare ou pause a ação do AnimationMixer que controla a locomoção; não deixe o mixer sobrescrever os ossos a cada frame. Execute `mixer.update(dt)` antes de `controller.update(dt)`.
+
+Passe ao controlador:
+- model;
+- mixer;
+- clips;
+- scene;
+- ball;
+- cars;
+- physics;
+- camera;
+- effects.
+
+Use `arena-kong-controller.js` como fonte da lógica. Não copie o controlador antigo nem reintroduza rotações acumulativas com `bone.rotation +=`.
+
+MOVIMENTOS OBRIGATÓRIOS:
+
+1. PATROL — Kong caminha de uma lateral da arena à outra com o clipe walk.
+2. CHASE_BALL — Kong vira o corpo e persegue a bola usando walk.
+3. IDLE — respiração e espera usando o clipe idle.
+4. RAGE/ROAR — Kong ergue os braços, inclina o tronco, abre a mandíbula, destaca olhos ciano, toca rugido e retorna gradualmente.
+5. KICK_BALL — Kong ergue a perna, flexiona o joelho, estende a perna contra a bola e aplica impulso apenas no momento do contato.
+6. PUNCH_CAR — Kong gira o tronco, leva o braço para trás, desfere soco/tapa, conecta a mão ao carro, aplica impulso linear e angular e produz faíscas.
+7. GRAB_BALL — Kong estende os dois braços, aproxima as mãos, desativa temporariamente a física dinâmica da bola e anexa a bola ao osso `rightHand`.
+8. HOLD_BALL — a bola deve acompanhar a mão enquanto estiver agarrada, sem atravessar o corpo e sem continuar recebendo gravidade.
+9. THROW_BALL — Kong gira o tronco, leva os braços para trás, solta a bola da mão e aplica impulso balístico para frente e para cima.
+10. BUTT_SLAM — Kong flexiona as pernas, levanta o corpo, salta, gira/abaixa o quadril e cai sentado; no contato com o chão, aplique impacto radial uma única vez.
+11. CAR_IMPACT — carros atingidos devem receber impulso horizontal, impulso vertical moderado e rotação angular.
+12. BALL_REDIRECT — a bola deve mudar de direção de forma visível quando chutada, batida ou arremessada.
+13. RECOVER — depois de cada golpe, Kong retorna suavemente à pose idle ou walk.
+
+REGRAS TÉCNICAS:
+
+- Não aplique `bone.rotation.x += ...` continuamente.
+- Restaure a pose base antes de aplicar a pose procedural de cada frame.
+- Pare/pa pause o clipe de locomoção durante ataques e retome-o ao terminar.
+- Use easing suave de entrada e saída.
+- Use cooldowns e uma única janela de impacto por ataque.
+- Nunca aplique o mesmo impulso em todos os frames.
+- Não permita que a bola fique presa na mão depois do arremesso.
+- Restaure colisão, sensor, gravidade e corpo físico da bola depois de soltá-la.
+- Não use a malha visual como colisor principal.
+- Crie colisores simples para corpo, mãos, pés, agarrar e impacto.
+- Faça o golpe escolher o alvo mais próximo dentro do raio de ataque.
+- Kong não pertence a nenhum time, não recebe pontos e ataca jogadores e bots igualmente.
+
+EFEITOS OBRIGATÓRIOS:
+
+- poeira nos passos;
+- poeira e onda de choque no butt slam;
+- faíscas ao bater nos carros;
+- efeito de velocidade na bola;
+- tremor de câmera no impacto;
+- brilho ciano nos olhos durante RAGE;
+- rugido;
+- som de chute;
+- som de soco/tapa;
+- som de agarrar;
+- som de arremesso;
+- som de queda e impacto.
+
+Se o sistema atual não tiver um efeito, crie um fallback simples sem adicionar dependências pesadas.
+
+TESTES OBRIGATÓRIOS:
+
+Teste cada movimento visualmente em câmera lenta e em velocidade normal. Confirme que a perna realmente se move no chute, que o braço realmente alcança o carro, que a bola fica presa na mão, que a bola é liberada no arremesso, que o gorila cai de bunda e que carros e bola reagem ao impacto.
+
+Teste contra jogador e bot, perto e longe do gol, durante reinício de partida e após marcar gol. Corrija erros de mixer, escala, posição, física, câmera, colisão e desempenho antes de dizer que terminou.
