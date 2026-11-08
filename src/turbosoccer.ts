@@ -1364,29 +1364,35 @@ export class TurboSoccerGame {
   }
 
   private buildGlassWalls() {
-    const glassMat = new THREE.MeshBasicMaterial({
+    const wallGlassMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
-      opacity: 0.15,
+      opacity: 0.08,
+      depthWrite: false,
       side: THREE.DoubleSide
     })
 
+    // Paredes de fundo dos gols: 100% transparentes para NUNCA ofuscar ou embaçar os placares
+    const endGlassMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.0,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    })
 
     for (const side of [-1, 1]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.4, CEIL_H, FIELD_L), glassMat)
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.4, CEIL_H, FIELD_L), wallGlassMat)
       wall.position.set(side * FIELD_W / 2, CEIL_H / 2, 0)
       this.scene.add(wall)
     }
 
-
     for (const side of [-1, 1]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(FIELD_W, CEIL_H, 0.4), glassMat)
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(FIELD_W, CEIL_H, 0.4), endGlassMat)
       wall.position.set(0, CEIL_H / 2, side * (FIELD_L / 2 + GOAL_D))
       this.scene.add(wall)
     }
 
-
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_L), glassMat)
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_L), wallGlassMat)
     ceil.position.y = CEIL_H
     ceil.rotation.x = Math.PI / 2
     this.scene.add(ceil)
@@ -1578,23 +1584,28 @@ export class TurboSoccerGame {
 
   private buildScoreboard() {
     const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 384
+    canvas.width = 2048
+    canvas.height = 768
     this.scoreboardCanvas = canvas
     this.scoreboardCtx = canvas.getContext('2d')!
 
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
+    tex.generateMipmaps = true
+    tex.minFilter = THREE.LinearMipmapLinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.anisotropy = 16
     this.scoreboardTex = tex
 
-    // ── PLACARES ELEVADOS DUPLOS (NORTE E SUL — VISÍVEIS DE QUALQUER PONTO DA ARENA) ──
-    const boardW = 38
-    const boardH = 14
-    const boardY = 29.5 // Elevado bem acima do travessão da trave de 17m
-    const distFromCenter = FIELD_L / 2 + GOAL_D + 10.0
+    // ── PLACARES ELEVADOS DUPLOS GIGANTES (56m x 21m — ALTA DEFINIÇÃO & VISIBILIDADE TOTAL) ──
+    const boardW = 56
+    const boardH = 21
+    const boardY = 28.5 // Elevado bem acima do travessão da trave de 17m
+    // Posicionado no teto da cabine do gol, À FRENTE de qualquer parede de vidro externa
+    const distFromCenter = FIELD_L / 2 + GOAL_D * 0.45
 
     const boardMat = new THREE.MeshBasicMaterial({ map: tex })
-    const backMat = new THREE.MeshToonMaterial({ color: 0x070b16, gradientMap: TOON_GRADIENT })
+    const backMat = new THREE.MeshToonMaterial({ color: 0x050811, gradientMap: TOON_GRADIENT })
     const trussMat = new THREE.MeshToonMaterial({ color: 0x1e293b, gradientMap: TOON_GRADIENT })
 
     // [Z-position, Y-rotation, neonColor]
@@ -1613,23 +1624,23 @@ export class TurboSoccerGame {
       group.add(screen)
 
       // Chassi traseiro reforçado
-      const back = new THREE.Mesh(new THREE.BoxGeometry(boardW + 1.2, boardH + 1.2, 1.2), backMat)
-      back.position.set(0, 0, -0.65)
+      const back = new THREE.Mesh(new THREE.BoxGeometry(boardW + 1.6, boardH + 1.6, 1.4), backMat)
+      back.position.set(0, 0, -0.75)
       back.castShadow = true
       group.add(back)
 
       // Borda Neon luminosa
       const neonBorder = new THREE.Mesh(
-        new THREE.BoxGeometry(boardW + 2.0, boardH + 2.0, 0.4),
+        new THREE.BoxGeometry(boardW + 2.6, boardH + 2.6, 0.4),
         new THREE.MeshBasicMaterial({ color: neonHex })
       )
-      neonBorder.position.set(0, 0, -0.7)
+      neonBorder.position.set(0, 0, -0.8)
       group.add(neonBorder)
 
       // Torres de sustentação de treliça metálica até a arquibancada
-      for (const sx of [-boardW / 2 + 1.5, boardW / 2 - 1.5]) {
-        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.1, boardY - 4, 12), trussMat)
-        pillar.position.set(sx, -(boardY - 4) / 2 - boardH / 2, -1.2)
+      for (const sx of [-boardW / 2 + 2, boardW / 2 - 2]) {
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.3, boardY, 12), trussMat)
+        pillar.position.set(sx, -boardY / 2, -1.2)
         pillar.castShadow = true
         group.add(pillar)
       }
@@ -1643,42 +1654,87 @@ export class TurboSoccerGame {
   private drawScoreboard() {
     if (!this.scoreboardCtx || !this.scoreboardTex) return
     const ctx = this.scoreboardCtx
-    const w = 1024
-    const h = 384
+    const w = 2048
+    const h = 768
 
-    ctx.fillStyle = '#0b1220'
+    // Fundo preto stadium LED profundo
+    ctx.fillStyle = '#050811'
     ctx.fillRect(0, 0, w, h)
+
+    // Borda superior e inferior neon ciano
     ctx.fillStyle = '#0284c7'
-    ctx.fillRect(0, 0, w, 14)
-    ctx.fillRect(0, h - 14, w, 14)
+    ctx.fillRect(0, 0, w, 22)
+    ctx.fillRect(0, h - 22, w, 22)
 
+    // Painel Laranja (Time 1 / Jogador)
     ctx.fillStyle = '#ff5500'
-    ctx.fillRect(30, 60, 260, 264)
-    ctx.fillStyle = '#0088ff'
-    ctx.fillRect(w - 290, 60, 260, 264)
+    ctx.beginPath()
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(60, 80, 560, 520, 24)
+    } else {
+      ctx.rect(60, 80, 560, 520)
+    }
+    ctx.fill()
 
-    ctx.fillStyle = '#0b1220'
-    ctx.font = '900 150px Arial, sans-serif'
+    // Painel Azul (Time 2 / Rival)
+    ctx.fillStyle = '#0088ff'
+    ctx.beginPath()
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(w - 620, 80, 560, 520, 24)
+    } else {
+      ctx.rect(w - 620, 80, 560, 520)
+    }
+    ctx.fill()
+
+    // Rótulos dos Times
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 52px "Luckiest Guy", Impact, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
+    ctx.fillText('TIME LARANJA', 340, 140)
+    ctx.fillText('TIME AZUL', w - 340, 140)
+
+    // Números do Placar Gigantes
+    ctx.font = '900 320px "Luckiest Guy", Impact, sans-serif'
     const orangeScore = this.isOnline1v1 && !this.turboNet?.isHost ? this.scoreBot : this.scorePlayer
     const blueScore   = this.isOnline1v1 && !this.turboNet?.isHost ? this.scorePlayer : this.scoreBot
-    ctx.fillText(String(orangeScore), 160, 192)
-    ctx.fillText(String(blueScore), w - 160, 192)
+    ctx.fillText(String(orangeScore), 340, 390)
+    ctx.fillText(String(blueScore), w - 340, 390)
+
+    // Caixa Digital do Tempo Central
+    ctx.fillStyle = '#0b1220'
+    ctx.beginPath()
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(w / 2 - 280, 90, 560, 310, 24)
+    } else {
+      ctx.rect(w / 2 - 280, 90, 560, 310)
+    }
+    ctx.fill()
+    ctx.lineWidth = 8
+    ctx.strokeStyle = '#ffd23f'
+    ctx.stroke()
+
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = 'bold 44px "Luckiest Guy", Impact, sans-serif'
+    ctx.fillText('TEMPO RESTANTE', w / 2, 148)
 
     const m = Math.floor(this.matchTimer / 60)
     const s = Math.floor(this.matchTimer % 60)
     ctx.fillStyle = '#ffe600'
-    ctx.font = '900 96px Arial, sans-serif'
-    ctx.fillText(`${m}:${s < 10 ? '0' : ''}${s}`, w / 2, 160)
+    ctx.font = '900 160px "Orbitron", Arial Black, sans-serif'
+    ctx.fillText(`${m}:${s < 10 ? '0' : ''}${s}`, w / 2, 275)
 
-    ctx.font = '900 42px Arial, sans-serif'
+    // Letreiro do Estádio
+    ctx.font = '900 72px "Luckiest Guy", Impact, sans-serif'
     if (this.theme === 'classic' || this.gameMode === 'rumble') {
       ctx.fillStyle = '#facc15'
-      ctx.fillText('⚡ ARENA POWER-KICK ⚡', w / 2, 302)
+      ctx.shadowColor = '#facc15'
+      ctx.shadowBlur = 18
+      ctx.fillText('⚡ ARENA POWER-KICK ⚡', w / 2, 650)
+      ctx.shadowBlur = 0
     } else {
       ctx.fillStyle = '#e2e8f0'
-      ctx.fillText('ARENA KICK', w / 2, 302)
+      ctx.fillText('🏟️ ARENA KICK 🏟️', w / 2, 650)
     }
 
     this.scoreboardTex.needsUpdate = true
