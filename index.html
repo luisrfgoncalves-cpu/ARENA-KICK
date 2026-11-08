@@ -519,6 +519,48 @@
       margin-top: 1px;
     }
 
+    /* POWERKICK EXCLUSIVE CARS — borda eletrica dourada */
+    .car-card.powerkick-car {
+      border-color: #f0c040;
+      background: rgba(20, 14, 40, 0.85);
+    }
+    .car-card.powerkick-car .mode-name { color: #f0c040; }
+    .car-card.powerkick-car .pk-badge {
+      display: inline-block;
+      font-size: 7px;
+      font-family: 'Luckiest Guy', cursive;
+      background: linear-gradient(90deg, #f0c040, #ff6b00);
+      color: #111;
+      border-radius: 4px;
+      padding: 1px 4px;
+      margin-top: 2px;
+      letter-spacing: 0.5px;
+    }
+    .car-card.powerkick-car:hover {
+      border-color: #ffd700;
+      box-shadow: 0 4px 0 #000, 0 0 10px rgba(240,192,64,0.5);
+    }
+    .car-card.powerkick-car.active { background: #f0c040 !important; }
+    .cars-grid-pk-label {
+      font-family: 'Luckiest Guy', cursive;
+      font-size: 10px;
+      color: #f0c040;
+      letter-spacing: 1px;
+      text-align: center;
+      margin: 6px 0 2px;
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cars-grid-pk-label::before,
+    .cars-grid-pk-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #f0c04088, transparent);
+    }
+
     /* DECK DE CONFIGURAÇÕES DE JOGO (LADO DIREITO) */
     .garage-deck {
       background: var(--card-bg);
@@ -1235,6 +1277,31 @@
             <span class="mode-icon">🏍️</span>
             <div class="mode-name">Moto Nitro</div>
             <div class="mode-desc">Ágil & Toon</div>
+          </div>
+
+          <!-- ─── POWERKICK EXCLUSIVE CARS ─── -->
+          <div class="cars-grid-pk-label">⚡ ARENA POWER-KICK ⚡</div>
+
+          <!-- Volt Striker — Velocidade / Nitro -->
+          <div class="car-card powerkick-car" data-car="volt-striker">
+            <span class="mode-icon">⚡</span>
+            <div class="mode-name">Volt Striker</div>
+            <div class="mode-desc">+28% Nitro</div>
+            <span class="pk-badge">POWER-KICK</span>
+          </div>
+          <!-- Titan Shift — Impacto / Empurrão -->
+          <div class="car-card powerkick-car" data-car="titan-shift">
+            <span class="mode-icon">💪</span>
+            <div class="mode-name">Titan Shift</div>
+            <div class="mode-desc">+35% Impacto</div>
+            <span class="pk-badge">POWER-KICK</span>
+          </div>
+          <!-- Nova Forge — Escudo / Super Pulo -->
+          <div class="car-card powerkick-car" data-car="nova-forge">
+            <span class="mode-icon">🛡️</span>
+            <div class="mode-name">Nova Forge</div>
+            <div class="mode-desc">Escudo+Pulo</div>
+            <span class="pk-badge">POWER-KICK</span>
           </div>
         </div>
       </div>

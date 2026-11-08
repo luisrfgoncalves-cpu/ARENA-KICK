@@ -223,10 +223,10 @@ document.querySelectorAll('.car-card').forEach((card) => {
   card.addEventListener('click', () => {
     document.querySelectorAll('.car-card').forEach((c) => {
       c.classList.remove('active')
-      ;(c as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)'
+      ;(c as HTMLElement).style.borderColor = ''
     })
     card.classList.add('active')
-    ;(card as HTMLElement).style.borderColor = 'var(--neon-orange)'
+    ;(card as HTMLElement).style.borderColor = ''
     selectedCar = (card as HTMLElement).dataset.car || 'ferrari'
     garagePreview?.setCar(selectedCar)
     updatePreviewLabel()

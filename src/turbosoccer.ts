@@ -316,6 +316,10 @@ export class TurboSoccerGame {
   public onExit?: () => void
 
   private selectedCarModelId = 'octane-cartoon'
+  // Atributos do veículo selecionado (bonus especiais dos carros Power-Kick)
+  private carAttrs: { nitroBonus: number; pushBonus: number; shieldBonus: number; jumpBonus: number } = {
+    nitroBonus: 1.0, pushBonus: 1.0, shieldBonus: 0, jumpBonus: 0
+  }
   private theme: TurboTheme = 'classic'
   private botLevel: TurboBotLevel = 'medium'
   private goalExplosion: GoalExplosionType = 'toon'
@@ -385,6 +389,16 @@ export class TurboSoccerGame {
   constructor(container: HTMLElement, carModelId = 'octane-cartoon', tuning?: TurboTuning, network?: NetworkManager) {
     this.container = container
     this.selectedCarModelId = carModelId
+    // Carrega atributos especiais do veículo selecionado (Power-Kick cars)
+    const a = CAR_MODELS[carModelId]?.attrs
+    if (a) {
+      this.carAttrs = {
+        nitroBonus: a.nitroBonus ?? 1.0,
+        pushBonus:  a.pushBonus  ?? 1.0,
+        shieldBonus: a.shieldBonus ?? 0,
+        jumpBonus:  a.jumpBonus  ?? 0,
+      }
+    }
     this.theme = tuning?.theme ?? 'classic'
     this.botLevel = tuning?.botLevel ?? 'medium'
     this.matchFormat = tuning?.matchFormat ?? '1v1'
@@ -686,7 +700,7 @@ export class TurboSoccerGame {
       }
 
       // Carrega modelos 3D reais (GLB) para todos os carros — variedade total sem caixas geométricas
-      const botModelPool = ['buggy', 'ferrari', 'toycar', 'cartoon-yellow', 'cartoon-green', 'cartoon-purple', 'cartoon-moto', 'sportscar']
+      const botModelPool = ['buggy', 'ferrari', 'toycar', 'cartoon-yellow', 'cartoon-green', 'cartoon-purple', 'cartoon-moto', 'sportscar', 'volt-striker', 'titan-shift', 'nova-forge']
       const loadPromises: Promise<any>[] = []
 
       loadPromises.push(this.playerCar.loadModel(this.selectedCarModelId))
@@ -2902,7 +2916,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       if (this.isTraining) pc.boost = 100
       else pc.boost = Math.max(0, pc.boost - 32 * dt)
       pc.showFlame(true)
-      throttle = Math.max(throttle, 1.0) * 1.55
+      throttle = Math.max(throttle, 1.0) * 1.55 * this.carAttrs.nitroBonus
       this.emitTireSmoke(pc)
     } else {
       this.boostSfxHeld = false
@@ -2912,7 +2926,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
 
     if (throttle !== 0) {
-      const maxSpd = (isBoosting ? 1.75 : 1.25) * this.studioParams.playerSpeedMult
+      const nitroMaxMult = isBoosting ? 1.75 * this.carAttrs.nitroBonus : 1.25
+      const maxSpd = nitroMaxMult * this.studioParams.playerSpeedMult
       pc.speed = Math.max(-0.65, Math.min(maxSpd, pc.speed + throttle * 2.2 * dt))
     } else {
       pc.speed *= 0.94 // Desaceleracao suave por atrito < 0.02) pc.speed = 0
@@ -3034,7 +3049,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         const fwdSpeed = pc.speed * 50
         pc.velX = Math.sin(pc.yaw) * fwdSpeed
         pc.velZ = Math.cos(pc.yaw) * fwdSpeed
-        pc.velY = this.studioParams.jumpForce
+        pc.velY = this.studioParams.jumpForce + this.carAttrs.jumpBonus
         pc.jumpHoldTimer = 0.20 // permite segurar A/Espaço por 0.20s para Super Jump
         pc.grounded = false
         pc.jumpCount = 1
@@ -3082,7 +3097,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           pc.flipLocked = true
         } else {
           // SEM DIREÇÃO → pulo duplo vertical controlado
-          pc.velY = Math.max(pc.velY + this.studioParams.jumpForce * 0.85, this.studioParams.jumpForce * 1.15)
+          pc.velY = Math.max(pc.velY + (this.studioParams.jumpForce + this.carAttrs.jumpBonus) * 0.85, (this.studioParams.jumpForce + this.carAttrs.jumpBonus) * 1.15)
           pc.flipLocked = false
         }
         pc.jumpCount = 2
@@ -4743,6 +4758,24 @@ private resolveCarCarCollision() {
         a.speed *= 0.72
         b.speed *= 0.72
 
+        // Titan Shift pushBonus: se o carro do jogador é 'a' ou 'b', aplica força extra de empurrão
+        if (approach > 0.1) {
+          const isAPlayer = a === this.playerCar
+          const isBPlayer = b === this.playerCar
+          if ((isAPlayer || isBPlayer) && this.carAttrs.pushBonus > 1.0) {
+            const extra = (this.carAttrs.pushBonus - 1.0) * approach * 2.0
+            if (isAPlayer) {
+              b.velX = (b.velX || 0) + nx * extra * 50
+              b.velZ = (b.velZ || 0) + nz * extra * 50
+              b.speed *= 0.85
+            } else {
+              a.velX = (a.velX || 0) - nx * extra * 50
+              a.velZ = (a.velZ || 0) - nz * extra * 50
+              a.speed *= 0.85
+            }
+          }
+        }
+
         a.pos.x = Math.max(-limX, Math.min(limX, a.pos.x))
         a.pos.z = Math.max(-limZ, Math.min(limZ, a.pos.z))
         b.pos.x = Math.max(-limX, Math.min(limX, b.pos.x))
@@ -6124,7 +6157,8 @@ private resolveCarCarCollision() {
       // Disparo do Super Soco / Haymaker Cartoon com Mola 3D e Luva
       this.fireSpringPunch(this.playerCar)
     } else if (p === 'overdrive') {
-      this.rumbleActive = { type: 'overdrive', timeLeft: 5.0 }
+      // Nova Forge shieldBonus: aumenta duração do overdrive/escudo
+      this.rumbleActive = { type: 'overdrive', timeLeft: 5.0 + this.carAttrs.shieldBonus }
       this.audio.playVictory()
       this.showQuickChat('⚡ NITRO OVERDRIVE!')
     }
@@ -7007,6 +7041,9 @@ export class CarObject {
 
           model.updateMatrixWorld(true)
           bbox = new THREE.Box3().setFromObject(model)
+          const center = bbox.getCenter(new THREE.Vector3())
+          model.position.x -= center.x
+          model.position.z -= center.z
           model.position.y = Number.isFinite(bbox.min.y) ? -bbox.min.y + 0.05 : 0.15
 
           model.traverse((child: any) => {
