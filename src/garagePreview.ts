@@ -17,6 +17,7 @@ export class GaragePreview {
   private loader = new GLTFLoader()
   private loadToken = 0
   private carRoot: THREE.Object3D | null = null
+  private currentCarId = 'octane-cartoon'
   private clock = new THREE.Clock()
   private disposed = false
 
@@ -41,7 +42,7 @@ export class GaragePreview {
     const hemi = new THREE.HemisphereLight(0x9fe6ff, 0x0b1220, 1.15)
     this.scene.add(hemi)
 
-    const key = new THREE.DirectionalLight(0xffffff, 2.2)
+    const key = new THREE.DirectionalLight(0xffffff, 1.65)
     key.position.set(6, 10, 7)
     this.scene.add(key)
 
@@ -81,6 +82,7 @@ export class GaragePreview {
   }
 
   setCar(carId: string) {
+    this.currentCarId = carId
     const entry = CAR_MODELS[carId]
     const token = ++this.loadToken
     const file = (entry && entry.file) ? entry.file : '/models/vehicle-truck-red.glb'
@@ -144,8 +146,11 @@ export class GaragePreview {
       mesh.receiveShadow = true
       const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
       if (origMat) {
-        const origColor = origMat.color ? origMat.color.clone() : new THREE.Color(0xff4500)
+        let origColor = origMat.color ? origMat.color.clone() : new THREE.Color(0xff4500)
         const origMap = origMat.map || null
+        if (this.currentCarId === 'nova-forge') {
+          origColor = new THREE.Color(0x7c3aed) // Roxo cósmico marcante
+        }
         mesh.material = new THREE.MeshToonMaterial({
           color: origColor,
           map: origMap

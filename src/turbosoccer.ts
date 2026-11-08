@@ -19,7 +19,7 @@ import type { NetworkManager } from './network'
 
 const FIELD_W  = 220      // Arena 4v4 épica (era 160)
 const FIELD_L  = 360      // Arena 4v4 épica (era 260)
-const CEIL_H   = 46       // Teto alto para acrobacias (era 38)
+const CEIL_H   = 58       // Teto elevado para jogadas aéreas livres e arcos perfeitos (era 46)
 const BALL_R   = 2.2      // Raio da bola cartoon
 const GRAVITY  = 30       // Gravidade arcade
 
@@ -362,6 +362,10 @@ export class TurboSoccerGame {
   private hudRumbleName?: HTMLElement
   private hudRumbleHint?: HTMLElement
   private hudNitroArc: SVGElement | null = null
+  private hudGoalNav?: HTMLElement
+  private hudGoalNavArrow?: HTMLElement
+  private hudGoalNavText?: HTMLElement
+  private hudGoalNavDist?: HTMLElement
   private missileWarningHUD?: HTMLDivElement
   private isRouletteSpinning = false
   private rouletteTimer = 0
@@ -1583,20 +1587,55 @@ export class TurboSoccerGame {
     tex.colorSpace = THREE.SRGBColorSpace
     this.scoreboardTex = tex
 
-    const board = new THREE.Mesh(
-      new THREE.PlaneGeometry(30, 11.25),
-      new THREE.MeshBasicMaterial({ map: tex })
-    )
-    board.position.set(0, 15.5, -(FIELD_L / 2 + 2.5))
-    this.scene.add(board)
+    // ── PLACARES ELEVADOS DUPLOS (NORTE E SUL — VISÍVEIS DE QUALQUER PONTO DA ARENA) ──
+    const boardW = 38
+    const boardH = 14
+    const boardY = 29.5 // Elevado bem acima do travessão da trave de 17m
+    const distFromCenter = FIELD_L / 2 + GOAL_D + 10.0
 
-    const back = new THREE.Mesh(
-      new THREE.BoxGeometry(31.5, 12.5, 0.8),
-      new THREE.MeshToonMaterial({ color: 0x0f172a, gradientMap: TOON_GRADIENT })
-    )
-    back.position.set(0, 15.5, -(FIELD_L / 2 + 3.1))
-    back.castShadow = true
-    this.scene.add(back)
+    const boardMat = new THREE.MeshBasicMaterial({ map: tex })
+    const backMat = new THREE.MeshToonMaterial({ color: 0x070b16, gradientMap: TOON_GRADIENT })
+    const trussMat = new THREE.MeshToonMaterial({ color: 0x1e293b, gradientMap: TOON_GRADIENT })
+
+    // [Z-position, Y-rotation, neonColor]
+    const boardsConfig: Array<[number, number, number]> = [
+      [-distFromCenter, 0, 0x00cfff],        // Placar Norte (acima do gol Azul, voltado para o campo)
+      [distFromCenter, Math.PI, 0xff6600],  // Placar Sul (acima do gol Laranja, voltado para o campo)
+    ]
+
+    for (const [zPos, rotY, neonHex] of boardsConfig) {
+      const group = new THREE.Group()
+      group.position.set(0, boardY, zPos)
+      group.rotation.y = rotY
+
+      // Tela do placar
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(boardW, boardH), boardMat)
+      group.add(screen)
+
+      // Chassi traseiro reforçado
+      const back = new THREE.Mesh(new THREE.BoxGeometry(boardW + 1.2, boardH + 1.2, 1.2), backMat)
+      back.position.set(0, 0, -0.65)
+      back.castShadow = true
+      group.add(back)
+
+      // Borda Neon luminosa
+      const neonBorder = new THREE.Mesh(
+        new THREE.BoxGeometry(boardW + 2.0, boardH + 2.0, 0.4),
+        new THREE.MeshBasicMaterial({ color: neonHex })
+      )
+      neonBorder.position.set(0, 0, -0.7)
+      group.add(neonBorder)
+
+      // Torres de sustentação de treliça metálica até a arquibancada
+      for (const sx of [-boardW / 2 + 1.5, boardW / 2 - 1.5]) {
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.1, boardY - 4, 12), trussMat)
+        pillar.position.set(sx, -(boardY - 4) / 2 - boardH / 2, -1.2)
+        pillar.castShadow = true
+        group.add(pillar)
+      }
+
+      this.scene.add(group)
+    }
 
     this.drawScoreboard()
   }
@@ -1813,6 +1852,53 @@ export class TurboSoccerGame {
     const goalLight = new THREE.PointLight(teamColor, 2.2, 28)
     goalLight.position.set(0, GOAL_H * 0.75, dir * (GOAL_D * 0.5))
     group.add(goalLight)
+
+    // ── LETREIRO NEON LUMINOSO DE ORIENTAÇÃO (ATAQUE vs DEFESA) ──
+    const signCanvas = document.createElement('canvas')
+    signCanvas.width = 1024
+    signCanvas.height = 160
+    const sctx = signCanvas.getContext('2d')!
+
+    const isAttackGoal = flipZ // meta do Bot (-Z) é onde o jogador DEVE MARCAR (Ataque)
+    const signBg = '#070b16'
+    const signBorder = isAttackGoal ? '#00ff88' : '#ff6600'
+    const signText = isAttackGoal ? '🎯 GOL ADVERSÁRIO (ATAQUE)' : '🛡️ SEU GOL (DEFESA)'
+    const signTextColor = isAttackGoal ? '#00ff88' : '#ffd23f'
+
+    sctx.fillStyle = signBg
+    sctx.fillRect(0, 0, 1024, 160)
+    sctx.lineWidth = 10
+    sctx.strokeStyle = signBorder
+    sctx.strokeRect(8, 8, 1008, 144)
+
+    sctx.font = 'bold 64px "Luckiest Guy", Impact, sans-serif'
+    sctx.textAlign = 'center'
+    sctx.textBaseline = 'middle'
+    sctx.shadowColor = signBorder
+    sctx.shadowBlur = 24
+    sctx.fillStyle = signTextColor
+    sctx.fillText(signText, 512, 80)
+
+    const signTex = new THREE.CanvasTexture(signCanvas)
+    signTex.colorSpace = THREE.SRGBColorSpace
+
+    const signW = 34
+    const signH = 4.8
+    const signMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(signW, signH),
+      new THREE.MeshBasicMaterial({ map: signTex, transparent: true })
+    )
+    signMesh.position.set(0, GOAL_H + signH / 2 + 0.3, 0)
+    if (!isAttackGoal) signMesh.rotation.y = Math.PI // virado para dentro do campo
+    group.add(signMesh)
+
+    // Suporte traseiro escuro da placa
+    const signBack = new THREE.Mesh(
+      new THREE.BoxGeometry(signW + 0.6, signH + 0.6, 0.4),
+      new THREE.MeshToonMaterial({ color: 0x070b16, gradientMap: TOON_GRADIENT })
+    )
+    signBack.position.set(0, GOAL_H + signH / 2 + 0.3, isAttackGoal ? -0.25 : 0.25)
+    group.add(signBack)
 
     group.position.z = centerZ
     this.scene.add(group)
@@ -2217,6 +2303,16 @@ export class TurboSoccerGame {
         </div>
       </div>
 
+      <!-- INDICADOR DIRECIONAL DE ORIENTAÇÃO (ATAQUE / DEFESA — SEMPRE SABE ONDE MARCAR GOL) -->
+      <div id="turbo-goal-nav" style="position:absolute;top:78px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;
+        background:rgba(7,11,22,0.92);border:2px solid #00ff88;border-radius:16px;padding:3px 16px;
+        box-shadow:0 0 16px rgba(0,255,136,0.25),0 4px 0 #070b16;font-family:'Luckiest Guy',sans-serif;font-size:12px;
+        letter-spacing:1px;color:#00ff88;white-space:nowrap;user-select:none;pointer-events:none;z-index:110;">
+        <span id="turbo-goal-nav-arrow" style="font-size:15px;display:inline-block;">⬆️</span>
+        <span id="turbo-goal-nav-text">🎯 ATAQUE: GOL ADVERSÁRIO</span>
+        <span id="turbo-goal-nav-dist" style="color:#ffd23f;font-size:11px;font-family:'Orbitron',sans-serif;font-weight:800;background:rgba(0,0,0,0.5);padding:2px 7px;border-radius:6px;">180m</span>
+      </div>
+
       <!-- BOTOES DE CONTROLE & CAM -->
       <div style="position:absolute;top:18px;right:22px;display:flex;gap:10px;pointer-events:all;align-items:center;">
         <div id="turbo-ctrl-mode" style="background:rgba(0,255,136,0.15);border:1.5px solid #00ff88;
@@ -2354,6 +2450,10 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     this.hudRumbleIcon   = document.getElementById('turbo-rumble-icon') || undefined
     this.hudRumbleName   = document.getElementById('turbo-rumble-name') || undefined
     this.hudRumbleHint   = document.getElementById('turbo-rumble-hint') || undefined
+    this.hudGoalNav      = document.getElementById('turbo-goal-nav') || undefined
+    this.hudGoalNavArrow = document.getElementById('turbo-goal-nav-arrow') || undefined
+    this.hudGoalNavText  = document.getElementById('turbo-goal-nav-text') || undefined
+    this.hudGoalNavDist  = document.getElementById('turbo-goal-nav-dist') || undefined
 
     // ── RANK BADGE NO HUD (canto superior esquerdo) ──
     try {
@@ -3307,8 +3407,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     const limX = FIELD_W / 2 - 2.8
     const limZ = FIELD_L / 2 - 2.8
 
-    // Trava de altura de segurança: permite pulos duplos altos e defesas aéreas, mas impede o carro de chegar no teto (CEIL_H = 46)
-    const MAX_CAR_HEIGHT = 22.0
+    // Trava de altura de segurança: permite pulos duplos altos e defesas aéreas, com teto elevado (CEIL_H = 58)
+    const MAX_CAR_HEIGHT = 28.0
     if (car.pos.y > MAX_CAR_HEIGHT) {
       car.pos.y = MAX_CAR_HEIGHT
       if (car.velY > 0) car.velY = 0
@@ -5910,16 +6010,24 @@ private resolveCarCarCollision() {
 
     const scoreBefore = scorer === 'player' ? this.scorePlayer : this.scoreBot
 
+    // Detecta se foi GOL CONTRA (último toque foi da equipe defensora da meta invadida)
+    const isOwnGoal = (scorer === 'bot' && this.lastToucher === 'player') ||
+                      (scorer === 'player' && this.lastToucher === 'bot')
+
     if (scorer === 'player') {
       // Offline ou Host Online: incrementa placar do time local
       if (!this.isOnline1v1 || this.turboNet?.isHost) this.scorePlayer++
       this.updateScoreboardDisplay()
-      this.hudGoalTitle.textContent = this.isOnline1v1
-        ? (this.turboNet?.isHost ? '🎉 GOL DO TIME LARANJA!' : '🎉 GOL DO TIME AZUL!')
-        : '🎉 GOLAZO DO JOGADOR!'
-      this.hudGoalTitle.style.color = this.isOnline1v1
-        ? (this.turboNet?.isHost ? '#ff6600' : '#0088ff')
-        : '#ff6600'
+
+      if (isOwnGoal) {
+        this.hudGoalTitle.textContent = '💥 GOL CONTRA DO ADVERSÁRIO!'
+        this.hudGoalTitle.style.color = '#00ff88'
+      } else {
+        this.hudGoalTitle.textContent = this.isOnline1v1
+          ? (this.turboNet?.isHost ? '🎉 GOL DO TIME LARANJA!' : '🎉 GOL DO TIME AZUL!')
+          : '🎉 GOLAZO DO JOGADOR!'
+        this.hudGoalTitle.style.color = '#ff6600'
+      }
       this.audio.playGoal()
       this.audio.playVictory()
       this.audio.playCheer()
@@ -5927,12 +6035,16 @@ private resolveCarCarCollision() {
       // Offline ou Host Online: incrementa placar do rival
       if (!this.isOnline1v1 || this.turboNet?.isHost) this.scoreBot++
       this.updateScoreboardDisplay()
-      this.hudGoalTitle.textContent = this.isOnline1v1
-        ? (this.turboNet?.isHost ? '🤖 GOL DO TIME AZUL!' : '🤖 GOL DO TIME LARANJA!')
-        : '🤖 GOL DO BOT RIVAL!'
-      this.hudGoalTitle.style.color = this.isOnline1v1
-        ? (this.turboNet?.isHost ? '#0088ff' : '#ff6600')
-        : '#0088ff'
+
+      if (isOwnGoal) {
+        this.hudGoalTitle.textContent = '🤦 GOL CONTRA!'
+        this.hudGoalTitle.style.color = '#ef4444'
+      } else {
+        this.hudGoalTitle.textContent = this.isOnline1v1
+          ? (this.turboNet?.isHost ? '🤖 GOL DO TIME AZUL!' : '🤖 GOL DO TIME LARANJA!')
+          : '🤖 GOL DO BOT RIVAL!'
+        this.hudGoalTitle.style.color = '#0088ff'
+      }
       this.audio.playGoal()
       this.audio.playCheer()
     }
@@ -6663,6 +6775,52 @@ private resolveCarCarCollision() {
       this.hudNitroArc.setAttribute('stroke', bv > 50 ? '#ff6600' : bv > 25 ? '#ffaa00' : '#ef4444')
     }
 
+    // ── BÚSSOLA / GUIA DIRECIONAL DE ATAQUE (ONDE FAZER GOL) ──
+    if (this.hudGoalNav && this.hudGoalNavArrow && this.hudGoalNavText && this.hudGoalNavDist) {
+      const isClient = this.isOnline1v1 && !this.turboNet?.isHost
+      const targetZ = isClient ? (FIELD_L / 2) : (-FIELD_L / 2)
+      const dx = 0 - this.playerCar.pos.x
+      const dz = targetZ - this.playerCar.pos.z
+      const dist = Math.hypot(dx, dz)
+
+      // Vetor frontal do carro do jogador
+      const fx = Math.sin(this.playerCar.yaw)
+      const fz = Math.cos(this.playerCar.yaw)
+      const ndx = dist > 0.001 ? dx / dist : 0
+      const ndz = dist > 0.001 ? dz / dist : 1
+
+      // Produto escalar e vetorial
+      const dot = fx * ndx + fz * ndz
+      const cross = fx * ndz - fz * ndx
+
+      if (dot > 0.45) {
+        this.hudGoalNavArrow.textContent = '⬆️'
+        this.hudGoalNavText.textContent = '🎯 ATAQUE: GOL ADVERSÁRIO'
+        this.hudGoalNav.style.borderColor = '#00ff88'
+        this.hudGoalNav.style.boxShadow = '0 0 16px rgba(0,255,136,0.25), 0 4px 0 #070b16'
+        this.hudGoalNavText.style.color = '#00ff88'
+      } else if (dot < -0.45) {
+        this.hudGoalNavArrow.textContent = '⬇️'
+        this.hudGoalNavText.textContent = '🛡️ SUA DEFESA (Vire 180°)'
+        this.hudGoalNav.style.borderColor = '#f59e0b'
+        this.hudGoalNav.style.boxShadow = '0 0 16px rgba(245,158,11,0.25), 0 4px 0 #070b16'
+        this.hudGoalNavText.style.color = '#ffd23f'
+      } else if (cross > 0) {
+        this.hudGoalNavArrow.textContent = '➡️'
+        this.hudGoalNavText.textContent = '🎯 ATAQUE À DIREITA ➔'
+        this.hudGoalNav.style.borderColor = '#00cfff'
+        this.hudGoalNav.style.boxShadow = '0 0 16px rgba(0,207,255,0.25), 0 4px 0 #070b16'
+        this.hudGoalNavText.style.color = '#00cfff'
+      } else {
+        this.hudGoalNavArrow.textContent = '⬅️'
+        this.hudGoalNavText.textContent = '⬅️ 🎯 ATAQUE À ESQUERDA'
+        this.hudGoalNav.style.borderColor = '#00cfff'
+        this.hudGoalNav.style.boxShadow = '0 0 16px rgba(0,207,255,0.25), 0 4px 0 #070b16'
+        this.hudGoalNavText.style.color = '#00cfff'
+      }
+      this.hudGoalNavDist.textContent = `${Math.floor(dist)}m`
+    }
+
     // ── ONLINE 1v1: ping HUD ──────────────────────────────────
     if (this.isOnline1v1 && this.turboNet) {
       this.turboNet.updatePing(dt)
@@ -7066,6 +7224,11 @@ export class CarObject {
                   : new THREE.Color(this.teamColor)
                 let origMap = origMat.map || null
 
+                if (modelId === 'nova-forge') {
+                  // Personalização exclusiva Nova Forge: Roxo Cósmico Vibrante + preservação de vincos da textura
+                  origColor = new THREE.Color(0x7c3aed)
+                }
+
                 if (this.forceTeamColor) {
                   const mname = (child.name || '').toLowerCase()
                   const matName = (origMat.name || '').toLowerCase()
@@ -7090,8 +7253,9 @@ export class CarObject {
 
           this.group.add(model)
 
-          // Luz Neon Underglow no chão sob o veículo
-          const underglow = new THREE.PointLight(this.teamColor, 2.2, 9)
+          // Luz Neon Underglow no chão sob o veículo (Ciano para Nova Forge, cor do time para os demais)
+          const underglowColor = modelId === 'nova-forge' ? 0x00f0ff : this.teamColor
+          const underglow = new THREE.PointLight(underglowColor, 2.8, 10)
           underglow.position.set(0, 0.4, 0)
           this.group.add(underglow)
 
