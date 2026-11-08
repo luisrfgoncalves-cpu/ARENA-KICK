@@ -7221,15 +7221,19 @@ export class CarObject {
               if (origMat) {
                 let origColor = origMat.color && typeof origMat.color.clone === 'function'
                   ? origMat.color.clone()
-                  : new THREE.Color(this.teamColor)
+                  : new THREE.Color(0xffffff)
                 let origMap = origMat.map || null
 
-                if (modelId === 'nova-forge') {
-                  // Personalização exclusiva Nova Forge: Roxo Cósmico Vibrante + preservação de vincos da textura
-                  origColor = new THREE.Color(0x7c3aed)
+                if (origMap) {
+                  // Configura SRGBColorSpace para reprodução fiel das cores albedo do GLB
+                  origMap.colorSpace = THREE.SRGBColorSpace
+                  origMap.needsUpdate = true
+                  // Mantém a cor neutra branca (0xffffff) para não tingir nem apagar
+                  // as regiões roxas, ciano, brancas/prateadas e os detalhes de rodas da textura
+                  origColor = new THREE.Color(0xffffff)
                 }
 
-                if (this.forceTeamColor) {
+                if (this.forceTeamColor && !origMap) {
                   const mname = (child.name || '').toLowerCase()
                   const matName = (origMat.name || '').toLowerCase()
                   const isNeutral = mname.includes('wheel') || mname.includes('tire') || mname.includes('roda') ||
@@ -7238,7 +7242,6 @@ export class CarObject {
                                     matName.includes('glass') || matName.includes('tire') || matName.includes('wheel')
                   if (!isNeutral) {
                     origColor = new THREE.Color(this.teamColor)
-                    origMap = null
                   }
                 }
 

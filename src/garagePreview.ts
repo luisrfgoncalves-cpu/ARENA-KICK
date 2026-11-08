@@ -146,10 +146,12 @@ export class GaragePreview {
       mesh.receiveShadow = true
       const origMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as any
       if (origMat) {
-        let origColor = origMat.color ? origMat.color.clone() : new THREE.Color(0xff4500)
+        let origColor = origMat.color ? origMat.color.clone() : new THREE.Color(0xffffff)
         const origMap = origMat.map || null
-        if (this.currentCarId === 'nova-forge') {
-          origColor = new THREE.Color(0x7c3aed) // Roxo cósmico marcante
+        if (origMap) {
+          origMap.colorSpace = THREE.SRGBColorSpace
+          origMap.needsUpdate = true
+          origColor = new THREE.Color(0xffffff)
         }
         mesh.material = new THREE.MeshToonMaterial({
           color: origColor,
