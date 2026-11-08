@@ -50,7 +50,7 @@ export interface TurboWorldSnapshot {
 export interface TurboReliableEvent {
   type: 'turbo_event'
   protocolVersion: number
-  event: 'goal' | 'countdown' | 'reset' | 'match_end' | 'ping' | 'pong'
+  event: 'goal' | 'countdown' | 'reset' | 'match_end' | 'ping' | 'pong' | 'car_hit'
   data?: any
 }
 
@@ -93,6 +93,7 @@ export class TurboNetworkController {
   public onCountdownEvent?: (count: number) => void
   public onResetEvent?: () => void
   public onMatchEndEvent?: (winner: 'orange' | 'blue' | 'draw', scores: { orange: number; blue: number }) => void
+  public onCarHitEvent?: (targetSlot: number, effect: 'freeze' | 'spin' | 'shock') => void
   public onPeerDisconnected?: () => void
 
   constructor(network: NetworkManager) {
@@ -380,6 +381,16 @@ export class TurboNetworkController {
     this.network.send(packet)
   }
 
+  public broadcastCarHit(targetSlot: number, effect: 'freeze' | 'spin' | 'shock') {
+    const packet: TurboReliableEvent = {
+      type: 'turbo_event',
+      protocolVersion: TURBO_PROTOCOL_VERSION,
+      event: 'car_hit',
+      data: { targetSlot, effect }
+    }
+    this.network.send(packet)
+  }
+
   private handleReliableEvent(packet: TurboReliableEvent) {
     switch (packet.event) {
       case 'goal':
@@ -400,6 +411,11 @@ export class TurboNetworkController {
       case 'match_end':
         if (!this.isHost && packet.data) {
           this.onMatchEndEvent?.(packet.data.winner, packet.data.scores)
+        }
+        break
+      case 'car_hit':
+        if (packet.data) {
+          this.onCarHitEvent?.(packet.data.targetSlot, packet.data.effect)
         }
         break
       case 'ping':

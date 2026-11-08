@@ -95,7 +95,7 @@ export type TurboBotLevel = 'easy' | 'medium' | 'hard'
 export type TurboMatchFormat = '1v1' | '2v2' | '3v3' | '4v4'
 export type GoalExplosionType = 'toon' | 'supernova' | 'lightning' | 'confetti'
 export type TurboGameMode = 'standard' | 'rumble' | 'snowday'
-export type RumblePowerup = 'magnet' | 'shockwave' | 'punch' | 'overdrive'
+export type RumblePowerup = 'magnet' | 'shockwave' | 'punch' | 'overdrive' | 'missile' | 'freeze' | 'oil'
 
 export interface TurboTuning {
   playerSpeedMult?: number
@@ -153,6 +153,54 @@ export class TurboSoccerGame {
     value: number
   }[] = []
 
+  // ── CAIXAS DE ITENS MARIO KART & PROJÉTEIS RUMBLE ──
+  private mysteryBoxes: {
+    group: THREE.Group
+    boxMesh: THREE.Mesh
+    qMesh: THREE.Mesh
+    pos: THREE.Vector3
+    active: boolean
+    respawnTimer: number
+  }[] = []
+
+  private activeMissiles: {
+    group: THREE.Group
+    pos: THREE.Vector3
+    vel: THREE.Vector3
+    owner: CarObject
+    target: CarObject | null
+    lifetime: number
+  }[] = []
+
+  private activeIceProjectiles: {
+    group: THREE.Group
+    pos: THREE.Vector3
+    vel: THREE.Vector3
+    owner: CarObject
+    lifetime: number
+  }[] = []
+
+  private activeOilSlicks: {
+    mesh: THREE.Mesh
+    pos: THREE.Vector3
+    owner: CarObject
+    lifetime: number
+    armTimer: number
+  }[] = []
+
+  private activePunches: {
+    group: THREE.Group
+    gloveMesh: THREE.Mesh
+    springMesh: THREE.Mesh
+    owner: CarObject
+    origin: THREE.Vector3
+    dir: THREE.Vector3
+    distTraveled: number
+    maxDist: number
+    speed: number
+    lifetime: number
+  }[] = []
+
   private dynamicObstacles: {
     group: THREE.Group
     pos: THREE.Vector3
@@ -201,6 +249,7 @@ export class TurboSoccerGame {
   private prevDpadDown      = false
   private prevDpadLeft      = false
   private prevDpadRight     = false
+  private prevRb            = false
 
   private keys: Record<string, boolean> = {}
 
@@ -213,9 +262,9 @@ export class TurboSoccerGame {
     exposure: 1.05,
     playerSpeedMult: 1.0,
     turnRate: 2.8,
-    jumpForce: 14,
-    gravity: 17.5,
-    ballBounce: 0.80,
+    jumpForce: 13.5,
+    gravity: 26.0,
+    ballBounce: 0.62,
     camDist: 14.8,
     camH: 6.2,
   }
@@ -374,6 +423,16 @@ export class TurboSoccerGame {
       this.turboNet.onPeerDisconnected = () => {
         this.handleOnlineDisconnect()
       }
+
+      this.turboNet.onCarHitEvent = (targetSlot, effect) => {
+        if (this.destroyed) return
+        const targetCar = this.allCars[targetSlot]
+        if (targetCar) {
+          if (effect === 'freeze') targetCar.applyFreeze(2.0)
+          else if (effect === 'spin') targetCar.applySpinOut(1.4)
+          else if (effect === 'shock') this.triggerShockwave(targetCar.pos)
+        }
+      }
     }
 
     if (tuning) {
@@ -482,6 +541,7 @@ export class TurboSoccerGame {
       this.buildCartoonArena()
       this.buildObstacles3D()
       this.buildBoostCoins()
+      this.buildMysteryBoxes()
       this.buildGoals()
       this.buildBall()
       this.loadSceneryClouds()
@@ -542,6 +602,7 @@ export class TurboSoccerGame {
           ally.setPosition(sp.x, 0, sp.z)
           ally.yaw = sp.yaw
           ally.applyTransform()
+          ally.attachTeamBadge(`🤝 ALIADO ${i}`, '#22c55e', '#ffffff')
           this.orangeCars.push(ally)
         }
 
@@ -551,6 +612,7 @@ export class TurboSoccerGame {
         this.botCar.setPosition(blueSpawns[0].x, 0, blueSpawns[0].z)
         this.botCar.yaw = blueSpawns[0].yaw
         this.botCar.applyTransform()
+        this.botCar.attachTeamBadge('⚔️ RIVAL', '#ef4444', '#ffffff')
         this.blueCars.push(this.botCar)
 
         // Rivais Bot Azul adicionais (slots 1..teamSize-1)
@@ -561,6 +623,7 @@ export class TurboSoccerGame {
           rival.setPosition(sp.x, 0, sp.z)
           rival.yaw = sp.yaw
           rival.applyTransform()
+          rival.attachTeamBadge(`⚔️ RIVAL ${i + 1}`, '#ef4444', '#ffffff')
           this.blueCars.push(rival)
         }
 
@@ -791,6 +854,37 @@ export class TurboSoccerGame {
 
 
   private buildSkyAndSun() {
+    // ── CENÁRIO PANORÂMICO 360° (HORIZONTE EXTERNO DE PROFUNDIDADE) ──
+    const isNight = this.theme === 'cyber'
+    const backdropFile = isNight
+      ? '/assets/environment/arena-kick-backdrop-night.webp'
+      : '/assets/environment/arena-kick-backdrop-day.webp'
+
+    try {
+      const texLoader = new THREE.TextureLoader()
+      const backdropTex = texLoader.load(backdropFile)
+      backdropTex.colorSpace = THREE.SRGBColorSpace
+      backdropTex.wrapS = THREE.RepeatWrapping
+      backdropTex.repeat.set(3, 1) // Repetição panorâmica suave ao redor dos 360°
+
+      const backdropMat = new THREE.MeshBasicMaterial({
+        map: backdropTex,
+        side: THREE.BackSide,
+        depthWrite: false
+      })
+
+      // Cilindro gigante envolvendo toda a arena (FIELD_W=220, FIELD_L=360)
+      const backdropMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(280, 280, 160, 64, 1, true),
+        backdropMat
+      )
+      backdropMesh.position.set(0, 65, 0)
+      backdropMesh.renderOrder = -10
+      this.scene.add(backdropMesh)
+    } catch (e) {
+      console.warn('[TurboSoccer] Fallback de backdrop:', e)
+    }
+
     // Sol 3D Estilizado Cartoon no Horizonte Alto
     const sunGroup = new THREE.Group()
     sunGroup.position.set(60, 70, -80)
@@ -820,29 +914,47 @@ export class TurboSoccerGame {
   }
 
   private loadSceneryClouds() {
-    const loader = new GLTFLoader()
-    loader.load('/models/cloud.glb', (gltf) => {
-      const positions: [number, number, number, number][] = [
-        [-45, 34, -55, 6.0],
-        [48, 30, -65, 7.5],
-        [-52, 36, 35, 6.5],
-        [50, 32, 45, 7.0],
-        [0, 42, -75, 9.0],
-        [-30, 38, 0, 5.5],
-        [35, 36, -20, 6.0]
+    const cloudMat = new THREE.MeshToonMaterial({
+      color: 0xffffff,
+      gradientMap: TOON_GRADIENT
+    })
+
+    const buildFluffyCloud = () => {
+      const cg = new THREE.Group()
+      // Nuvem fofa estilizada cartoon composta por esferas e elipsóides brancos arredondados
+      const parts = [
+        { r: 2.2, x: 0, y: 0, z: 0 },
+        { r: 1.8, x: -1.8, y: -0.3, z: 0.2 },
+        { r: 1.7, x: 1.8, y: -0.2, z: -0.1 },
+        { r: 1.4, x: -0.9, y: 1.1, z: 0 },
+        { r: 1.5, x: 0.9, y: 1.0, z: 0.1 },
+        { r: 1.2, x: 0, y: 0.2, z: 1.2 },
+        { r: 1.2, x: 0, y: 0.1, z: -1.2 }
       ]
-      positions.forEach(([cx, cy, cz, sc]) => {
-        const cloud = gltf.scene.clone()
-        cloud.scale.set(sc, sc, sc)
-        cloud.position.set(cx, cy, cz)
-        cloud.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            child.castShadow = true
-          }
-        })
-        this.scene.add(cloud)
+      parts.forEach(p => {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(p.r, 16, 16), cloudMat)
+        m.position.set(p.x, p.y, p.z)
+        cg.add(m)
       })
-    }, undefined, () => {})
+      return cg
+    }
+
+    const positions: [number, number, number, number][] = [
+      [-65, 38, -85, 3.8],
+      [75, 42, -95, 4.2],
+      [-78, 40, 55, 3.5],
+      [70, 36, 65, 4.0],
+      [0, 52, -110, 5.0],
+      [-40, 44, 20, 3.2],
+      [45, 42, -30, 3.6]
+    ]
+
+    positions.forEach(([cx, cy, cz, sc]) => {
+      const cloud = buildFluffyCloud()
+      cloud.scale.set(sc, sc * 0.75, sc)
+      cloud.position.set(cx, cy, cz)
+      this.scene.add(cloud)
+    })
   }
 
 
@@ -2069,7 +2181,7 @@ export class TurboSoccerGame {
       <div style="position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
         background:#22345c;border:3px solid #141426;border-radius:18px;padding:8px 22px;
         font-size:12px;color:#ffffff;text-align:center;box-shadow:0 5px 0 #141426;">
-RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Flip &nbsp; B Nitro &nbsp; X Barrel Roll &nbsp; LB Drift &nbsp; Y Cam &nbsp; ESC Pausa
+RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Flip &nbsp; B Nitro &nbsp; RB Poder &nbsp; X Barrel Roll &nbsp; LB Drift &nbsp; Y Cam &nbsp; ESC Pausa
       </div>
 
       <!-- OVERLAY DE COUNTDOWN: 3.. 2.. 1.. VAI! -->
@@ -2107,16 +2219,25 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           padding:5px 14px;font-size:10px;font-weight:900;cursor:pointer;font-family:'Orbitron',sans-serif;margin-left:6px;">PULAR [ESPAÇO]</button>
       </div>
 
-      <!-- CARD DE POWER-UP RUMBLE -->
+      <!-- CARD DE POWER-UP (funciona em todos os modos - mystery boxes) -->
       <div id="turbo-rumble-card" style="position:absolute;bottom:140px;right:28px;display:none;
-        background:rgba(30,41,59,0.92);border:3px solid #facc15;border-radius:18px;padding:10px 16px;
-        align-items:center;gap:12px;box-shadow:0 0 20px rgba(250,204,21,0.5);
-        pointer-events:all;cursor:pointer;user-select:none;z-index:110;">
-        <div id="turbo-rumble-icon" style="font-size:30px;filter:drop-shadow(0 0 8px #facc15);">⏳</div>
-        <div>
-          <div id="turbo-rumble-name" style="font-size:11px;font-weight:900;color:#facc15;letter-spacing:1px;">CARREGANDO...</div>
-          <div id="turbo-rumble-hint" style="font-size:9px;color:rgba(255,255,255,0.7);margin-top:2px;">[R] OU [CTRL]</div>
+        background:rgba(30,41,59,0.95);border:3px solid #facc15;border-radius:20px;padding:12px 16px;
+        flex-direction:column;align-items:center;gap:8px;box-shadow:0 0 20px rgba(250,204,21,0.5),0 6px 0 #141426;
+        pointer-events:all;cursor:pointer;user-select:none;z-index:110;min-width:140px;">
+        <div style="display:flex;align-items:center;gap:10px;width:100%;">
+          <div id="turbo-rumble-icon" style="font-size:34px;filter:drop-shadow(0 0 8px #facc15);">⏳</div>
+          <div>
+            <div id="turbo-rumble-name" style="font-size:11px;font-weight:900;color:#facc15;letter-spacing:1px;">AGUARDANDO...</div>
+            <div id="turbo-rumble-hint" style="font-size:9px;color:rgba(255,255,255,0.6);margin-top:2px;">[R] OU [RB]</div>
+          </div>
         </div>
+        <button id="turbo-use-btn" style="
+          width:100%;padding:7px 10px;border-radius:12px;border:2px solid #facc15;
+          background:linear-gradient(135deg,#facc15,#f59e0b);color:#1a1200;
+          font-family:'Luckiest Guy',cursive;font-size:13px;letter-spacing:2px;
+          cursor:pointer;box-shadow:0 3px 0 #92400e;pointer-events:all;
+          transition:transform .08s,box-shadow .08s;
+        ">⚡ USAR [R] / [RB]</button>
       </div>
 
       <!-- OVERLAY DE PAUSA -->
@@ -2214,9 +2335,27 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       hud.appendChild(roleBadge)
     }
 
-    if (this.gameMode === 'rumble' && this.hudRumbleCard) {
-      this.hudRumbleCard.style.display = 'flex'
+    // Card de power-up: funciona em TODOS os modos (mystery boxes em qualquer modo)
+    if (this.hudRumbleCard) {
+      // Começa oculto; updateRumbleHUD() mostra quando o jogador tem um item
+      this.hudRumbleCard.style.display = 'none'
       this.hudRumbleCard.addEventListener('click', () => this.activatePlayerRumble())
+    }
+    // Botão USE dentro do card — também dispara o power-up
+    const useBtn = document.getElementById('turbo-use-btn')
+    if (useBtn) {
+      useBtn.addEventListener('click', (e) => {
+        e.stopPropagation() // evita duplo disparo com o click do card
+        this.activatePlayerRumble()
+      })
+      useBtn.addEventListener('pointerdown', () => {
+        useBtn.style.transform = 'translateY(2px)'
+        useBtn.style.boxShadow = '0 1px 0 #92400e'
+      })
+      useBtn.addEventListener('pointerup', () => {
+        useBtn.style.transform = ''
+        useBtn.style.boxShadow = '0 3px 0 #92400e'
+      })
     }
 
     const btnSkipReplay = document.getElementById('btn-skip-replay')
@@ -2368,6 +2507,34 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     bind(btnJump,  () => { this.touch.jump = true },   () => { this.touch.jump = false })
     bind(btnDrift, () => { this.touch.drift = true },  () => { this.touch.drift = false })
     bind(btnRoll,  () => { this.touch.roll = true },    () => { this.touch.roll = false })
+
+    // BOTÃO USE POWER-UP — toque para usar o item coletado (mobile)
+    const btnUse = document.createElement('button')
+    btnUse.id = 'tt-use-powerup'
+    btnUse.innerHTML = '⚡<br><span style="font-size:9px;">USAR</span>'
+    btnUse.style.cssText = `
+      position:absolute;bottom:85px;right:235px;
+      width:62px;height:62px;border-radius:50%;
+      background:linear-gradient(135deg,#facc15,#f59e0b);
+      color:#1a1200;border:3px solid #92400e;
+      box-shadow:0 5px 0 #92400e;
+      font-family:'Luckiest Guy',cursive;font-size:18px;
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+      touch-action:none;user-select:none;cursor:pointer;
+      pointer-events:all;transition:transform .08s,box-shadow .08s;
+      z-index:130;
+    `
+    wrap.appendChild(btnUse)
+    bind(
+      btnUse,
+      () => { this.activatePlayerRumble() },
+      () => {}
+    )
+
+    // Atualiza visibilidade do botão USE conforme o jogador tem item
+    ;(this as any)._updateTouchUseBtn = () => {
+      btnUse.style.display = this.rumblePowerup ? 'flex' : 'none'
+    }
   }
 
 
@@ -2420,6 +2587,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         }
         this.updateDynamicObstacles(dt)
         this.updateBoostCoins(dt)
+        this.updateMysteryBoxes(dt)
+        this.updateProjectilesAndTraps(dt)
         this.updateDemoRespawn(dt)
 
         // ── ONLINE 1v1: snapshot do Host → cliente ───────────
@@ -2433,6 +2602,9 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
         if (this.gameMode === 'rumble') {
           this.updateRumble(dt)
+        } else if (this.rumblePowerup || this.rumbleActive) {
+          // Em qualquer modo: aplica efeitos de power-ups coletados em mystery boxes
+          this.updateRumbleEffectsOnly(dt)
         }
 
         // Buffer do Instant Replay - Zero Allocation Ring Buffer (sem garbage collection pauses)
@@ -2589,27 +2761,37 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       this.hudCtrlMode.style.borderColor = '#00ff88'
     }
 
+    // ── THROTTLE: só o botão ACELERAR/RÉ move o carro no chão ──────────────
+    // W/S/Arrow APENAS quando não há gamepad (teclado como substituto de RT/LT)
+    // D-Pad cima/baixo no gamepad também servem como ACELERAR/RÉ
     let throttle = 0
     if (gp.connected) {
-      if (gp.rtThrottle > 0.1) throttle = gp.rtThrottle
-      else if (gp.ltBrake > 0.1) throttle = -gp.ltBrake
+      // Gamepad: gatilhos RT (frente) e LT (ré) têm prioridade; D-Pad como fallback
+      if (gp.rtThrottle > 0.1)       throttle = gp.rtThrottle
+      else if (gp.ltBrake > 0.1)     throttle = -gp.ltBrake
+      else if (gp.dpadUp)            throttle = 1
+      else if (gp.dpadDown)          throttle = -1
+      // stickY NÃO é throttle — é só câmera/direção, não movimentação
     } else {
+      // Teclado (sem gamepad): W/ArrowUp = acelerar, S/ArrowDown = ré
       if (this.keys['KeyW'] || this.keys['ArrowUp'])   throttle += 1
       if (this.keys['KeyS'] || this.keys['ArrowDown']) throttle -= 1
+      // Touch: botão GAS = acelerar, botão RÉ = ré (já mapeados em buildTouchControls)
       throttle += this.touch.throttle
-      throttle = Math.max(-1, Math.min(1, throttle))
     }
-
+    throttle = Math.max(-1, Math.min(1, throttle))
 
     let steer = 0
+    if (this.keys['KeyA'] || this.keys['ArrowLeft'])  steer -= 1
+    if (this.keys['KeyD'] || this.keys['ArrowRight']) steer += 1
+    steer += this.touch.steer
+
     if (gp.connected) {
       if (Math.abs(gp.steerX) > 0.15) steer = gp.steerX
-    } else {
-      if (this.keys['KeyA'] || this.keys['ArrowLeft'])  steer -= 1
-      if (this.keys['KeyD'] || this.keys['ArrowRight']) steer += 1
-      steer += this.touch.steer
-      steer = Math.max(-1, Math.min(1, steer))
+      else if (gp.dpadLeft) steer = -1
+      else if (gp.dpadRight) steer = 1
     }
+    steer = Math.max(-1, Math.min(1, steer))
 
     if (steer !== 0) {
       const turnMult = pc.drifting ? 2.1 : pc.speed < -0.1 ? -1 : 1
@@ -2798,23 +2980,23 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
         const hasDir = Math.abs(inputX) > 0.1 || Math.abs(inputZ) > 0.1
         if (hasDir) {
-          // FLIP DIRECIONAL: impulso forte + cambalhota acrobática de 360°
-          const flipThrust = 34.0
+          // FLIP DIRECIONAL: impulso equilibrado (Rocket League / Turbo Soccer) sem atravessar o campo
+          const flipThrust = 19.5
           const sinY = Math.sin(pc.yaw), cosY = Math.cos(pc.yaw)
           const thrustX = (inputX * cosY + inputZ * sinY) * flipThrust
           const thrustZ = (-inputX * sinY + inputZ * cosY) * flipThrust
-          pc.velX = pc.velX * 0.35 + thrustX
-          pc.velZ = pc.velZ * 0.35 + thrustZ
-          // Impulso vertical para o flip subir alto e alcançar a bola
-          pc.pos.y = Math.max(pc.pos.y, 1.4)
-          pc.velY = Math.max(pc.velY + 8.5, 12.0)
+          pc.velX = pc.velX * 0.25 + thrustX
+          pc.velZ = pc.velZ * 0.25 + thrustZ
+          // Impulso vertical controlado para bater e cair estável nas 4 rodas
+          pc.pos.y = Math.max(pc.pos.y, 1.2)
+          pc.velY = Math.max(pc.velY + 4.5, 7.5)
           pc.flipDirX = inputX
           pc.flipDirZ = inputZ
           pc.flipTimer = 0.001
           pc.flipLocked = true
         } else {
-          // SEM DIREÇÃO → pulo duplo reto para CIMA (bem mais alto como no Turbo Soccer original)
-          pc.velY = Math.max(pc.velY + this.studioParams.jumpForce * 1.1, this.studioParams.jumpForce * 1.5)
+          // SEM DIREÇÃO → pulo duplo vertical controlado
+          pc.velY = Math.max(pc.velY + this.studioParams.jumpForce * 0.85, this.studioParams.jumpForce * 1.15)
           pc.flipLocked = false
         }
         pc.jumpCount = 2
@@ -2881,6 +3063,12 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
     // D-Pad Quick Chat Emotes (Controle Xbox)
     if (gp.connected) {
+      // Disparo de Power-up via RB no controle do Xbox (apenas na borda de subida do botão)
+      if (gp.rb && !this.prevRb) {
+        this.activatePlayerRumble()
+      }
+      this.prevRb = gp.rb
+
       if (gp.dpadUp && !this.prevDpadUp)       this.showQuickChat('⚽ Golaço! VAI!')
       if (gp.dpadDown && !this.prevDpadDown)   this.showQuickChat('🛡️ Grande defesa!')
       if (gp.dpadLeft && !this.prevDpadLeft)   this.showQuickChat('⚡ Passa a bola aqui!')
@@ -3124,7 +3312,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       const g = new THREE.Group()
       g.position.set(x, 0, z)
 
-      const radius = isLarge ? 2.2 : 1.35
+      const radius = isLarge ? 2.2 : 1.45
       const thickness = 0.42
       const coinGeo = new THREE.CylinderGeometry(radius, radius, thickness, 32)
 
@@ -3141,9 +3329,18 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       })
 
       const coinMesh = new THREE.Mesh(coinGeo, [edgeMat, faceMat, faceMat])
-      coinMesh.position.y = 1.4 // Flutua confortavelmente acima do gramado (nunca encosta no chão)
+      // Garante altura de flutuação segura para a moeda nunca penetrar no gramado
+      const coinCenterY = radius + 1.2
+      coinMesh.position.y = coinCenterY
       coinMesh.castShadow = true
       g.add(coinMesh)
+
+      // Borda de contorno cartoon preto expressivo na moeda (estilo cel-shading nítido)
+      const coinOutlineGeo = new THREE.CylinderGeometry(radius * 1.05, radius * 1.05, thickness * 1.15, 32)
+      coinOutlineGeo.rotateX(Math.PI / 2)
+      const coinOutlineMat = new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
+      const coinOutlineMesh = new THREE.Mesh(coinOutlineGeo, coinOutlineMat)
+      coinMesh.add(coinOutlineMesh)
 
       // Base luminosa no chão
       const ring = new THREE.Mesh(
@@ -3177,7 +3374,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       this.boostCoins.push({
         group: g,
         coinMesh,
-        pos: new THREE.Vector3(x, 1.4, z),
+        pos: new THREE.Vector3(x, coinCenterY, z),
         active: true,
         respawnTimer: 0,
         value: val
@@ -3193,7 +3390,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       if (coin.active) {
         // Giro e flutuação suave cartoon da moeda (sempre no ar, sem afundar)
         coin.coinMesh.rotation.y += 2.8 * dt
-        coin.coinMesh.position.y = 1.4 + Math.sin(time + i * 0.9) * 0.18
+        coin.coinMesh.position.y = coin.pos.y + Math.sin(time + i * 0.9) * 0.22
 
         // Checa coleta por todos os carros
         for (const car of this.allCars) {
@@ -3218,6 +3415,567 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         }
       }
     }
+  }
+
+  // ── CAIXAS DE ITENS MISTERIOSAS (MARIO KART / RUMBLE) ──────────────
+  private buildMysteryBoxes() {
+    this.mysteryBoxes = []
+
+    const createQCanvas = () => {
+      const c = document.createElement('canvas')
+      c.width = 256
+      c.height = 256
+      const ctx = c.getContext('2d')!
+
+      // Fundo dourado saturado cartoon com borda grossa de quadrinhos
+      ctx.fillStyle = '#f59e0b'
+      ctx.fillRect(0, 0, 256, 256)
+
+      ctx.lineWidth = 18
+      ctx.strokeStyle = '#141426'
+      ctx.strokeRect(9, 9, 238, 238)
+
+      // Cantoneiras decorativas estilo caixa de surpresa
+      ctx.fillStyle = '#fbbf24'
+      ctx.fillRect(18, 18, 40, 40)
+      ctx.fillRect(198, 18, 40, 40)
+      ctx.fillRect(18, 198, 40, 40)
+      ctx.fillRect(198, 198, 40, 40)
+
+      // Ponto de interrogação com sombra preta cel-shading
+      ctx.font = '900 150px "Arial Black", Impact, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      ctx.fillStyle = '#141426'
+      ctx.fillText('?', 134, 136)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText('?', 128, 130)
+
+      const tex = new THREE.CanvasTexture(c)
+      return tex
+    }
+
+    const boxTex = createQCanvas()
+    const boxMat = new THREE.MeshToonMaterial({
+      map: boxTex,
+      color: 0xffffff,
+      gradientMap: TOON_GRADIENT
+    })
+
+    // Spawns de caixas estratégicos pelas laterais e meias do campo (NUNCA no centro 0,0 onde nasce a bola)
+    const spawns = [
+      { x: -FIELD_W * 0.32, z: 0 },
+      { x: FIELD_W * 0.32,  z: 0 },
+      { x: -FIELD_W * 0.16, z: FIELD_L * 0.12 },
+      { x: FIELD_W * 0.16,  z: FIELD_L * 0.12 },
+      { x: -FIELD_W * 0.16, z: -FIELD_L * 0.12 },
+      { x: FIELD_W * 0.16,  z: -FIELD_L * 0.12 },
+      { x: -FIELD_W * 0.28, z: FIELD_L * 0.26 },
+      { x: FIELD_W * 0.28,  z: FIELD_L * 0.26 },
+      { x: -FIELD_W * 0.28, z: -FIELD_L * 0.26 },
+      { x: FIELD_W * 0.28,  z: -FIELD_L * 0.26 },
+      { x: 0,               z: FIELD_L * 0.36 },
+      { x: 0,               z: -FIELD_L * 0.36 }
+    ]
+
+    for (const sp of spawns) {
+      const g = new THREE.Group()
+      g.position.set(sp.x, 2.5, sp.z)
+
+      const boxGeo = new THREE.BoxGeometry(3.2, 3.2, 3.2)
+      const boxMesh = new THREE.Mesh(boxGeo, boxMat)
+      boxMesh.castShadow = true
+      g.add(boxMesh)
+
+      // Borda preta de contorno cartoon 3D expressiva
+      const outlineGeo = new THREE.BoxGeometry(3.38, 3.38, 3.38)
+      const outlineMat = new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
+      const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat)
+      boxMesh.add(outlineMesh)
+
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(2.4, 24),
+        new THREE.MeshBasicMaterial({ color: 0x050814, transparent: true, opacity: 0.45 })
+      )
+      shadow.rotation.x = -Math.PI / 2
+      shadow.position.y = -2.45
+      g.add(shadow)
+
+      const light = new THREE.PointLight(0xfacc15, 1.6, 14)
+      light.position.y = 0
+      g.add(light)
+
+      this.scene.add(g)
+      this.mysteryBoxes.push({
+        group: g,
+        boxMesh,
+        qMesh: boxMesh,
+        pos: new THREE.Vector3(sp.x, 2.5, sp.z),
+        active: true,
+        respawnTimer: 0
+      })
+    }
+  }
+
+  private updateMysteryBoxes(dt: number) {
+    const time = Date.now() * 0.003
+    // Pool balanceada com mais caixas de míssil teleguiado cartoon
+    const pool: RumblePowerup[] = ['missile', 'missile', 'freeze', 'oil', 'magnet', 'shockwave', 'punch', 'overdrive']
+
+    for (let i = 0; i < this.mysteryBoxes.length; i++) {
+      const mb = this.mysteryBoxes[i]
+      if (mb.active) {
+        mb.boxMesh.rotation.y += 2.2 * dt
+        mb.boxMesh.rotation.x = Math.sin(time + i) * 0.2
+        mb.boxMesh.position.y = Math.sin(time * 1.5 + i * 0.8) * 0.35
+
+        for (const car of this.allCars) {
+          if (!car.group.visible || car.isDemoed) continue
+          const d = Math.hypot(car.pos.x - mb.pos.x, car.pos.z - mb.pos.z)
+          if (d < 4.2) {
+            mb.active = false
+            mb.respawnTimer = 6.0
+            mb.group.visible = false
+
+            const awarded = pool[Math.floor(Math.random() * pool.length)]
+
+            if (car === this.playerCar) {
+              this.rumblePowerup = awarded
+              // SOM DE EXPLOSÃO DA CAIXA: playDemo() = postHit + powerHit = efeito de impacto forte
+              this.audio.playDemo()
+              // SOM SECUNDÁRIO de coleta (jingle de recompensa)
+              setTimeout(() => { try { this.audio.playCoin() } catch {} }, 180)
+              this.triggerImpactFlash(mb.pos)
+              this.emitCartoonStarBurst(mb.pos, 24, 0xfacc15)
+              this.emitCartoonStarBurst(mb.pos, 12, 0xff5500)
+              this.updateRumbleHUD()
+              const itemNames: Record<RumblePowerup, string> = {
+                missile: '🚀 MÍSSIL TELEGUIDADO!',
+                freeze: '🧊 RAIO DE GELO!',
+                oil: '🛢️ MANCHA DE ÓLEO!',
+                magnet: '🧲 ÍMÃ DA BOLA!',
+                shockwave: '💨 ONDA DE CHOQUE!',
+                punch: '🔥 SUPER SOCO!',
+                overdrive: '⚡ NITRO OVERDRIVE!'
+              }
+              const label = itemNames[awarded] || '📦 ITEM OBTIDO!'
+              // Banner grande animado de item coletado
+              this.showItemAwardBanner(awarded, label)
+            } else {
+              const bst = this.botRumbleStates.get(car)
+              if (bst && !bst.active) {
+                bst.powerup = awarded
+              }
+            }
+            break
+          }
+        }
+      } else {
+        mb.respawnTimer -= dt
+        if (mb.respawnTimer <= 0) {
+          mb.active = true
+          mb.group.visible = true
+        }
+      }
+    }
+  }
+
+  private firePlayerMissile() {
+    // Acha o adversário mais à frente
+    let target: CarObject | null = null
+    let closestDist = 180
+
+    for (const opp of this.blueCars) {
+      if (!opp.group.visible || opp.isDemoed) continue
+      const d = this.playerCar.pos.distanceTo(opp.pos)
+      if (d < closestDist) {
+        closestDist = d
+        target = opp
+      }
+    }
+
+    const mGroup = new THREE.Group()
+
+    // Corpo estilizado do míssil cartoon com ogiva e barbatana
+    const bodyGeo = new THREE.CylinderGeometry(0.55, 0.65, 2.6, 16)
+    const bodyMat = new THREE.MeshToonMaterial({ color: 0xef4444, gradientMap: TOON_GRADIENT })
+    const body = new THREE.Mesh(bodyGeo, bodyMat)
+    body.rotation.x = Math.PI / 2
+    mGroup.add(body)
+
+    const noseGeo = new THREE.ConeGeometry(0.55, 1.2, 16)
+    const noseMat = new THREE.MeshToonMaterial({ color: 0xfacc15, gradientMap: TOON_GRADIENT })
+    const nose = new THREE.Mesh(noseGeo, noseMat)
+    nose.rotation.x = Math.PI / 2
+    nose.position.z = 1.8
+    mGroup.add(nose)
+
+    // Barbatanas brancas cartoon cel-shading
+    const finMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    const finH = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.15, 0.8), finMat)
+    finH.position.z = -0.8
+    mGroup.add(finH)
+    const finV = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.0, 0.8), finMat)
+    finV.position.z = -0.8
+    mGroup.add(finV)
+
+    const pLight = new THREE.PointLight(0xff5500, 3, 14)
+    mGroup.add(pLight)
+
+    const spawnPos = this.playerCar.pos.clone().add(new THREE.Vector3(Math.sin(this.playerCar.yaw) * 4, 1.3, Math.cos(this.playerCar.yaw) * 4))
+    mGroup.position.copy(spawnPos)
+    this.scene.add(mGroup)
+
+    const fwd = new THREE.Vector3(Math.sin(this.playerCar.yaw), 0, Math.cos(this.playerCar.yaw)).normalize().multiplyScalar(58)
+
+    this.activeMissiles.push({
+      group: mGroup,
+      pos: spawnPos,
+      vel: fwd,
+      owner: this.playerCar,
+      target,
+      lifetime: 5.0
+    })
+
+    this.audio.playMissileLaunch()
+    this.showQuickChat('🚀 MÍSSIL DISPARADO!')
+  }
+
+  private firePlayerFreeze() {
+    const pGroup = new THREE.Group()
+
+    // Cristal de gelo multifacetado com núcleo brilhante
+    const iceGeo = new THREE.DodecahedronGeometry(1.4)
+    const iceMat = new THREE.MeshToonMaterial({
+      color: 0x38bdf8,
+      gradientMap: TOON_GRADIENT,
+      transparent: true,
+      opacity: 0.88
+    })
+    pGroup.add(new THREE.Mesh(iceGeo, iceMat))
+
+    const spikeGeo = new THREE.ConeGeometry(0.4, 2.4, 8)
+    const spikeMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe })
+    for (let s = 0; s < 4; s++) {
+      const sp = new THREE.Mesh(spikeGeo, spikeMat)
+      sp.rotation.z = (Math.PI / 2) * s
+      pGroup.add(sp)
+    }
+
+    const pLight = new THREE.PointLight(0x38bdf8, 3, 12)
+    pGroup.add(pLight)
+
+    const spawnPos = this.playerCar.pos.clone().add(new THREE.Vector3(Math.sin(this.playerCar.yaw) * 4, 1.2, Math.cos(this.playerCar.yaw) * 4))
+    pGroup.position.copy(spawnPos)
+    this.scene.add(pGroup)
+
+    const fwd = new THREE.Vector3(Math.sin(this.playerCar.yaw), 0, Math.cos(this.playerCar.yaw)).normalize().multiplyScalar(72)
+
+    this.activeIceProjectiles.push({
+      group: pGroup,
+      pos: spawnPos,
+      vel: fwd,
+      owner: this.playerCar,
+      lifetime: 3.5
+    })
+
+    this.audio.playDash()
+    this.showQuickChat('🧊 RAIO DE GELO DISPARADO!')
+  }
+
+  private dropPlayerOil() {
+    const oilGeo = new THREE.CircleGeometry(4.4, 24)
+    const oilMat = new THREE.MeshBasicMaterial({ color: 0x090d16, side: THREE.DoubleSide })
+    const oilMesh = new THREE.Mesh(oilGeo, oilMat)
+    oilMesh.rotation.x = -Math.PI / 2
+
+    // Bordas brilhantes de óleo iridescente cartoon
+    const ringGeo = new THREE.RingGeometry(3.9, 4.4, 24)
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, side: THREE.DoubleSide })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    oilMesh.add(ring)
+
+    // Solta a poça para TRÁS do carro (a uma distância segura de 10 metros na retaguarda)
+    // Dessa forma, quem estiver perseguindo você derrapa imediatamente, e você NUNCA passa por cima dela ao acelerar!
+    const forwardX = Math.sin(this.playerCar.yaw)
+    const forwardZ = Math.cos(this.playerCar.yaw)
+    const dropPos = this.playerCar.pos.clone().add(new THREE.Vector3(-forwardX * 10, 0.05, -forwardZ * 10))
+    oilMesh.position.copy(dropPos)
+    this.scene.add(oilMesh)
+
+    // Efeito visual cartoon de óleo derramado na retaguarda
+    this.emitCartoonStarBurst(this.playerCar.pos, 8, 0x111827)
+    this.emitCartoonStarBurst(dropPos, 14, 0xa855f7)
+
+    this.activeOilSlicks.push({
+      mesh: oilMesh,
+      pos: dropPos,
+      owner: this.playerCar,
+      lifetime: 20.0,
+      armTimer: 0.1
+    })
+
+    this.audio.playDash()
+    this.showQuickChat('🛢️ POÇA DE ÓLEO DEIXADA PARA TRÁS!')
+  }
+
+  private updateProjectilesAndTraps(dt: number) {
+    // 1. MÍSSEIS TELEGUIDADOS
+    for (let i = this.activeMissiles.length - 1; i >= 0; i--) {
+      const m = this.activeMissiles[i]
+      m.lifetime -= dt
+
+      if (m.target && m.target.group.visible && !m.target.isDemoed) {
+        const toTarget = m.target.pos.clone().add(new THREE.Vector3(0, 0.8, 0)).sub(m.pos)
+        toTarget.normalize()
+        m.vel.lerp(toTarget.multiplyScalar(66), dt * 5.0)
+      }
+
+      m.pos.addScaledVector(m.vel, dt)
+      m.group.position.copy(m.pos)
+      m.group.lookAt(m.pos.clone().add(m.vel))
+
+      // Efeito de fumaça na cauda do míssil com faíscas laranjas
+      if (Math.random() < 0.45) {
+        this.emitCartoonStarBurst(m.pos, 2, 0xff7700)
+      }
+
+      // Colisão com carros rivais
+      let hit = false
+      for (let slot = 0; slot < this.allCars.length; slot++) {
+        const c = this.allCars[slot]
+        if (c === m.owner || !c.group.visible || c.isDemoed) continue
+        if (c.pos.distanceTo(m.pos) < 4.2) {
+          hit = true
+          // EFEITO DEVASTADOR: Lançado aos ares + Spin-out de 2.2s + Explosão Web Audio
+          c.applySpinOut(2.2)
+          c.velY = 22
+          c.grounded = false
+          this.triggerShockwave(c.pos)
+          this.audio.synthesizeBoom(160, 0.65, 1.0)
+          this.triggerCameraShake(1.6)
+          this.triggerImpactFlash(c.pos)
+          this.emitCartoonStarBurst(c.pos, 32, 0xff2200)
+          this.emitCartoonStarBurst(c.pos, 16, 0xfacc15)
+          if (this.isOnline1v1 && this.turboNet?.isHost) {
+            this.turboNet.broadcastCarHit(slot, 'spin')
+          }
+          break
+        }
+      }
+
+      if (hit || m.lifetime <= 0) {
+        this.emitCartoonStarBurst(m.pos, 24, 0xff3300)
+        this.scene.remove(m.group)
+        this.activeMissiles.splice(i, 1)
+      }
+    }
+
+    // 2. PROJÉTEIS DE GELO
+    for (let i = this.activeIceProjectiles.length - 1; i >= 0; i--) {
+      const p = this.activeIceProjectiles[i]
+      p.lifetime -= dt
+      p.pos.addScaledVector(p.vel, dt)
+      p.group.position.copy(p.pos)
+      p.group.rotation.x += dt * 10
+      p.group.rotation.y += dt * 10
+
+      let hit = false
+      for (let slot = 0; slot < this.allCars.length; slot++) {
+        const c = this.allCars[slot]
+        if (c === p.owner || !c.group.visible || c.isDemoed) continue
+        if (c.pos.distanceTo(p.pos) < 3.8) {
+          hit = true
+          // CONGELAMENTO REAL E DEVASTADOR: 2.8s paralisado no cubo de gelo + som de congelamento
+          c.applyFreeze(2.8)
+          this.audio.playIceFreeze()
+          this.triggerCameraShake(0.8)
+          this.emitCartoonStarBurst(c.pos, 32, 0x38bdf8)
+          this.emitCartoonStarBurst(c.pos, 16, 0xe0f2fe)
+          if (this.isOnline1v1 && this.turboNet?.isHost) {
+            this.turboNet.broadcastCarHit(slot, 'freeze')
+          }
+          break
+        }
+      }
+
+      if (hit || p.lifetime <= 0) {
+        this.emitCartoonStarBurst(p.pos, 16, 0x38bdf8)
+        this.scene.remove(p.group)
+        this.activeIceProjectiles.splice(i, 1)
+      }
+    }
+
+    // 3. MANCHAS DE ÓLEO
+    for (let i = this.activeOilSlicks.length - 1; i >= 0; i--) {
+      const o = this.activeOilSlicks[i]
+      o.lifetime -= dt
+      o.armTimer -= dt
+
+      if (o.armTimer <= 0) {
+        for (let slot = 0; slot < this.allCars.length; slot++) {
+          const c = this.allCars[slot]
+          if (!c.group.visible || c.isDemoed) continue
+          // O dono que soltou a poça não cai nela imediatamente nos primeiros 2.5 segundos
+          if (c === o.owner && o.lifetime > 17.5) continue
+
+          const d = Math.hypot(c.pos.x - o.pos.x, c.pos.z - o.pos.z)
+          if (d < 4.4) {
+            // Efeito de derrapagem desgovernada
+            c.applySpinOut(1.8)
+            this.audio.playDash()
+            this.audio.synthesizeBoom(110, 0.3, 0.6)
+            this.emitTireSmoke(c, true)
+            this.emitCartoonStarBurst(c.pos, 16, 0xa855f7)
+            if (this.isOnline1v1 && this.turboNet?.isHost) {
+              this.turboNet.broadcastCarHit(slot, 'spin')
+            }
+            this.scene.remove(o.mesh)
+            this.activeOilSlicks.splice(i, 1)
+            break
+          }
+        }
+      }
+
+      if (o.lifetime <= 0 && this.activeOilSlicks.includes(o)) {
+        this.scene.remove(o.mesh)
+        this.activeOilSlicks.splice(i, 1)
+      }
+    }
+
+    // 4. SUPER SOCO CARTOON COM MOLA 3D (HAYMAKER PROJECTILE)
+    for (let i = this.activePunches.length - 1; i >= 0; i--) {
+      const p = this.activePunches[i]
+      p.lifetime -= dt
+      const step = p.speed * dt
+      p.distTraveled += step
+
+      // Estica a mola do carro até a luva
+      const currentPos = p.origin.clone().addScaledVector(p.dir, p.distTraveled)
+      p.group.position.copy(currentPos)
+      p.springMesh.scale.set(1, 1, Math.max(0.2, p.distTraveled))
+      p.springMesh.position.z = -p.distTraveled / 2
+
+      // Animação de rotação da luva no ar
+      p.gloveMesh.rotation.z += 8 * dt
+
+      let hit = false
+
+      // A) Atinge a Bola
+      const dBall = currentPos.distanceTo(this.ball.pos)
+      if (dBall < 4.2) {
+        hit = true
+        // Porrada violenta na bola em direção ao gol
+        this.ball.vel.copy(p.dir.clone().multiplyScalar(68))
+        this.ball.vel.y = Math.max(16, this.ball.vel.y + 12)
+        this.audio.playPunchImpact()
+        this.triggerCameraShake(1.3)
+        this.triggerImpactFlash(this.ball.pos)
+        this.emitCartoonStarBurst(this.ball.pos, 32, 0xff3300)
+        this.emitCartoonStarBurst(currentPos, 20, 0xfacc15)
+        this.showQuickChat('🥊 SOCO DEVASTADOR NA BOLA!')
+      }
+
+      // B) Atinge Carros Adversários
+      if (!hit) {
+        for (let slot = 0; slot < this.allCars.length; slot++) {
+          const c = this.allCars[slot]
+          if (c === p.owner || !c.group.visible || c.isDemoed) continue
+          if (currentPos.distanceTo(c.pos) < 4.0) {
+            hit = true
+            // Nocaute no rival: arremessado para o alto e gira desgovernado
+            c.applySpinOut(2.4)
+            c.velX = p.dir.x * 55
+            c.velZ = p.dir.z * 55
+            c.velY = 22
+            c.grounded = false
+            this.audio.playPunchImpact()
+            this.triggerCameraShake(1.5)
+            this.triggerImpactFlash(c.pos)
+            this.emitCartoonStarBurst(c.pos, 36, 0xff2200)
+            this.emitCartoonStarBurst(c.pos, 16, 0xfacc15)
+            if (this.isOnline1v1 && this.turboNet?.isHost) {
+              this.turboNet.broadcastCarHit(slot, 'spin')
+            }
+            this.showQuickChat('🥊 NOCAUTE NO RIVAL!')
+            break
+          }
+        }
+      }
+
+      if (hit || p.distTraveled >= p.maxDist || p.lifetime <= 0) {
+        this.scene.remove(p.group)
+        this.activePunches.splice(i, 1)
+      }
+    }
+  }
+
+  /** Dispara a luva de boxe gigante cartoon com mola 3D em direção à mira do carro */
+  private fireSpringPunch(owner: CarObject) {
+    const pGroup = new THREE.Group()
+
+    // 1. Luva de boxe vermelha cartoon gigante
+    const gloveMat = new THREE.MeshToonMaterial({
+      color: 0xef4444,
+      gradientMap: TOON_GRADIENT
+    })
+    const gloveBody = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 16), gloveMat)
+    gloveBody.scale.set(1.1, 1.25, 1.4)
+
+    // Polegar da luva
+    const thumbMat = new THREE.MeshToonMaterial({ color: 0xdc2626, gradientMap: TOON_GRADIENT })
+    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 12), thumbMat)
+    thumb.position.set(1.4, 0.4, 0.3)
+    gloveBody.add(thumb)
+
+    // Punho branco da luva
+    const cuffMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.6, 16), cuffMat)
+    cuff.rotation.x = Math.PI / 2
+    cuff.position.z = -1.2
+    gloveBody.add(cuff)
+
+    pGroup.add(gloveBody)
+
+    // 2. Mola expansível amarela cartoon
+    const springMat = new THREE.MeshToonMaterial({
+      color: 0xfacc15,
+      gradientMap: TOON_GRADIENT
+    })
+    const springMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.55, 1.0, 10),
+      springMat
+    )
+    springMesh.rotation.x = Math.PI / 2
+    pGroup.add(springMesh)
+
+    const fwdX = Math.sin(owner.yaw)
+    const fwdZ = Math.cos(owner.yaw)
+    const dir = new THREE.Vector3(fwdX, 0, fwdZ).normalize()
+
+    const origin = owner.pos.clone().add(new THREE.Vector3(fwdX * 2.5, 1.2, fwdZ * 2.5))
+    pGroup.position.copy(origin)
+    pGroup.lookAt(origin.clone().add(dir))
+
+    this.scene.add(pGroup)
+
+    this.activePunches.push({
+      group: pGroup,
+      gloveMesh: gloveBody,
+      springMesh,
+      owner,
+      origin: origin.clone(),
+      dir,
+      distTraveled: 0,
+      maxDist: 42.0, // Alcance razoável de 42 metros!
+      speed: 85.0,   // Velocidade rápida de soco estilingue
+      lifetime: 1.5
+    })
+
+    this.audio.playPunchImpact()
+    this.showQuickChat('🥊 SUPER SOCO DISPARADO!')
   }
 
   // ── OBSTÁCULOS DINÂMICOS 3D (BARRIS & CONES COM TAMANHO REAL E SEM AFUNDAR) ─────
@@ -3760,6 +4518,13 @@ private resolveCarCarCollision() {
     const pc = this.playerCar
     if (pc.isDemoed) return
 
+    if (gp.connected) {
+      if (gp.rb && !this.prevRb) {
+        this.activatePlayerRumble()
+      }
+      this.prevRb = gp.rb
+    }
+
     // Coleta inputs do frame
     let throttle = 0
     if (gp.connected) {
@@ -3862,8 +4627,8 @@ private resolveCarCarCollision() {
       car.velY += 30 * dt
       car.jumpHoldTimer -= dt
     } else if (input.jump && !car.grounded && car.jumpCount === 1) {
-      // 2º pulo (pulo duplo alto)
-      car.velY = Math.max(car.velY + this.studioParams.jumpForce * 1.1, this.studioParams.jumpForce * 1.5)
+      // 2º pulo (pulo duplo calibrado)
+      pc.velY = Math.max(pc.velY + this.studioParams.jumpForce * 0.85, this.studioParams.jumpForce * 1.15)
       car.jumpCount = 2
       this.audio.playDash()
     }
@@ -4067,37 +4832,112 @@ private resolveCarCarCollision() {
   private runSingleBotAI(bc: CarObject, dt: number) {
     const bp = this.ball.pos
     const isBlue = this.blueCars.includes(bc)
-    // Blue ataca em -Z, Orange aliados atacam em +Z
+    // Blue ataca em +Z (lado laranja), Orange aliados atacam em -Z (lado azul)
+    const opponentGoalZ = isBlue ? FIELD_L / 2 : -FIELD_L / 2
     const ownGoalZ = isBlue ? -FIELD_L / 2 : FIELD_L / 2
 
-    let bx = bp.x
-    let bz = bp.z - ownGoalZ
-    const bl = Math.hypot(bx, bz) || 1
-    bx /= bl; bz /= bl
-    const behindX = bp.x + bx * 3.6
-    const behindZ = bp.z + bz * 3.6
-
-    const distBall = Math.hypot(bp.x - bc.pos.x, bp.z - bc.pos.z)
-    const distBehind = Math.hypot(behindX - bc.pos.x, behindZ - bc.pos.z)
-    const ballInOwnHalf = isBlue ? bp.z < 0 : bp.z > 0
-
+    // 1. OPORTUNIDADE TÁTICA DE PEGAR CAIXAS DE PODER SE ESTIVEREM NO CAMINHO
     let targetX: number
     let targetZ: number
+    let seekingBox = false
 
-    if (ballInOwnHalf && distBall > 4.5 && distBehind > 3.0) {
-      targetX = bp.x * 0.5
-      targetZ = (bp.z + ownGoalZ) * 0.5
-    } else if (distBehind > 2.4) {
-      targetX = behindX
-      targetZ = behindZ
-    } else {
-      targetX = bp.x
-      targetZ = bp.z + (isBlue ? 1.0 : -1.0)
+    // Bot procura caixa ativa próxima se não tiver poder guardado
+    let botState = this.botRumbleStates.get(bc)
+    if (!botState) {
+      botState = { powerup: null, timer: 6.0, active: null }
+      this.botRumbleStates.set(bc, botState)
     }
 
-    // Nunca mira fora do campo (evita travar nas paredes)
-    targetX = Math.max(-FIELD_W / 2 + 3, Math.min(FIELD_W / 2 - 3, targetX))
-    targetZ = Math.max(-FIELD_L / 2 + 3, Math.min(FIELD_L / 2 - 3, targetZ))
+    if (!botState.powerup && !botState.active && Math.random() < 0.6) {
+      let nearestBoxDist = 32
+      let nearestBoxPos: THREE.Vector3 | null = null
+      for (const mb of this.mysteryBoxes) {
+        if (!mb.active) continue
+        const dBox = bc.pos.distanceTo(mb.pos)
+        if (dBox < nearestBoxDist) {
+          nearestBoxDist = dBox
+          nearestBoxPos = mb.pos
+        }
+      }
+      if (nearestBoxPos && nearestBoxDist < 25) {
+        targetX = nearestBoxPos.x
+        targetZ = nearestBoxPos.z
+        seekingBox = true
+      }
+    }
+
+    const distBall = Math.hypot(bp.x - bc.pos.x, bp.z - bc.pos.z)
+
+    // 2. FORMAÇÃO TÁTICA EM EQUIPE: DISTRIBUIÇÃO INTELIGENTE DE PAPÉIS
+    const myTeam = isBlue ? this.blueCars : this.orangeCars
+    const myIndexInTeam = myTeam.indexOf(bc)
+
+    // Se houver mais de 1 bot no time, atribui funções táticas:
+    // Index 0: Atacante Principal (busca a bola e chuta a gol)
+    // Index 1: Meio-campo / Suporte Ofensivo (busca caixas de poder para atingir adversários e apoiar o jogador)
+    // Index 2+: Zagueiro / Goleiro Recuado (cobertura da defesa)
+    const isDefender = myIndexInTeam >= 2
+    const isSupport  = myIndexInTeam === 1
+
+    if (!seekingBox) {
+      if (isDefender) {
+        // Zagueiro / Goleiro: protege a frente da própria trave
+        const defZ = isBlue ? -FIELD_L * 0.38 : FIELD_L * 0.38
+        targetX = Math.max(-GOAL_W * 0.8, Math.min(GOAL_W * 0.8, bp.x * 0.85))
+        targetZ = defZ
+      } else if (isSupport && (!botState.powerup && !botState.active)) {
+        // Suporte busca caixas de poder para atrapalhar os rivais com mísseis/gelo
+        let nearestBoxDist = 50
+        let nearestBoxPos: THREE.Vector3 | null = null
+        for (const mb of this.mysteryBoxes) {
+          if (!mb.active) continue
+          const dBox = bc.pos.distanceTo(mb.pos)
+          if (dBox < nearestBoxDist) {
+            nearestBoxDist = dBox
+            nearestBoxPos = mb.pos
+          }
+        }
+        if (nearestBoxPos) {
+          targetX = nearestBoxPos.x
+          targetZ = nearestBoxPos.z
+        } else {
+          targetX = bp.x * 0.7
+          targetZ = (bp.z + opponentGoalZ) * 0.4
+        }
+      } else {
+        // Atacante / Condução: alinha perfeitamente atrás da bola para chutar em direção ao gol rival
+        const toGoalX = 0 - bp.x
+        const toGoalZ = opponentGoalZ - bp.z
+        const goalDist = Math.hypot(toGoalX, toGoalZ) || 1
+        const normGoalX = toGoalX / goalDist
+        const normGoalZ = toGoalZ / goalDist
+
+        // Ponto de preparação atrás da bola na linha do gol adversário
+        const strikeBehindX = bp.x - normGoalX * 4.2
+        const strikeBehindZ = bp.z - normGoalZ * 4.2
+
+        const ballInOwnHalf = isBlue ? bp.z < -4 : bp.z > 4
+        const distBehind = Math.hypot(strikeBehindX - bc.pos.x, strikeBehindZ - bc.pos.z)
+
+        if (ballInOwnHalf && distBall > 12) {
+          // Modo Defesa Inteligente: posiciona-se entre a bola e o próprio gol
+          targetX = bp.x * 0.65
+          targetZ = (bp.z + ownGoalZ) * 0.52
+        } else if (distBehind > 3.2) {
+          // Manobra de contorno: vai para trás da bola para chutar em direção ao gol
+          targetX = strikeBehindX
+          targetZ = strikeBehindZ
+        } else {
+          // Disparada para o chute com potência
+          targetX = bp.x
+          targetZ = bp.z + normGoalZ * 1.5
+        }
+      }
+    }
+
+    // Limites de segurança da arena
+    targetX = Math.max(-FIELD_W / 2 + 3, Math.min(FIELD_W / 2 - 3, targetX!))
+    targetZ = Math.max(-FIELD_L / 2 + 3, Math.min(FIELD_L / 2 - 3, targetZ!))
 
     const dx = targetX - bc.pos.x
     const dz = targetZ - bc.pos.z
@@ -4107,24 +4947,27 @@ private resolveCarCarCollision() {
     while (angleDiff > Math.PI)  angleDiff -= Math.PI * 2
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
 
-    const turnGain = this.botLevel === 'easy' ? 2.5 : this.botLevel === 'hard' ? 4.4 : 3.5
-    const speedCap = this.botLevel === 'easy' ? 0.76 : this.botLevel === 'hard' ? 1.12 : 0.92
-    const accel = this.botLevel === 'easy' ? 1.4 : this.botLevel === 'hard' ? 2.2 : 1.8
+    // Parâmetros calibrados por nível de dificuldade
+    const turnGain = this.botLevel === 'easy' ? 2.8 : this.botLevel === 'hard' ? 4.8 : 3.8
+    const speedCap = this.botLevel === 'easy' ? 0.78 : this.botLevel === 'hard' ? 1.15 : 0.95
+    const accel    = this.botLevel === 'easy' ? 1.5 : this.botLevel === 'hard' ? 2.3 : 1.9
 
-    // Giro suave humano do bot
-    bc.yaw += Math.max(-2.6 * dt, Math.min(2.6 * dt, angleDiff * turnGain * dt))
-    bc.steerFront(Math.max(-0.4, Math.min(0.4, angleDiff * 0.8)))
+    // Giro suave e responsivo
+    bc.yaw += Math.max(-3.0 * dt, Math.min(3.0 * dt, angleDiff * turnGain * dt))
+    bc.steerFront(Math.max(-0.45, Math.min(0.45, angleDiff * 0.85)))
 
-    // Acelera no chute quando alinhado com a bola
-    const striking = distBall < 5.5 && Math.abs(angleDiff) < 0.55
+    // Acelera forte quando alinhado com a bola ou alvo
+    const isLinedUp = Math.abs(angleDiff) < 0.45
+    const striking  = distBall < 6.0 && isLinedUp
     const baseSpeed = striking
-      ? speedCap
-      : Math.abs(angleDiff) < 0.6 ? speedCap * 0.92 : speedCap * 0.46
-    bc.speed = Math.max(-0.3, Math.min(baseSpeed, bc.speed + accel * dt))
+      ? speedCap * 1.05
+      : isLinedUp ? speedCap : speedCap * 0.55
 
-    // O bot pula se a bola estiver um pouco acima
-    if (bp.y > 2.8 && distBall < 8.0 && bc.grounded) {
-      bc.velY = 12
+    bc.speed = Math.max(-0.35, Math.min(baseSpeed, bc.speed + accel * dt))
+
+    // Pulo aéreo tático no chute se a bola estiver no ar
+    if (bp.y > 2.2 && distBall < 7.5 && bc.grounded && isLinedUp) {
+      bc.velY = 13.5
       bc.grounded = false
     }
 
@@ -4139,13 +4982,20 @@ private resolveCarCarCollision() {
 
     // Gravidade
     b.vel.y -= this.studioParams.gravity * dt
+
+    // Arrasto aerodinâmico (Air Drag / Resistência do ar realista estilo Rocket League)
+    // Permite que a bola desacelere suavemente de chutes super rápidos em vez de atravessar o campo descontrolada
+    const airDrag = Math.pow(0.988, dt * 60)
+    b.vel.x *= airDrag
+    b.vel.z *= airDrag
+
     b.pos.addScaledVector(b.vel, dt)
 
     // Colisão com o solo & Atrito de rolamento no gramado
     if (b.pos.y <= BALL_R) {
       b.pos.y = BALL_R
       if (Math.abs(b.vel.y) > 0.4) {
-        b.vel.y = -b.vel.y * Math.max(0.76, this.studioParams.ballBounce) // Quique vivo elástico
+        b.vel.y = -b.vel.y * Math.max(0.55, this.studioParams.ballBounce) // Quique elástico amortecido e realista
         // Squash no solo só ocorre em impacto forte (> 14 m/s)
         if (Math.abs(b.vel.y) > 14) {
           b.targetSquash.set(1.35, 0.65, 1.35)
@@ -4342,13 +5192,14 @@ private resolveCarCarCollision() {
           this.audio.playDash()
         }
       } else if (isFrontBumper) {
-        // POWER SHOT DO BUMPER FRONTAL (estilo Rocket League: a bola sobe em arcos aéreos épicos!)
-        const powerF = (26 + carSpd * 34) * 1.6
-        b.vel.x = Math.sin(car.yaw) * powerF + nx * 12
-        b.vel.z = Math.cos(car.yaw) * powerF + nz * 12
-        const aerialLift = (!car.grounded || car.flipTimer > 0) ? 22.0 : 15.0
-        b.vel.y = Math.max(aerialLift, 13.0 + carSpd * 16 + Math.max(0, ny) * 16)
-        this.triggerCameraShake(0.55)
+        // POWER SHOT DO BUMPER FRONTAL (estilo Rocket League: velocidade equilibrada para gol e troca de passes)
+        const powerF = 20 + carSpd * 26
+        b.vel.x = Math.sin(car.yaw) * powerF + nx * 8
+        b.vel.z = Math.cos(car.yaw) * powerF + nz * 8
+        // Elevação controlada: a bola sobe para vencer o goleiro, mas não vai no teto
+        const aerialLift = (!car.grounded || car.flipTimer > 0) ? 12.0 : 7.0
+        b.vel.y = Math.max(aerialLift, 5.0 + carSpd * 8 + Math.max(0, ny) * 6)
+        this.triggerCameraShake(0.45)
         // ── SOM ESPACIAL 3D EM CAMADAS PELO IMPACTO TOTAL CARRO-BOLA ──
         const impactSpeedBumper = b.vel.length() + carSpd
         this.audio.playCollisionTiered(impactSpeedBumper, b.pos.x, b.pos.y, b.pos.z)
@@ -4549,6 +5400,84 @@ private resolveCarCarCollision() {
         chat.style.transform = 'translateY(-6px)'
       }
     }, 2400)
+  }
+
+  /** Banner grande animado exibido quando o jogador coleta um item de mystery box */
+  private showItemAwardBanner(type: RumblePowerup, label: string) {
+    const root = document.getElementById('turbo-hud-root')
+    if (!root) return
+
+    // Remove banner anterior se existir
+    const old = document.getElementById('turbo-item-award-banner')
+    if (old) old.remove()
+    if ((this as any)._itemBannerTimer) clearTimeout((this as any)._itemBannerTimer)
+
+    const colorMap: Record<RumblePowerup, string> = {
+      missile:   '#ef4444',
+      freeze:    '#38bdf8',
+      oil:       '#a3e635',
+      magnet:    '#a855f7',
+      shockwave: '#f97316',
+      punch:     '#fbbf24',
+      overdrive: '#facc15'
+    }
+    const hintMap: Record<RumblePowerup, string> = {
+      missile:   'Mira no adversário e destrói!',
+      freeze:    'Congela o rival no lugar!',
+      oil:       'Deixa rastro escorregadio!',
+      magnet:    'Atrai a bola para você!',
+      shockwave: 'Onda de choque devastadora!',
+      punch:     'Soco potente na bola!',
+      overdrive: 'Nitro infinito por 5s!'
+    }
+
+    const color = colorMap[type] || '#facc15'
+    const hint  = hintMap[type]  || 'Pressione [R] ou [RB] para usar!'
+
+    const banner = document.createElement('div')
+    banner.id = 'turbo-item-award-banner'
+    banner.style.cssText = `
+      position:absolute;
+      top:82px;left:24px;
+      transform:translateX(-40px) scale(0.92);
+      background:rgba(12,20,44,0.95);
+      border:3px solid ${color};
+      border-radius:20px;
+      padding:12px 20px;
+      display:flex;
+      align-items:center;
+      gap:14px;
+      pointer-events:none;
+      z-index:250;
+      box-shadow:0 0 25px ${color}66, 0 6px 0 #141426;
+      transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s;
+      opacity:0;
+    `
+    banner.innerHTML = `
+      <div style="font-size:36px;line-height:1;filter:drop-shadow(0 0 10px ${color});">${label.split(' ')[0]}</div>
+      <div style="display:flex;flex-direction:column;text-align:left;">
+        <div style="font-family:'Luckiest Guy',cursive;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.6);">ITEM COLETADO!</div>
+        <div style="font-family:'Luckiest Guy',cursive;font-size:16px;color:${color};letter-spacing:1px;line-height:1.2;">${label.replace(label.split(' ')[0] + ' ', '')}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-top:2px;">${hint}</div>
+        <div style="font-family:'Luckiest Guy',cursive;font-size:10px;color:#00ff88;margin-top:4px;letter-spacing:1px;">USE COM: [R] / [RB] / CLIQUE NO CARD</div>
+      </div>
+    `
+    root.appendChild(banner)
+
+    // Animate in
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        banner.style.transform = 'translateX(0) scale(1)'
+        banner.style.opacity = '1'
+      })
+    })
+
+    // Fade out after 2.8s
+    ;(this as any)._itemBannerTimer = setTimeout(() => {
+      banner.style.transform = 'translateX(-25px) scale(0.95)'
+      banner.style.opacity = '0'
+      setTimeout(() => { try { banner.remove() } catch {} }, 280)
+    }, 2800)
   }
 
   private onGoalScored(scorer: 'player' | 'bot') {
@@ -4766,9 +5695,27 @@ private resolveCarCarCollision() {
   }
 
   public activatePlayerRumble() {
-    if (this.gameMode !== 'rumble' || !this.rumblePowerup || this.rumbleActive) return
+    if (!this.rumblePowerup || this.rumbleActive) return
     const p = this.rumblePowerup
     this.rumblePowerup = null
+
+    if (p === 'missile') {
+      this.firePlayerMissile()
+      this.updateRumbleHUD()
+      return
+    }
+
+    if (p === 'freeze') {
+      this.firePlayerFreeze()
+      this.updateRumbleHUD()
+      return
+    }
+
+    if (p === 'oil') {
+      this.dropPlayerOil()
+      this.updateRumbleHUD()
+      return
+    }
 
     if (p === 'shockwave') {
       this.triggerShockwave(this.playerCar.pos)
@@ -4779,13 +5726,12 @@ private resolveCarCarCollision() {
     }
 
     if (p === 'magnet') {
-      this.rumbleActive = { type: 'magnet', timeLeft: 4.0 }
+      this.rumbleActive = { type: 'magnet', timeLeft: 6.0 }
       this.audio.playCheer()
-      this.showQuickChat('🧲 ÍMÃ ATIVADO!')
+      this.showQuickChat('🧲 SUPER ÍMÃ ATIVADO!')
     } else if (p === 'punch') {
-      this.rumbleActive = { type: 'punch', timeLeft: 7.0 }
-      this.audio.playGoal()
-      this.showQuickChat('🔥 SUPER SOCO PRONTO!')
+      // Disparo do Super Soco / Haymaker Cartoon com Mola 3D e Luva
+      this.fireSpringPunch(this.playerCar)
     } else if (p === 'overdrive') {
       this.rumbleActive = { type: 'overdrive', timeLeft: 5.0 }
       this.audio.playVictory()
@@ -4799,6 +5745,71 @@ private resolveCarCarCollision() {
     const p = st.powerup
     st.powerup = null
 
+    if (p === 'missile') {
+      // Bot dispara míssil no jogador
+      const mGroup = new THREE.Group()
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.8, 2.4, 12),
+        new THREE.MeshToonMaterial({ color: 0x38bdf8, gradientMap: TOON_GRADIENT })
+      )
+      cone.rotation.x = Math.PI / 2
+      mGroup.add(cone)
+      const pLight = new THREE.PointLight(0x00cfff, 2, 8)
+      mGroup.add(pLight)
+      const spawnPos = bot.pos.clone().add(new THREE.Vector3(Math.sin(bot.yaw) * 4, 1.2, Math.cos(bot.yaw) * 4))
+      mGroup.position.copy(spawnPos)
+      this.scene.add(mGroup)
+      const fwd = new THREE.Vector3(Math.sin(bot.yaw), 0, Math.cos(bot.yaw)).normalize().multiplyScalar(55)
+      this.activeMissiles.push({
+        group: mGroup,
+        pos: spawnPos,
+        vel: fwd,
+        owner: bot,
+        target: this.playerCar,
+        lifetime: 4.5
+      })
+      this.showQuickChat('🤖 BOT DISPAROU MÍSSIL!')
+      return
+    }
+
+    if (p === 'freeze') {
+      const pGroup = new THREE.Group()
+      const iceGeo = new THREE.DodecahedronGeometry(1.2)
+      const iceMat = new THREE.MeshToonMaterial({ color: 0x38bdf8, gradientMap: TOON_GRADIENT })
+      pGroup.add(new THREE.Mesh(iceGeo, iceMat))
+      const spawnPos = bot.pos.clone().add(new THREE.Vector3(Math.sin(bot.yaw) * 4, 1.2, Math.cos(bot.yaw) * 4))
+      pGroup.position.copy(spawnPos)
+      this.scene.add(pGroup)
+      const fwd = new THREE.Vector3(Math.sin(bot.yaw), 0, Math.cos(bot.yaw)).normalize().multiplyScalar(68)
+      this.activeIceProjectiles.push({
+        group: pGroup,
+        pos: spawnPos,
+        vel: fwd,
+        owner: bot,
+        lifetime: 3.5
+      })
+      this.showQuickChat('🤖 BOT DISPAROU GELO!')
+      return
+    }
+
+    if (p === 'oil') {
+      const oilGeo = new THREE.CircleGeometry(3.6, 24)
+      const oilMat = new THREE.MeshBasicMaterial({ color: 0x111827, side: THREE.DoubleSide })
+      const oilMesh = new THREE.Mesh(oilGeo, oilMat)
+      oilMesh.rotation.x = -Math.PI / 2
+      const dropPos = bot.pos.clone().add(new THREE.Vector3(-Math.sin(bot.yaw) * 3.5, 0.05, -Math.cos(bot.yaw) * 3.5))
+      oilMesh.position.copy(dropPos)
+      this.scene.add(oilMesh)
+      this.activeOilSlicks.push({
+        mesh: oilMesh,
+        pos: dropPos,
+        owner: bot,
+        lifetime: 18.0,
+        armTimer: 0.6
+      })
+      return
+    }
+
     if (p === 'shockwave') {
       this.triggerShockwave(bot.pos)
       st.timer = 11.0 + Math.random() * 4.0
@@ -4808,7 +5819,8 @@ private resolveCarCarCollision() {
     if (p === 'magnet') {
       st.active = { type: 'magnet', timeLeft: 3.5 }
     } else if (p === 'punch') {
-      st.active = { type: 'punch', timeLeft: 6.0 }
+      this.fireSpringPunch(bot)
+      return
     } else if (p === 'overdrive') {
       st.active = { type: 'overdrive', timeLeft: 4.5 }
       bot.boost = 100
@@ -4817,27 +5829,82 @@ private resolveCarCarCollision() {
 
   private triggerShockwave(origin: THREE.Vector3) {
     this.audio.playDemo()
-    this.triggerCameraShake(0.9)
-    this.emitCartoonStarBurst(origin, 28, 0x00cfff)
+    this.triggerCameraShake(1.4)
+    this.emitCartoonStarBurst(origin, 36, 0x00cfff)
+    this.emitCartoonStarBurst(origin, 20, 0xffffff)
+    this.triggerImpactFlash(origin)
 
     for (const car of this.allCars) {
       const d = car.pos.distanceTo(origin)
-      if (d > 0.5 && d < 44) {
+      if (d > 0.5 && d < 55) {
+        const factor = 1 - d / 55
         const dir = car.pos.clone().sub(origin).normalize()
-        const force = (1 - d / 44) * 48
+        const force = factor * 72
         car.velX = (car.velX || 0) + dir.x * force
         car.velZ = (car.velZ || 0) + dir.z * force
-        car.velY = (car.velY || 0) + 18 * (1 - d / 44)
+        car.velY = (car.velY || 0) + 26 * factor
         car.grounded = false
+        // Efeito devastador de spin-out e perda de controle no impacto da onda
+        car.applySpinOut(1.8)
+        this.emitTireSmoke(car, true)
+        this.emitCartoonStarBurst(car.pos, 10, 0x38bdf8)
       }
     }
 
     const ballD = this.ball.pos.distanceTo(origin)
-    if (ballD < 45) {
+    if (ballD < 55) {
+      const factor = 1 - ballD / 55
       const dir = this.ball.pos.clone().sub(origin).normalize()
-      const force = (1 - ballD / 45) * 58
+      const force = factor * 75
       this.ball.vel.add(dir.multiplyScalar(force))
-      this.ball.vel.y += 16
+      this.ball.vel.y += 22 * factor
+      this.emitCartoonStarBurst(this.ball.pos, 16, 0xfacc15)
+    }
+  }
+
+  /**
+   * Aplica efeitos de power-ups coletados via mystery boxes em QUALQUER modo de jogo.
+   * Não concede power-ups automáticos (isso é exclusivo do modo rumble).
+   */
+  private updateRumbleEffectsOnly(dt: number) {
+    if (this.rumbleActive) {
+      this.rumbleActive.timeLeft -= dt
+      // Efeito de ímã: atrai a bola para o carro a grandes distâncias (alcance de 115 metros!)
+      if (this.rumbleActive.type === 'magnet') {
+        const toCar = this.playerCar.pos.clone().sub(this.ball.pos)
+        const dist = toCar.length()
+        if (dist < 115 && dist > 1.5) {
+          toCar.normalize()
+          // Força magnética crescente com feixe cel-shading
+          const pullForce = 62 + (1 - dist / 115) * 35
+          this.ball.vel.add(toCar.multiplyScalar(pullForce * dt))
+          this.emitCartoonStarBurst(this.ball.pos.clone().addScaledVector(toCar, 0.4), 2, 0x00cfff)
+          this.emitCartoonStarBurst(this.playerCar.pos, 1, 0xa855f7)
+        }
+      } else if (this.rumbleActive.type === 'overdrive') {
+        // Overdrive: mantém boost e velocidade máxima
+        this.playerCar.boost = 100
+        this.playerCar.speed = Math.max(this.playerCar.speed, 1.45)
+      } else if (this.rumbleActive.type === 'punch') {
+        // Punch ativo: se aproximar da bola (< 12m), solta a pancada automática de nocaute
+        const toball = this.ball.pos.clone().sub(this.playerCar.pos)
+        const dBall = toball.length()
+        if (dBall < 12) {
+          toball.normalize()
+          this.ball.vel.add(toball.multiplyScalar(65))
+          this.ball.vel.y += 16
+          this.audio.playPunchImpact()
+          this.triggerCameraShake(1.0)
+          this.emitCartoonStarBurst(this.ball.pos, 28, 0xff3300)
+          this.rumbleActive = null
+        }
+      }
+      if (this.rumbleActive.timeLeft <= 0) {
+        this.rumbleActive = null
+        this.updateRumbleHUD()
+      } else {
+        this.updateRumbleHUD()
+      }
     }
   }
 
@@ -4859,14 +5926,29 @@ private resolveCarCarCollision() {
       if (this.rumbleActive.type === 'magnet') {
         const toCar = this.playerCar.pos.clone().sub(this.ball.pos)
         const dist = toCar.length()
-        if (dist < 55 && dist > 2) {
+        if (dist < 115 && dist > 1.5) {
           toCar.normalize()
-          this.ball.vel.add(toCar.multiplyScalar(44 * dt))
-          this.emitCartoonStarBurst(this.ball.pos.clone().addScaledVector(toCar, 0.5), 1, 0x00cfff)
+          const pullForce = 62 + (1 - dist / 115) * 35
+          this.ball.vel.add(toCar.multiplyScalar(pullForce * dt))
+          this.emitCartoonStarBurst(this.ball.pos.clone().addScaledVector(toCar, 0.4), 2, 0x00cfff)
+          this.emitCartoonStarBurst(this.playerCar.pos, 1, 0xa855f7)
         }
       } else if (this.rumbleActive.type === 'overdrive') {
         this.playerCar.boost = 100
         this.playerCar.speed = Math.max(this.playerCar.speed, 1.45)
+      } else if (this.rumbleActive.type === 'punch') {
+        // Punch ativo: se aproximar da bola (< 12m), solta a pancada automática de nocaute
+        const toball = this.ball.pos.clone().sub(this.playerCar.pos)
+        const dBall = toball.length()
+        if (dBall < 12) {
+          toball.normalize()
+          this.ball.vel.add(toball.multiplyScalar(65))
+          this.ball.vel.y += 16
+          this.audio.playPunchImpact()
+          this.triggerCameraShake(1.0)
+          this.emitCartoonStarBurst(this.ball.pos, 28, 0xff3300)
+          this.rumbleActive = null
+        }
       }
 
       if (this.rumbleActive.timeLeft <= 0) {
@@ -4887,14 +5969,21 @@ private resolveCarCarCollision() {
       if (st.powerup === null && !st.active) {
         st.timer -= dt
         if (st.timer <= 0) {
-          const pool: RumblePowerup[] = ['magnet', 'shockwave', 'punch', 'overdrive']
+          const pool: RumblePowerup[] = ['missile', 'freeze', 'oil', 'magnet', 'shockwave', 'punch', 'overdrive']
           st.powerup = pool[Math.floor(Math.random() * pool.length)]
         }
       }
 
       if (st.powerup && !st.active) {
         const d = bot.pos.distanceTo(this.ball.pos)
-        if (st.powerup === 'magnet' && d < 40) {
+        const dPlayer = bot.pos.distanceTo(this.playerCar.pos)
+        if (st.powerup === 'missile' && dPlayer < 80) {
+          this.activateBotRumble(bot, st)
+        } else if (st.powerup === 'freeze' && dPlayer < 60) {
+          this.activateBotRumble(bot, st)
+        } else if (st.powerup === 'oil' && dPlayer < 25) {
+          this.activateBotRumble(bot, st)
+        } else if (st.powerup === 'magnet' && d < 40) {
           this.activateBotRumble(bot, st)
         } else if (st.powerup === 'shockwave' && d < 18) {
           this.activateBotRumble(bot, st)
@@ -4925,8 +6014,22 @@ private resolveCarCarCollision() {
 
   private updateRumbleHUD() {
     if (!this.hudRumbleCard || !this.hudRumbleIcon || !this.hudRumbleName) return
-    if (this.gameMode !== 'rumble') {
+
+    // Mostra o card em QUALQUER modo de jogo quando o jogador tem item ou está usando
+    // (mystery boxes existem em todos os modos, não só no rumble)
+    const hasItem = !!this.rumblePowerup || !!this.rumbleActive
+    if (!hasItem && this.gameMode !== 'rumble') {
       this.hudRumbleCard.style.display = 'none'
+      return
+    }
+    if (!hasItem) {
+      // No modo rumble sem item: exibe o cooldown
+      this.hudRumbleCard.style.display = 'flex'
+      this.hudRumbleIcon.textContent = '⏳'
+      this.hudRumbleName.textContent = `RECARGA: ${Math.ceil(this.rumbleTimer)}s`
+      this.hudRumbleCard.style.borderColor = 'rgba(255,255,255,0.25)'
+      this.hudRumbleCard.style.boxShadow = 'none'
+      if (this.hudRumbleHint) this.hudRumbleHint.textContent = 'AGUARDE POWER-UP'
       return
     }
 
@@ -4937,18 +6040,29 @@ private resolveCarCarCollision() {
         magnet: '🧲',
         shockwave: '💨',
         punch: '🔥',
-        overdrive: '⚡'
+        overdrive: '⚡',
+        missile: '🚀',
+        freeze: '🧊',
+        oil: '🛢️'
       }
       const names: Record<RumblePowerup, string> = {
         magnet: 'ÍMÃ ATIVO',
         shockwave: 'CHOQUE!',
         punch: 'SUPER SOCO!',
-        overdrive: 'OVERDRIVE!'
+        overdrive: 'OVERDRIVE!',
+        missile: 'MÍSSIL!',
+        freeze: 'CONGELANDO!',
+        oil: 'ÓLEO!'
       }
       this.hudRumbleIcon.textContent = icons[this.rumbleActive.type]
       this.hudRumbleName.textContent = `${names[this.rumbleActive.type]} (${this.rumbleActive.timeLeft.toFixed(1)}s)`
       this.hudRumbleCard.style.borderColor = '#00ff88'
       this.hudRumbleCard.style.boxShadow = '0 0 25px rgba(0,255,136,0.7)'
+      // Esconde o botão USE enquanto item está ativo
+      const useBtn = document.getElementById('turbo-use-btn') as HTMLButtonElement | null
+      if (useBtn) useBtn.style.display = 'none'
+      const tBtn = document.getElementById('tt-use-powerup') as HTMLButtonElement | null
+      if (tBtn) tBtn.style.display = 'none'
       return
     }
 
@@ -4957,25 +6071,41 @@ private resolveCarCarCollision() {
         magnet: '🧲',
         shockwave: '💨',
         punch: '🔥',
-        overdrive: '⚡'
+        overdrive: '⚡',
+        missile: '🚀',
+        freeze: '🧊',
+        oil: '🛢️'
       }
       const names: Record<RumblePowerup, string> = {
         magnet: 'ÍMÃ DA BOLA',
         shockwave: 'ONDA DE CHOQUE',
         punch: 'SUPER SOCO',
-        overdrive: 'SUPER NITRO'
+        overdrive: 'SUPER NITRO',
+        missile: 'MÍSSIL TELEGUIDADO',
+        freeze: 'RAIO DE GELO',
+        oil: 'MANCHA DE ÓLEO'
       }
       this.hudRumbleIcon.textContent = icons[this.rumblePowerup]
       this.hudRumbleName.textContent = names[this.rumblePowerup]
       this.hudRumbleCard.style.borderColor = '#ffd23f'
       this.hudRumbleCard.style.boxShadow = '0 0 25px rgba(255,210,63,0.7)'
-      if (this.hudRumbleHint) this.hudRumbleHint.textContent = 'APERTE [R] OU CLIQUE!'
+      if (this.hudRumbleHint) this.hudRumbleHint.textContent = 'APERTE [R] / [RB] OU CLIQUE!'
+      // Mostra botão USE (desktop e mobile)
+      const useBtn2 = document.getElementById('turbo-use-btn') as HTMLButtonElement | null
+      if (useBtn2) useBtn2.style.display = 'block'
+      const tBtn2 = document.getElementById('tt-use-powerup') as HTMLButtonElement | null
+      if (tBtn2) tBtn2.style.display = 'flex'
     } else {
       this.hudRumbleIcon.textContent = '⏳'
       this.hudRumbleName.textContent = `RECARGA: ${Math.ceil(this.rumbleTimer)}s`
       this.hudRumbleCard.style.borderColor = 'rgba(255,255,255,0.25)'
       this.hudRumbleCard.style.boxShadow = 'none'
       if (this.hudRumbleHint) this.hudRumbleHint.textContent = 'AGUARDE POWER-UP'
+      // Esconde botão USE
+      const useBtn3 = document.getElementById('turbo-use-btn') as HTMLButtonElement | null
+      if (useBtn3) useBtn3.style.display = 'none'
+      const tBtn3 = document.getElementById('tt-use-powerup') as HTMLButtonElement | null
+      if (tBtn3) tBtn3.style.display = 'none'
     }
   }
 
@@ -5224,6 +6354,31 @@ private resolveCarCarCollision() {
     this.orangeCars = []
     this.blueCars = []
 
+    for (const mb of this.mysteryBoxes) {
+      this.scene.remove(mb.group)
+    }
+    this.mysteryBoxes = []
+
+    for (const m of this.activeMissiles) {
+      this.scene.remove(m.group)
+    }
+    this.activeMissiles = []
+
+    for (const ice of this.activeIceProjectiles) {
+      this.scene.remove(ice.group)
+    }
+    this.activeIceProjectiles = []
+
+    for (const o of this.activeOilSlicks) {
+      this.scene.remove(o.mesh)
+    }
+    this.activeOilSlicks = []
+
+    for (const p of this.activePunches) {
+      this.scene.remove(p.group)
+    }
+    this.activePunches = []
+
     for (const p of this.smokePuffs) {
       this.scene.remove(p.mesh)
       ;(p.mesh.material as THREE.Material).dispose()
@@ -5274,6 +6429,10 @@ export class CarObject {
   public isRolling      = false
   public driftCharge    = 0
   public drifting       = false
+  public spinOutTimer   = 0     // Tempo de giro desgovernado (míssil / óleo)
+  public freezeTimer    = 0     // Tempo de congelamento
+  public starTimer      = 0     // Tempo de super estrela invulnerável
+  public iceBlockMesh:  THREE.Mesh | null = null
 
   private flameGroup!:   THREE.Group
   private wheels:        THREE.Group[] = []
@@ -5281,8 +6440,9 @@ export class CarObject {
   private shadowMesh!:   THREE.Mesh
   private scene:         THREE.Scene
   private teamColor:     number
-  private isBot:         boolean
+  public isBot:         boolean
   public forceTeamColor: boolean = false
+  public teamBadgeMesh: THREE.Sprite | null = null
 
   constructor(scene: THREE.Scene, color: number, isBot: boolean, forceTeamColor = false) {
     this.scene          = scene
@@ -5304,6 +6464,43 @@ export class CarObject {
     this.group.add(this.flameGroup)
 
     scene.add(this.group)
+  }
+
+  /** Cria indicador cartoon acima do teto do carro para identificar aliados e rivais */
+  public attachTeamBadge(text: string, bgColor: string, textColor: string) {
+    if (this.teamBadgeMesh) {
+      this.group.remove(this.teamBadgeMesh)
+      this.teamBadgeMesh.material.dispose()
+      this.teamBadgeMesh = null
+    }
+
+    const c = document.createElement('canvas')
+    c.width = 256
+    c.height = 80
+    const ctx = c.getContext('2d')!
+
+    // Fundo estilizado com borda cel-shading
+    ctx.fillStyle = bgColor
+    ctx.beginPath()
+    ctx.roundRect(10, 10, 236, 60, 20)
+    ctx.fill()
+    ctx.lineWidth = 6
+    ctx.strokeStyle = '#0a0f1d'
+    ctx.stroke()
+
+    ctx.font = '900 28px "Arial Black", Impact, sans-serif'
+    ctx.fillStyle = textColor
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, 128, 40)
+
+    const tex = new THREE.CanvasTexture(c)
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
+    const sprite = new THREE.Sprite(mat)
+    sprite.scale.set(4.2, 1.35, 1.0)
+    sprite.position.set(0, 3.4, 0)
+    this.teamBadgeMesh = sprite
+    this.group.add(sprite)
   }
 
   setPosition(x: number, y: number, z: number) {
@@ -5329,6 +6526,41 @@ export class CarObject {
     this.speed = 0
     this.velY = 0
     this.showFlame(false)
+  }
+
+  applyFreeze(duration = 2.0) {
+    if (this.starTimer > 0) return
+    this.freezeTimer = duration
+    this.speed = 0
+    this.showFlame(false)
+    if (!this.iceBlockMesh) {
+      const iceGeo = new THREE.BoxGeometry(4.8, 3.4, 6.2)
+      const iceMat = new THREE.MeshToonMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.68,
+        gradientMap: TOON_GRADIENT
+      })
+      this.iceBlockMesh = new THREE.Mesh(iceGeo, iceMat)
+      this.iceBlockMesh.position.set(0, 1.2, 0)
+      this.group.add(this.iceBlockMesh)
+    }
+  }
+
+  removeFreeze() {
+    this.freezeTimer = 0
+    if (this.iceBlockMesh) {
+      this.group.remove(this.iceBlockMesh)
+      this.iceBlockMesh.geometry.dispose()
+      ;(this.iceBlockMesh.material as THREE.Material).dispose()
+      this.iceBlockMesh = null
+    }
+  }
+
+  applySpinOut(duration = 1.4) {
+    if (this.starTimer > 0) return
+    this.spinOutTimer = duration
+    this.speed *= 0.25
   }
 
   async loadModel(modelId: string): Promise<void> {
@@ -5493,6 +6725,26 @@ export class CarObject {
   }
 
   update(dt: number) {
+    if (this.freezeTimer > 0) {
+      this.freezeTimer -= dt
+      this.speed = 0
+      this.velX *= 0.95
+      this.velZ *= 0.95
+      if (this.freezeTimer <= 0) {
+        this.removeFreeze()
+      }
+    }
+
+    if (this.spinOutTimer > 0) {
+      this.spinOutTimer -= dt
+      this.yaw += dt * 14.0 // Roda desgovernado no eixo
+      this.applyTransform()
+    }
+
+    if (this.starTimer > 0) {
+      this.starTimer -= dt
+    }
+
     if (this.flameGroup?.visible) {
       const sc = 0.85 + Math.sin(Date.now() * 0.04) * 0.25
       this.flameGroup.scale.set(sc, sc, sc * 1.1)
@@ -5500,6 +6752,5 @@ export class CarObject {
     this.wheels.forEach(w => {
       w.rotation.x = this.wheelSpinAngle
     })
-    void dt
   }
 }

@@ -131,7 +131,7 @@ export class GamepadManager {
       rtThrottle: Math.max(0, btnRT),
       ltBrake: Math.max(0, btnLT),
       jump: btnA,
-      boost: btnB || btnRB,
+      boost: btnB,
       handbrake: btnLB,
       lb: btnLB,
       rb: btnRB,

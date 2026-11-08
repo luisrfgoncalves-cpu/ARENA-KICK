@@ -1,5 +1,4 @@
-// Mapa único de veículos: id → arquivo GLB e rótulo.
-// `file: null` significa que o veículo é construído proceduralmente (Octane nativo).
+﻿// Mapa único de veículos: id → arquivo GLB e rótulo.
 export interface CarModelEntry {
   file: string | null
   label: string
@@ -7,6 +6,11 @@ export interface CarModelEntry {
 
 export const CAR_MODELS: Record<string, CarModelEntry> = {
   'octane-cartoon': { file: '/models/vehicle-truck-red.glb', label: 'Octane Toon Red' },
+  'kart-oobi': { file: '/models/kart-oobi.glb', label: 'Oobi Kart' },
+  'kart-oodi': { file: '/models/kart-oodi.glb', label: 'Oodi Kart' },
+  'kart-ooli': { file: '/models/kart-ooli.glb', label: 'Ooli Kart' },
+  'race-future': { file: '/models/race-future.glb', label: 'Future Racer' },
+  'race': { file: '/models/race.glb', label: 'Arena Racer' },
   'buggy': { file: '/models/buggy.glb', label: 'Dune Buggy 4x4' },
   'ferrari': { file: '/models/ferrari.glb', label: 'Ferrari GT Sport' },
   'toycar': { file: '/models/ToyCar.glb', label: 'ToyCar Super' },

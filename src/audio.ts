@@ -246,6 +246,118 @@ export class AudioManager {
   playDemo() {
     this.play('postHit')
     this.play('powerHit')
+    this.synthesizeBoom()
+  }
+
+  /** Sintetizador sonoro Web Audio para explosão e impacto estrondoso garantido */
+  public synthesizeBoom(frequency = 120, duration = 0.55, volume = 0.9) {
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      if (ctx.state === 'suspended') ctx.resume()
+
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      const filter = ctx.createBiquadFilter()
+
+      // Queda brusca de frequência: de 180Hz para 25Hz (som de estrondo)
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(frequency, now)
+      osc.frequency.exponentialRampToValueAtTime(25, now + duration)
+
+      // Filtro passa-baixa analógico para corpo pesado de sub-grave
+      filter.type = 'lowpass'
+      filter.frequency.setValueAtTime(450, now)
+      filter.frequency.exponentialRampToValueAtTime(60, now + duration)
+
+      // Envelope de volume com decaimento exponencial
+      gain.gain.setValueAtTime(volume, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration)
+
+      osc.connect(filter)
+      filter.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(now)
+      osc.stop(now + duration)
+
+      // Camada de ruído/estilhaços brancos cel-shading
+      const bufferSize = ctx.sampleRate * duration
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+      const data = buffer.getChannelData(0)
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2))
+      }
+      const noise = ctx.createBufferSource()
+      noise.buffer = buffer
+      const noiseFilter = ctx.createBiquadFilter()
+      noiseFilter.type = 'bandpass'
+      noiseFilter.frequency.setValueAtTime(800, now)
+      noiseFilter.Q.setValueAtTime(1.5, now)
+
+      const noiseGain = ctx.createGain()
+      noiseGain.gain.setValueAtTime(volume * 0.7, now)
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.7)
+
+      noise.connect(noiseFilter)
+      noiseFilter.connect(noiseGain)
+      noiseGain.connect(ctx.destination)
+
+      noise.start(now)
+      noise.stop(now + duration * 0.7)
+    } catch {}
+  }
+
+  /** Som de lançamento/voo de foguete ou míssil */
+  public playMissileLaunch() {
+    this.playBoost()
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(220, now)
+      osc.frequency.exponentialRampToValueAtTime(750, now + 0.4)
+      gain.gain.setValueAtTime(0.4, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.45)
+    } catch {}
+  }
+
+  /** Som de estilhaçamento de gelo super congelante */
+  public playIceFreeze() {
+    this.playGoal()
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(1200, now)
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.35)
+      gain.gain.setValueAtTime(0.5, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.4)
+    } catch {}
+  }
+
+  /** Som de super soco cartoon potente */
+  public playPunchImpact() {
+    this.playPowerHit()
+    this.synthesizeBoom(160, 0.4, 0.95)
   }
 
   playCoin() {
