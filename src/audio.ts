@@ -136,12 +136,14 @@ class SpatialEngineSound {
 export class AudioManager {
   // Estado de mute GLOBAL e compartilhado por todas as instâncias (2D e 3D)
   private static mutedGlobal = false
+  private static crowdMutedGlobal = typeof localStorage !== 'undefined' ? localStorage.getItem('arena_kick_crowd_muted') === 'true' : false
   private engine = new EngineSound()
   private opponentEngine = new SpatialEngineSound()
   private crowdPlaying = false
   private crowdId: number | null = null
 
   private get muted() { return AudioManager.mutedGlobal }
+  public get crowdMuted() { return AudioManager.crowdMutedGlobal }
 
   static setMutedGlobal(v: boolean) {
     AudioManager.mutedGlobal = v
@@ -152,6 +154,24 @@ export class AudioManager {
       if (!bgm) initAudio()
       if (bgm && !bgm.playing()) this.resumeBgm()
     }
+  }
+
+  static setCrowdMutedGlobal(v: boolean) {
+    AudioManager.crowdMutedGlobal = v
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('arena_kick_crowd_muted', String(v))
+      }
+    } catch {}
+    if (v && sounds) {
+      try {
+        sounds.crowd.volume(0)
+      } catch {}
+    }
+  }
+
+  static isCrowdMutedGlobal() {
+    return AudioManager.crowdMutedGlobal
   }
 
   private static resumeBgm() {
@@ -449,7 +469,7 @@ export class AudioManager {
   }
 
   startCrowd() {
-    if (this.muted || !sounds || this.crowdPlaying) return
+    if (this.muted || AudioManager.crowdMutedGlobal || !sounds || this.crowdPlaying) return
     try {
       const id = sounds.crowd.play()
       sounds.crowd.volume(0, id)
@@ -473,7 +493,10 @@ export class AudioManager {
     }
   }
 
-  playCheer() { this.play('cheer') }
+  playCheer() {
+    if (AudioManager.crowdMutedGlobal) return
+    this.play('cheer')
+  }
 
   startBGM() {
     bgmShouldPlay = true
@@ -539,3 +562,5 @@ export class AudioManager {
 // Helpers globais (podem ser usados por qualquer tela, inclusive o 3D)
 export function setAudioMuted(v: boolean) { AudioManager.setMutedGlobal(v) }
 export function isAudioMuted() { return AudioManager.isMutedGlobal() }
+export function setCrowdMuted(v: boolean) { AudioManager.setCrowdMutedGlobal(v) }
+export function isCrowdMuted() { return AudioManager.isCrowdMutedGlobal() }

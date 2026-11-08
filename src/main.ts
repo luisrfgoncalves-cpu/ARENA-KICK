@@ -8,7 +8,7 @@ import type { NetworkManager } from './network'
 import { publishPublicRoom, updatePublicRoomPlayerCount, removePublicRoom, renderPublicRooms, setupLobbyListener } from './publicLobby'
 import { TeamKey, FieldTheme } from './assets'
 import { initVirtualJoystick, setTouchControlsVisible } from './input'
-import { setAudioMuted, isAudioMuted } from './audio'
+import { setAudioMuted, isAudioMuted, setCrowdMuted, isCrowdMuted } from './audio'
 
 initVirtualJoystick()
 
@@ -75,6 +75,25 @@ if (btnAudio) {
     isMuted = !isMuted
     setAudioMuted(isMuted)
     applyMuteUI()
+  })
+}
+
+// Torcida Toggle — silencia só o som da torcida/plateia, mantém SFX
+const btnCrowd = document.getElementById('btn-crowd-toggle')
+let isCrowdMutedState = isCrowdMuted()
+function applyCrowdUI() {
+  if (btnCrowd) {
+    btnCrowd.textContent = isCrowdMutedState ? '🔕' : '👥'
+    btnCrowd.title = isCrowdMutedState ? 'Torcida Silenciada (clique para ligar)' : 'Ligar/Desligar Torcida'
+    btnCrowd.style.opacity = isCrowdMutedState ? '0.5' : '1'
+  }
+}
+applyCrowdUI()
+if (btnCrowd) {
+  btnCrowd.addEventListener('click', () => {
+    isCrowdMutedState = !isCrowdMutedState
+    setCrowdMuted(isCrowdMutedState)
+    applyCrowdUI()
   })
 }
 

@@ -23,9 +23,9 @@ const CEIL_H   = 46       // Teto alto para acrobacias (era 38)
 const BALL_R   = 2.2      // Raio da bola cartoon
 const GRAVITY  = 30       // Gravidade arcade
 
-const GOAL_W   = 38.0     // Trave proporcional 4v4 (era 30)
-const GOAL_H   = 14.0     // Altura da trave 4v4 (era 10.5)
-const GOAL_D   = 16.0     // Profundidade da rede (era 12)
+const GOAL_W   = 48.0     // Trave ampliada proporcional à arena 220m
+const GOAL_H   = 17.0     // Altura da trave cartoon ampliada
+const GOAL_D   = 18.0     // Profundidade da cabine da rede
 
 
 function createToonGradient(): THREE.CanvasTexture {
@@ -191,10 +191,11 @@ export class TurboSoccerGame {
   private activePunches: {
     group: THREE.Group
     gloveMesh: THREE.Mesh
-    springMesh: THREE.Mesh
+    springCoils: THREE.Mesh[]
     owner: CarObject
     origin: THREE.Vector3
     dir: THREE.Vector3
+    target: CarObject | 'ball' | null
     distTraveled: number
     maxDist: number
     speed: number
@@ -1441,10 +1442,11 @@ export class TurboSoccerGame {
     }
 
 
+    // Arquibancadas de fundo (Z) - recuadas atrás da cabine do gol para NUNCA invadir a rede!
     for (const side of [-1, 1]) {
       for (let r = 0; r < 8; r++) {
-        const posZ = side * (FIELD_L / 2 + 6.5 + r * rowD)
-        const posY = r * rowH * 0.7 + 1.0
+        const posZ = side * (FIELD_L / 2 + GOAL_D + 4.5 + r * rowD)
+        const posY = r * rowH * 0.7 + 1.2
 
         const base = new THREE.Mesh(new THREE.BoxGeometry(spanX, rowH * 0.45, rowD), standMat)
         base.position.set(0, posY, posZ)
@@ -1679,81 +1681,124 @@ export class TurboSoccerGame {
       color: 0xffffff,
       gradientMap: TOON_GRADIENT
     })
+    const outlineMat = new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
     const rimMat = new THREE.MeshToonMaterial({
       color: teamColor,
       gradientMap: TOON_GRADIENT
     })
 
-    const pR = 0.45 // Postes tubulares cartoon grossos
+    const pR = 0.55 // Postes tubulares cartoon encorpados
+    const dir = flipZ ? -1 : 1
 
+    // Postes Verticais Laterais
     for (const x of [-GOAL_W / 2, GOAL_W / 2]) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(pR, pR, GOAL_H, 20), postMat)
       post.position.set(x, GOAL_H / 2, 0)
       post.castShadow = true
+
+      // Contorno cartoon cel-shading
+      const postOut = new THREE.Mesh(new THREE.CylinderGeometry(pR * 1.14, pR * 1.14, GOAL_H + 0.2, 20), outlineMat)
+      post.add(postOut)
       group.add(post)
 
-      // Faixas coloridas nos postes
-      const rim = new THREE.Mesh(new THREE.CylinderGeometry(pR + 0.04, pR + 0.04, 0.8, 20), rimMat)
-      rim.position.set(x, GOAL_H * 0.55, 0)
+      // Faixas coloridas de equipe nos postes
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(pR + 0.05, pR + 0.05, 1.2, 20), rimMat)
+      rim.position.set(x, GOAL_H * 0.52, 0)
       group.add(rim)
     }
 
-
+    // Travessão Superior Horizontal
     const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(pR, pR, GOAL_W + pR * 2, 20), postMat)
     crossbar.rotation.z = Math.PI / 2
     crossbar.position.set(0, GOAL_H, 0)
     crossbar.castShadow = true
+    const crossOut = new THREE.Mesh(new THREE.CylinderGeometry(pR * 1.14, pR * 1.14, GOAL_W + pR * 2 + 0.2, 20), outlineMat)
+    crossbar.add(crossOut)
     group.add(crossbar)
 
-    // Suportes Diagonais Traseiros
-    const dir = flipZ ? -1 : 1
+    // Barras Superiores Horizontais Traseiras (sustentam a rede no topo como trave de futebol real)
+    for (const x of [-GOAL_W / 2, GOAL_W / 2]) {
+      const topBar = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, GOAL_D, 16), postMat)
+      topBar.rotation.x = Math.PI / 2
+      topBar.position.set(x, GOAL_H, dir * GOAL_D / 2)
+      group.add(topBar)
+    }
+
+    // Suportes Diagonais Traseiros de Aço
     const supLen = Math.hypot(GOAL_H, GOAL_D)
     const supAngle = Math.atan2(GOAL_D, GOAL_H)
-
     for (const x of [-GOAL_W / 2, GOAL_W / 2]) {
-      const sup = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, supLen, 12), postMat)
+      const sup = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, supLen, 12), postMat)
       sup.position.set(x, GOAL_H / 2, dir * GOAL_D / 2)
       sup.rotation.x = dir * supAngle
       group.add(sup)
     }
 
-    // Rede Hexagonal Iluminada Cartoon
+    // Barra Traseira de Fundo no Chão
+    const groundBack = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, GOAL_W, 16), postMat)
+    groundBack.rotation.z = Math.PI / 2
+    groundBack.position.set(0, 0.2, dir * GOAL_D)
+    group.add(groundBack)
+
+    // Rede Hexagonal Estilizada de Futebol Real Cartoon
     const netCanvas = document.createElement('canvas')
-    netCanvas.width = 128
-    netCanvas.height = 128
+    netCanvas.width = 256
+    netCanvas.height = 256
     const nctx = netCanvas.getContext('2d')!
     nctx.strokeStyle = '#ffffff'
-    nctx.lineWidth = 3
-    for (let i = 0; i <= 128; i += 20) {
-      nctx.beginPath(); nctx.moveTo(i, 0); nctx.lineTo(i, 128); nctx.stroke()
-      nctx.beginPath(); nctx.moveTo(0, i); nctx.lineTo(128, i); nctx.stroke()
+    nctx.lineWidth = 3.5
+    // Malha hexagonal / losangular
+    for (let i = -128; i <= 384; i += 24) {
+      nctx.beginPath(); nctx.moveTo(i, 0); nctx.lineTo(i + 256, 256); nctx.stroke()
+      nctx.beginPath(); nctx.moveTo(i + 256, 0); nctx.lineTo(i, 256); nctx.stroke()
     }
     const netTex = new THREE.CanvasTexture(netCanvas)
     netTex.wrapS = netTex.wrapT = THREE.RepeatWrapping
-    netTex.repeat.set(6, 4)
+    netTex.repeat.set(10, 5)
 
     const netMat = new THREE.MeshBasicMaterial({
       map: netTex,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.82,
       side: THREE.DoubleSide
     })
 
+    // Painel da Rede de Fundo
     const netBack = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_H), netMat)
     netBack.position.set(0, GOAL_H / 2, dir * GOAL_D)
     group.add(netBack)
 
+    // Painel da Rede do Teto
     const netTop = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_D), netMat)
     netTop.rotation.x = Math.PI / 2
     netTop.position.set(0, GOAL_H, dir * GOAL_D / 2)
     group.add(netTop)
 
+    // Painéis Laterais da Rede
     for (const x of [-GOAL_W / 2, GOAL_W / 2]) {
       const ns = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_D, GOAL_H), netMat)
       ns.rotation.y = Math.PI / 2
       ns.position.set(x, GOAL_H / 2, dir * GOAL_D / 2)
       group.add(ns)
     }
+
+    // Cabine Traseira Fechada (Goal Box Enclosure): Fundo sólido escuro para NUNCA ver arquibancada
+    const backWallGeo = new THREE.BoxGeometry(GOAL_W + 1.6, GOAL_H + 1.0, 0.6)
+    const backWallMat = new THREE.MeshToonMaterial({ color: 0x070b16, gradientMap: TOON_GRADIENT })
+    const backWall = new THREE.Mesh(backWallGeo, backWallMat)
+    backWall.position.set(0, GOAL_H / 2, dir * (GOAL_D + 0.35))
+    group.add(backWall)
+
+    // Moldura Neon do Gol nas costas
+    const neonMat = new THREE.MeshBasicMaterial({ color: teamColor })
+    const neonBorder = new THREE.Mesh(new THREE.BoxGeometry(GOAL_W + 2.2, 0.4, 0.4), neonMat)
+    neonBorder.position.set(0, GOAL_H, dir * (GOAL_D + 0.1))
+    group.add(neonBorder)
+
+    // Luz interna suave da trave (ilumina a rede por dentro com a cor da equipe)
+    const goalLight = new THREE.PointLight(teamColor, 2.2, 28)
+    goalLight.position.set(0, GOAL_H * 0.75, dir * (GOAL_D * 0.5))
+    group.add(goalLight)
 
     group.position.z = centerZ
     this.scene.add(group)
@@ -3505,20 +3550,20 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       gradientMap: TOON_GRADIENT
     })
 
-    // Spawns de caixas estratégicos pelas laterais e meias do campo (NUNCA no centro 0,0 onde nasce a bola)
+    // Spawns de caixas estratégicos separados de moedas e launch pads (distância mínima > 22 metros)
     const spawns = [
-      { x: -FIELD_W * 0.32, z: 0 },
-      { x: FIELD_W * 0.32,  z: 0 },
-      { x: -FIELD_W * 0.16, z: FIELD_L * 0.12 },
-      { x: FIELD_W * 0.16,  z: FIELD_L * 0.12 },
-      { x: -FIELD_W * 0.16, z: -FIELD_L * 0.12 },
-      { x: FIELD_W * 0.16,  z: -FIELD_L * 0.12 },
-      { x: -FIELD_W * 0.28, z: FIELD_L * 0.26 },
-      { x: FIELD_W * 0.28,  z: FIELD_L * 0.26 },
-      { x: -FIELD_W * 0.28, z: -FIELD_L * 0.26 },
-      { x: FIELD_W * 0.28,  z: -FIELD_L * 0.26 },
-      { x: 0,               z: FIELD_L * 0.36 },
-      { x: 0,               z: -FIELD_L * 0.36 }
+      { x: -38, z: 0 },
+      { x:  38, z: 0 },
+      { x: -48, z:  80 },
+      { x:  48, z:  80 },
+      { x: -48, z: -80 },
+      { x:  48, z: -80 },
+      { x:   0, z:  68 },
+      { x:   0, z: -68 },
+      { x: -72, z:  38 },
+      { x:  72, z:  38 },
+      { x: -72, z: -38 },
+      { x:  72, z: -38 }
     ]
 
     for (const sp of spawns) {
@@ -3780,10 +3825,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           this.emitCartoonStarBurst(car.pos, 16, 0x00cfff)
           this.triggerCameraShake(0.85)
 
-          const boostSpd = 34
+          // Impulso moderado e calibrado (sem exageros para não quebrar a física aérea)
+          const boostSpd = 42
           car.velX += Math.sin(car.yaw) * boostSpd
           car.velZ += Math.cos(car.yaw) * boostSpd
-          car.velY = Math.max(car.velY, 18.5)
+          car.velY = Math.max(car.velY, 21.0)
           car.grounded = false
           car.boost = Math.min(100, car.boost + 30)
           if (car === this.playerCar) {
@@ -4143,35 +4189,55 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       }
     }
 
-    // 4. SUPER SOCO CARTOON COM MOLA 3D (HAYMAKER PROJECTILE)
+    // 4. SUPER SOCO CARTOON COM MOLA 3D (HAYMAKER PROJECTILE COM HOMING E MOLA ESPIRAL)
     for (let i = this.activePunches.length - 1; i >= 0; i--) {
       const p = this.activePunches[i]
       p.lifetime -= dt
       const step = p.speed * dt
       p.distTraveled += step
 
+      // Homing suave em direção ao alvo travado (bola ou rival)
+      if (p.target) {
+        const targetPos = p.target === 'ball'
+          ? this.ball.pos.clone().add(new THREE.Vector3(0, 1.0, 0))
+          : (p.target.group.visible && !p.target.isDemoed ? p.target.pos.clone().add(new THREE.Vector3(0, 1.0, 0)) : null)
+        if (targetPos) {
+          const toTgt = targetPos.sub(p.group.position).normalize()
+          p.dir.lerp(toTgt, dt * 5.5).normalize()
+        }
+      }
+
       // Estica a mola do carro até a luva
       const currentPos = p.origin.clone().addScaledVector(p.dir, p.distTraveled)
       p.group.position.copy(currentPos)
-      p.springMesh.scale.set(1, 1, Math.max(0.2, p.distTraveled))
-      p.springMesh.position.z = -p.distTraveled / 2
+      p.group.lookAt(currentPos.clone().add(p.dir))
 
-      // Animação de rotação da luva no ar
-      p.gloveMesh.rotation.z += 8 * dt
+      // Distribui os anéis da mola sanfonada 3D cartoon entre o carro e a luva
+      for (let c = 0; c < p.springCoils.length; c++) {
+        const t = (c + 1) / (p.springCoils.length + 1)
+        p.springCoils[c].position.z = -t * p.distTraveled
+        p.springCoils[c].rotation.z = c * 0.5 + p.distTraveled * 0.25
+      }
+
+      // Animação de rotação cartoon e efeito de rastro
+      p.gloveMesh.rotation.z += 6 * dt
+      if (Math.random() < 0.4) {
+        this.emitCartoonStarBurst(currentPos, 2, 0xfacc15)
+      }
 
       let hit = false
 
       // A) Atinge a Bola
       const dBall = currentPos.distanceTo(this.ball.pos)
-      if (dBall < 4.2) {
+      if (dBall < 4.6) {
         hit = true
         // Porrada violenta na bola em direção ao gol
-        this.ball.vel.copy(p.dir.clone().multiplyScalar(68))
-        this.ball.vel.y = Math.max(16, this.ball.vel.y + 12)
+        this.ball.vel.copy(p.dir.clone().multiplyScalar(76))
+        this.ball.vel.y = Math.max(18, this.ball.vel.y + 12)
         this.audio.playPunchImpact()
-        this.triggerCameraShake(1.3)
+        this.triggerCameraShake(1.5)
         this.triggerImpactFlash(this.ball.pos)
-        this.emitCartoonStarBurst(this.ball.pos, 32, 0xff3300)
+        this.emitCartoonStarBurst(this.ball.pos, 36, 0xff3300)
         this.emitCartoonStarBurst(currentPos, 20, 0xfacc15)
         this.showQuickChat('🥊 SOCO DEVASTADOR NA BOLA!')
       }
@@ -4181,19 +4247,19 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         for (let slot = 0; slot < this.allCars.length; slot++) {
           const c = this.allCars[slot]
           if (c === p.owner || !c.group.visible || c.isDemoed) continue
-          if (currentPos.distanceTo(c.pos) < 4.0) {
+          if (currentPos.distanceTo(c.pos) < 4.4) {
             hit = true
             // Nocaute no rival: arremessado para o alto e gira desgovernado
-            c.applySpinOut(2.4)
-            c.velX = p.dir.x * 55
-            c.velZ = p.dir.z * 55
-            c.velY = 22
+            c.applySpinOut(2.5)
+            c.velX = p.dir.x * 64
+            c.velZ = p.dir.z * 64
+            c.velY = 24
             c.grounded = false
             this.audio.playPunchImpact()
-            this.triggerCameraShake(1.5)
+            this.triggerCameraShake(1.6)
             this.triggerImpactFlash(c.pos)
-            this.emitCartoonStarBurst(c.pos, 36, 0xff2200)
-            this.emitCartoonStarBurst(c.pos, 16, 0xfacc15)
+            this.emitCartoonStarBurst(c.pos, 40, 0xff2200)
+            this.emitCartoonStarBurst(c.pos, 20, 0xfacc15)
             if (this.isOnline1v1 && this.turboNet?.isHost) {
               this.turboNet.broadcastCarHit(slot, 'spin')
             }
@@ -4210,7 +4276,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     }
   }
 
-  /** Dispara a luva de boxe gigante cartoon com mola 3D em direção à mira do carro */
+  /** Dispara a luva de boxe gigante cartoon com mola espiral 3D e mira teleguiada em 60m */
   private fireSpringPunch(owner: CarObject) {
     const pGroup = new THREE.Group()
 
@@ -4219,41 +4285,85 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       color: 0xef4444,
       gradientMap: TOON_GRADIENT
     })
-    const gloveBody = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 16), gloveMat)
-    gloveBody.scale.set(1.1, 1.25, 1.4)
+    const gloveBody = new THREE.Mesh(new THREE.SphereGeometry(2.2, 20, 20), gloveMat)
+    gloveBody.scale.set(1.2, 1.35, 1.55)
+
+    // Contorno preto cel-shading expressivo na luva
+    const gloveOut = new THREE.Mesh(
+      new THREE.SphereGeometry(2.32, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
+    )
+    gloveOut.scale.set(1.2, 1.35, 1.55)
+    gloveBody.add(gloveOut)
 
     // Polegar da luva
     const thumbMat = new THREE.MeshToonMaterial({ color: 0xdc2626, gradientMap: TOON_GRADIENT })
-    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 12), thumbMat)
-    thumb.position.set(1.4, 0.4, 0.3)
+    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 14), thumbMat)
+    thumb.position.set(1.5, 0.45, 0.35)
     gloveBody.add(thumb)
 
     // Punho branco da luva
     const cuffMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.6, 16), cuffMat)
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.75, 20), cuffMat)
     cuff.rotation.x = Math.PI / 2
-    cuff.position.z = -1.2
+    cuff.position.z = -1.4
     gloveBody.add(cuff)
 
     pGroup.add(gloveBody)
 
-    // 2. Mola expansível amarela cartoon
+    // 2. Mola espiral sanfonada amarela cartoon (anéis 3D entre o carro e a luva)
+    const springCoils: THREE.Mesh[] = []
     const springMat = new THREE.MeshToonMaterial({
       color: 0xfacc15,
       gradientMap: TOON_GRADIENT
     })
-    const springMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.55, 0.55, 1.0, 10),
-      springMat
-    )
-    springMesh.rotation.x = Math.PI / 2
-    pGroup.add(springMesh)
+    const coilCount = 9
+    for (let c = 0; c < coilCount; c++) {
+      const ringGeo = new THREE.TorusGeometry(0.85, 0.18, 8, 16)
+      const ringMesh = new THREE.Mesh(ringGeo, springMat)
+      pGroup.add(ringMesh)
+      springCoils.push(ringMesh)
+    }
 
     const fwdX = Math.sin(owner.yaw)
     const fwdZ = Math.cos(owner.yaw)
-    const dir = new THREE.Vector3(fwdX, 0, fwdZ).normalize()
+    let dir = new THREE.Vector3(fwdX, 0, fwdZ).normalize()
 
-    const origin = owner.pos.clone().add(new THREE.Vector3(fwdX * 2.5, 1.2, fwdZ * 2.5))
+    // Busca alvo mais próximo à frente (bola ou rival em até 60m)
+    let bestTarget: CarObject | 'ball' | null = null
+    let minDist = 60.0
+
+    // Checa a bola
+    const toBall = this.ball.pos.clone().sub(owner.pos)
+    const dBall = toBall.length()
+    if (dBall < minDist) {
+      toBall.normalize()
+      if (toBall.dot(dir) > 0.42) {
+        bestTarget = 'ball'
+        minDist = dBall
+        dir.copy(toBall)
+      }
+    }
+
+    // Checa rivais à frente
+    for (const rival of this.allCars) {
+      if (rival === owner || !rival.group.visible || rival.isDemoed) continue
+      if (this.orangeCars.includes(owner) && this.orangeCars.includes(rival)) continue
+      if (this.blueCars.includes(owner) && this.blueCars.includes(rival)) continue
+
+      const toRival = rival.pos.clone().sub(owner.pos)
+      const dRival = toRival.length()
+      if (dRival < minDist) {
+        toRival.normalize()
+        if (toRival.dot(new THREE.Vector3(fwdX, 0, fwdZ)) > 0.40) {
+          bestTarget = rival
+          minDist = dRival
+          dir.copy(toRival)
+        }
+      }
+    }
+
+    const origin = owner.pos.clone().add(new THREE.Vector3(fwdX * 2.2, 1.2, fwdZ * 2.2))
     pGroup.position.copy(origin)
     pGroup.lookAt(origin.clone().add(dir))
 
@@ -4262,14 +4372,15 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     this.activePunches.push({
       group: pGroup,
       gloveMesh: gloveBody,
-      springMesh,
+      springCoils,
       owner,
       origin: origin.clone(),
       dir,
+      target: bestTarget,
       distTraveled: 0,
-      maxDist: 42.0, // Alcance razoável de 42 metros!
-      speed: 85.0,   // Velocidade rápida de soco estilingue
-      lifetime: 1.5
+      maxDist: 60.0, // Alcance épico de 60 metros!
+      speed: 46.0,   // Velocidade calibrada de 46 m/s (dura ~1.3s - perfeitamente visível!)
+      lifetime: 2.0
     })
 
     this.audio.playPunchImpact()
@@ -5338,37 +5449,19 @@ private resolveCarCarCollision() {
     const inGoalW = Math.abs(b.pos.x) < GOAL_W / 2 - 0.5
     const inGoalH = b.pos.y < GOAL_H - 0.2
 
-    // ── VALIDAÇÃO DE GOL PROFUNDO & REGRA DE GOL CONTRA ──
+    // ── VALIDAÇÃO REAL DE GOL (SEM BLOQUEIOS ARTIFICIAIS) ──
     // Meta do Bot / Azul (z negativo): gol marcado pelo Jogador / Laranja
-    if (b.pos.z <= -FIELD_L / 2 && inGoalW && inGoalH) {
-      if (!this.isOnline1v1 && this.lastToucher === 'bot') {
-        // Anti-gol contra offline: zagueiro bot rebate na linha
-        b.vel.z = Math.abs(b.vel.z) * 0.85 + 14
-        b.vel.y = Math.max(b.vel.y, 4.5)
-        this.audio.playWallBounce()
-        this.showQuickChat('🛡️ SALVAMENTO NA LINHA!')
-      } else if (b.pos.z <= -FIELD_L / 2 - BALL_R * 0.4) {
-        // Bola ultrapassou a linha da meta: Gol confirmado pelo Host!
-        this.emitCartoonStarBurst(b.pos, 20, 0xffd23f)
-        this.onGoalScored('player')
-        return
-      }
+    if (b.pos.z <= -FIELD_L / 2 - BALL_R * 0.25 && inGoalW && inGoalH) {
+      this.emitCartoonStarBurst(b.pos, 28, 0xffd23f)
+      this.onGoalScored('player')
+      return
     }
 
     // Meta do Jogador / Laranja (z positivo): gol marcado pelo Bot / Azul
-    if (b.pos.z >= FIELD_L / 2 && inGoalW && inGoalH) {
-      if (!this.isOnline1v1 && this.lastToucher === 'player') {
-        // Anti-gol contra offline: jogador rebate na própria meta
-        b.vel.z = -Math.abs(b.vel.z) * 0.85 - 14
-        b.vel.y = Math.max(b.vel.y, 4.5)
-        this.audio.playWallBounce()
-        this.showQuickChat('🛡️ SALVAMENTO NA LINHA!')
-      } else if (b.pos.z >= FIELD_L / 2 + BALL_R * 0.4) {
-        // Bola ultrapassou a linha da meta: Gol confirmado pelo Host!
-        this.emitCartoonStarBurst(b.pos, 20, 0x00cfff)
-        this.onGoalScored('bot')
-        return
-      }
+    if (b.pos.z >= FIELD_L / 2 + BALL_R * 0.25 && inGoalW && inGoalH) {
+      this.emitCartoonStarBurst(b.pos, 28, 0x00cfff)
+      this.onGoalScored('bot')
+      return
     }
 
     // Contenção da rede dentro da trave
