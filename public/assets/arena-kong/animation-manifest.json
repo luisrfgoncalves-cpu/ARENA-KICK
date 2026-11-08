@@ -1,0 +1,20 @@
+{
+  "character": "Kong Gorak",
+  "arena": "Arena Kong",
+  "model": "arena-kong-gorak.glb",
+  "riggedModel": "arena-kong-gorak-rigged.glb",
+  "animatedModel": "arena-kong-gorak-animated.glb",
+  "officialAnimationClips": [
+    {"name": "idle", "loop": true},
+    {"name": "standing_relax", "loop": true},
+    {"name": "walk", "loop": true}
+  ],
+  "proceduralGameplayActions": [
+    "PATROL", "CHASE_BALL", "KICK_BALL", "PUNCH_CAR", "GRAB_BALL",
+    "THROW_BALL", "BUTT_SLAM", "RAGE", "RECOVER"
+  ],
+  "physicsEvents": [
+    "ballImpulse", "carImpulse", "radialImpact", "cameraShake", "goalBlock"
+  ],
+  "notes": "Use arena-kong-controller.js for procedural actions and physics. The official GLB clips are idle, standing_relax and walk; the gameplay attacks are driven by bone posing and physics events so no action is left as a static model."
+}

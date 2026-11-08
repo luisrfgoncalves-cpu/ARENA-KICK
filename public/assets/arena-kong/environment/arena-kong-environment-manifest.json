@@ -1,0 +1,32 @@
+{
+  "arena": "Arena Kong",
+  "referenceArena": {
+    "fieldWidth": 220,
+    "fieldLength": 360,
+    "ceilingHeight": 58,
+    "goalOpening": 48,
+    "goalHeight": 17,
+    "goalDepth": 18,
+    "playableX": [-107.2, 107.2],
+    "playableZ": [-177.2, 177.2]
+  },
+  "assets": {
+    "stadiumKit": "arena-kong-stadium-kit.glb",
+    "jungleKit": "arena-kong-jungle-kit.glb",
+    "cliffsRuins": "arena-kong-cliffs-ruins.glb",
+    "backdropDay": "arena-kong-backdrop-day.webp",
+    "backdropNight": "arena-kong-backdrop-night.webp"
+  },
+  "placement": {
+    "stadiumKit": {"position": [0, 0, 0], "scale": [1, 1, 1]},
+    "jungleKit": {"position": [0, 0, 0], "scale": [1, 1, 1]},
+    "cliffsRuins": {"position": [0, 0, -215], "scale": [1.2, 1.2, 1.2]},
+    "backdrop": {"position": [0, 65, 0], "sphereSize": [280, 280, 160], "repeatX": 3}
+  },
+  "rules": [
+    "Do not place scenery inside x=-107.2..107.2 and z=-177.2..177.2.",
+    "Keep all scenery meshes static and outside the collision layer used by cars and ball.",
+    "Use the original arena field, goals, physics, cars and Power-Kick gameplay.",
+    "Use the day backdrop for classic/day mode and night backdrop for night mode."
+  ]
+}

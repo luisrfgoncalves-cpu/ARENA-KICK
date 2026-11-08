@@ -937,3 +937,4 @@ export function buildVanGostVehicle(): CustomVehicleResult {
     roofMarkerY: 2.5,
   }
 }
+

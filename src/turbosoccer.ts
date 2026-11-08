@@ -13,6 +13,8 @@ import { GamepadManager } from './gamepad'
 import { initAudio, AudioManager, setAudioMuted, isAudioMuted } from './audio'
 import { CAR_MODELS } from './carModels'
 import { buildGuinchoTodyVehicle, buildVanGostVehicle } from './customVehicles'
+import { loadArenaKongEnvironment, ArenaKongEnvironmentResult } from './arenaKongEnvironment'
+import { KongGorak } from './arenaKongController'
 import { dbService } from './supabase'
 import { TurboNetworkController } from './turbonetwork'
 import type { NetworkManager } from './network'
@@ -90,7 +92,7 @@ function getRankFromMMR(mmr: number): { tier: RankTier; label: string; emoji: st
   return { tier: 'bronze', label: 'BRONZE', emoji: '🥉', color: '#cd7f32' }
 }
 
-export type TurboTheme = 'classic' | 'cyber' | 'futsal' | 'snowday'
+export type TurboTheme = 'classic' | 'cyber' | 'futsal' | 'snowday' | 'kong'
 
 export type TurboBotLevel = 'easy' | 'medium' | 'hard' | 'expert'
 export type TurboMatchFormat = '1v1' | '2v2' | '3v3' | '4v4'
@@ -144,6 +146,9 @@ export class TurboSoccerGame {
   private orangeCars:    CarObject[] = []  // time laranja (inclui playerCar)
   private blueCars:      CarObject[] = []  // time azul (inclui botCar)
   private allCars:       CarObject[] = []  // todos os carros para loops
+  // ── ARENA KONG: GORILA NEUTRO KONG GORAK & CENÁRIO SELVAGEM ──
+  private kongGorak:     KongGorak | null = null
+  private kongEnvResult: ArenaKongEnvironmentResult | null = null
     // ── MOEDAS DE NITRO & OBSTÁCULOS DINÂMICOS ────────────────
   private boostCoins: {
     group: THREE.Group
@@ -497,7 +502,7 @@ export class TurboSoccerGame {
 
     // 1. Cena Cartoon
     this.scene = new THREE.Scene()
-    const themeBg = this.theme === 'cyber' ? 0x0b1020 : this.theme === 'futsal' ? 0x1e293b : this.theme === 'snowday' ? 0x93c5fd : 0x38bdf8
+    const themeBg = this.theme === 'cyber' ? 0x0b1020 : this.theme === 'futsal' ? 0x1e293b : this.theme === 'snowday' ? 0x93c5fd : this.theme === 'kong' ? 0x064e3b : 0x38bdf8
     this.scene.background = new THREE.Color(themeBg)
 
 
@@ -699,6 +704,59 @@ export class TurboSoccerGame {
       window.addEventListener('keydown', this.onKeyDown)
       window.addEventListener('keyup', this.onKeyUp)
 
+      // ── ARENA KONG: AMBIENTE SELVAGEM & GORILA GIGANTE KONG GORAK ──
+      if (this.theme === 'kong') {
+        loadArenaKongEnvironment(this.scene, { mode: 'day' }).then((env) => {
+          if (this.destroyed) {
+            env.dispose()
+            return
+          }
+          this.kongEnvResult = env
+        }).catch((err) => console.warn('[ArenaKong] Falha ao carregar ambiente:', err))
+
+        const kongPhysics = {
+          applyImpulse: (target: any, impulse: THREE.Vector3) => {
+            if (target === this.ball) {
+              this.ball.vel.add(impulse)
+            } else if (target && typeof target.velX !== 'undefined') {
+              target.velX += impulse.x * 0.6
+              target.velZ += impulse.z * 0.6
+              target.velY = Math.max(target.velY, Math.abs(impulse.y) * 0.5)
+              if (typeof target.applySpinOut === 'function') target.applySpinOut(1.4)
+            }
+          }
+        }
+
+        const kongCamera = {
+          shake: (_duration: number, intensity: number) => this.triggerCameraShake(intensity)
+        }
+
+        this.kongGorak = new KongGorak({
+          ball: this.ball,
+          getCars: () => this.allCars,
+          physics: kongPhysics,
+          camera: kongCamera,
+          emitParticles: (pos, type) => {
+            if (type === 'stars') this.emitCartoonStarBurst(pos, 24, 0xfbbf24)
+            else if (type === 'shockwave') {
+              this.emitCartoonStarBurst(pos, 48, 0x22c55e)
+              this.emitCartoonStarBurst(pos, 24, 0xffffff)
+            } else {
+              this.emitCartoonStarBurst(pos, 16, 0xa3e635)
+            }
+          },
+          playSFX: (type) => {
+            if (type === 'kick') this.audio.playPowerHit()
+            else if (type === 'punch' || type === 'slam') this.audio.playPunchImpact()
+            else if (type === 'roar') this.audio.synthesizeBoom(80, 0.8, 1.2)
+          }
+        })
+
+        this.scene.add(this.kongGorak.rootGroup)
+        this.kongGorak.rootGroup.position.set(0, 0, 0)
+        this.kongGorak.load().catch((err) => console.warn('[KongGorak] Falha ao carregar modelo:', err))
+      }
+
       this.loop()
       if (this.isTraining) {
         this.setTrainingMode(true)
@@ -893,6 +951,10 @@ export class TurboSoccerGame {
 
 
   private buildSkyAndSun() {
+    if (this.theme === 'kong') {
+      // Arena Kong tem seu próprio backdrop 360° tropical e relevo externo carregados via arenaKongEnvironment
+      return
+    }
     // ── CENÁRIO PANORÂMICO 360° (HORIZONTE EXTERNO DE PROFUNDIDADE) ──
     const isNight = this.theme === 'cyber'
     const backdropFile = isNight
@@ -1262,9 +1324,9 @@ export class TurboSoccerGame {
     const ctx = c.getContext('2d')!
 
     const isSnow = this.theme === 'snowday'
-    const grassA = isSnow ? '#f0f9ff' : this.theme === 'cyber' ? '#0b1220' : this.theme === 'futsal' ? '#b45309' : '#22c55e'
-    const grassB = isSnow ? '#e0f2fe' : this.theme === 'cyber' ? '#1e1b4b' : this.theme === 'futsal' ? '#92400e' : '#16a34a'
-    const lineCol = isSnow ? '#0284c7' : this.theme === 'cyber' ? '#00cfff' : '#ffffff'
+    const grassA = isSnow ? '#f0f9ff' : this.theme === 'cyber' ? '#0b1220' : this.theme === 'futsal' ? '#b45309' : this.theme === 'kong' ? '#15803d' : '#22c55e'
+    const grassB = isSnow ? '#e0f2fe' : this.theme === 'cyber' ? '#1e1b4b' : this.theme === 'futsal' ? '#92400e' : this.theme === 'kong' ? '#166534' : '#16a34a'
+    const lineCol = isSnow ? '#0284c7' : this.theme === 'cyber' ? '#00cfff' : this.theme === 'kong' ? '#bbf7d0' : '#ffffff'
 
 
     ctx.fillStyle = grassA
@@ -1732,6 +1794,12 @@ export class TurboSoccerGame {
       ctx.shadowColor = '#facc15'
       ctx.shadowBlur = 18
       ctx.fillText('⚡ ARENA POWER-KICK ⚡', w / 2, 650)
+      ctx.shadowBlur = 0
+    } else if (this.theme === 'kong') {
+      ctx.fillStyle = '#22c55e'
+      ctx.shadowColor = '#22c55e'
+      ctx.shadowBlur = 18
+      ctx.fillText('🦍 ARENA KONG 🦍', w / 2, 650)
       ctx.shadowBlur = 0
     } else {
       ctx.fillStyle = '#e2e8f0'
@@ -2832,6 +2900,10 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
             this.updatePlayerInput(dt)
           }
           this.updateBotAI(dt)
+        }
+        // ── KONG GORAK: Atualiza gorila neutro na Arena Kong ──
+        if (this.kongGorak && this.theme === 'kong') {
+          this.kongGorak.update(dt)
         }
         this.resolveCarCarCollision()
         // Física da bola: somente Host (online) ou sempre (solo)
@@ -7065,6 +7137,10 @@ private resolveCarCarCollision() {
     this.botDemoRespawnTimer = 0
 
     this.resetKickoff()
+    if (this.kongGorak) {
+      this.kongGorak.state = 'PATROL'
+      this.kongGorak.rootGroup.position.set(0, 0, 0)
+    }
     this.drawScoreboard()
   }
 
@@ -7292,6 +7368,17 @@ private resolveCarCarCollision() {
     }
     this.smokePuffs = []
     this.smokeGeo.dispose()
+
+    // ── Limpeza Arena Kong ──
+    if (this.kongGorak) {
+      this.scene.remove(this.kongGorak.rootGroup)
+      this.kongGorak.dispose()
+      this.kongGorak = null
+    }
+    if (this.kongEnvResult) {
+      this.kongEnvResult.dispose()
+      this.kongEnvResult = null
+    }
 
     this.renderer.dispose()
     if (this.composer) {
