@@ -7183,9 +7183,9 @@ private resolveCarCarCollision() {
     this.resetKickoff()
     if (this.kongGorak) {
       this.kongGorak.state = 'PATROL'
-      if (this.kongGorak.model) {
-        this.kongGorak.model.position.set(16, 0, 0)
-        this.kongGorak.model.lookAt(0, 0, 0)
+      if (this.kongGorak.rootGroup) {
+        this.kongGorak.rootGroup.position.set(18, 0, 0)
+        this.kongGorak.rootGroup.rotation.y = -Math.PI / 2
       }
     }
     this.drawScoreboard()

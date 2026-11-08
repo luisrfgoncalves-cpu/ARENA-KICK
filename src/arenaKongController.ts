@@ -1,6 +1,6 @@
 // ============================================================
-//  arenaKongController.ts — Controlador IA e Poses Procedurais
-//  Kong Gorak na Arena Kong (Versão Fluida, Orgânica & Empolgante)
+//  arenaKongController.ts — Controlador IA e Física de Contato Real
+//  Kong Gorak na Arena Kong (Versão com 11 Animações Embutidas & Hitboxes)
 // ============================================================
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -9,16 +9,19 @@ export type KongState =
   | 'PATROL'
   | 'CHASE_BALL'
   | 'RAGE'
-  | 'KICK_BALL'
   | 'PUNCH_CAR'
+  | 'PUNCH_BALL'
+  | 'KICK_BALL'
+  | 'KICK_CAR'
   | 'GRAB_BALL'
+  | 'HOLD_BALL'
   | 'THROW_BALL'
   | 'BUTT_SLAM'
   | 'RECOVER'
 
 export interface KongPhysicsAdapter {
-  applyImpulse?: (target: any, impulse: THREE.Vector3) => void
-  applyAngularImpulse?: (target: any, angImpulse: THREE.Vector3) => void
+  applyImpulse?: (target: any, impulse: THREE.Vector3, worldPoint?: THREE.Vector3) => void
+  applyAngularImpulse?: (target: any, angImpulse: THREE.Vector3, worldPoint?: THREE.Vector3) => void
   setKinematic?: (target: any, isKinematic: boolean) => void
   setSensor?: (target: any, isSensor: boolean) => void
 }
@@ -40,9 +43,9 @@ export interface KongEffectsAdapter {
 interface BoneMap {
   all: THREE.Bone[]
   hips?: THREE.Bone
+  pelvis?: THREE.Bone
   spine?: THREE.Bone
   head?: THREE.Bone
-  jaw?: THREE.Bone
   leftUpperArm?: THREE.Bone
   rightUpperArm?: THREE.Bone
   leftForearm?: THREE.Bone
@@ -57,36 +60,59 @@ interface BoneMap {
   rightFoot?: THREE.Bone
 }
 
+interface HitboxItem {
+  object: THREE.Mesh
+  radiusLocal: number
+  bone: THREE.Bone
+}
+
+const ATTACK_DURATION: Record<string, number> = {
+  RAGE: 1.55,
+  PUNCH_CAR: 0.92,
+  PUNCH_BALL: 0.92,
+  KICK_BALL: 1.05,
+  KICK_CAR: 1.05,
+  GRAB_BALL: 0.9,
+  HOLD_BALL: 1.1,
+  THROW_BALL: 0.95,
+  BUTT_SLAM: 2.2,
+  RECOVER: 0.45
+}
+
+// Janela normalizada de tempo [início, fim] onde o golpe tem contato físico
+const CONTACT_WINDOW: Record<string, [number, number]> = {
+  PUNCH_CAR: [0.30, 0.75],
+  PUNCH_BALL: [0.30, 0.75],
+  KICK_BALL: [0.32, 0.78],
+  KICK_CAR: [0.32, 0.78],
+  GRAB_BALL: [0.25, 0.80]
+}
+
 export class KongGorak {
   public rootGroup = new THREE.Group()
   public model: THREE.Object3D | null = null
   public mixer: THREE.AnimationMixer | null = null
   public clips: Record<string, THREE.AnimationClip> = {}
+  public actions: Record<string, THREE.AnimationAction> = {}
 
   public state: KongState = 'PATROL'
   public stateTime = 0
   public actionCooldown = 0
-  public slamTimer = 4.0 // Primeiro slam após alguns segundos
-
-  // Movimentação orgânica realista
-  public walkSpeed = 9.5 // Velocidade compatível com a passada do gorila
-  private _vel = new THREE.Vector3()
-  private _targetYaw = 0
-  private _currentYaw = 0
+  public slamTimer = 8.0 // Temporizador para o Butt Slam periódico
+  public walkSpeed = 9.5
   public walkDirection = 1
-
   public impactRadius = 40.0
-  private _hit = false
+
+  private _hitDone = false
   private _heldBall: any = null
-
-  // Ações de animação oficiais
-  private _walkAction: THREE.AnimationAction | null = null
-  private _idleAction: THREE.AnimationAction | null = null
   private _currentAction: THREE.AnimationAction | null = null
-  private _isAttacking = false
-
+  private _currentLocoClip = ''
   private _bones: BoneMap = { all: [] }
-  private _eyeMaterials: THREE.MeshStandardMaterial[] = []
+  private _hitboxes: Record<string, HitboxItem> = {}
+
+  // Pulo do Butt Slam
+  private _slamBaseY = 0
+  private _slamLanded = false
 
   private scene: THREE.Scene
   private ball: any
@@ -122,11 +148,12 @@ export class KongGorak {
   async load(): Promise<void> {
     const loader = new GLTFLoader()
     try {
-      const gltf = await loader.loadAsync('/assets/arena-kong/arena-kong-gorak-animated.glb')
+      // Carrega o GLB com 11 clipes completos
+      const gltf = await loader.loadAsync('/assets/arena-kong/arena-kong-gorak-final-complete.glb')
       this.model = gltf.scene
       this.model.name = 'KongGorakModel'
 
-      // Gorila colossal: ~26-28 metros de altura
+      // Ajusta para altura colossal de ~27 metros (proporcional ao estádio de 220x360 e teto 58m)
       const bbox = new THREE.Box3().setFromObject(this.model)
       const size = bbox.getSize(new THREE.Vector3())
       const targetHeight = 27.0
@@ -136,61 +163,52 @@ export class KongGorak {
       }
 
       // Posição inicial: ao lado da bola no círculo central virado para o meio
-      this.model.position.set(18, 0, 0)
-      this._targetYaw = -Math.PI / 2
-      this._currentYaw = -Math.PI / 2
-      this.model.rotation.y = this._currentYaw
+      this.rootGroup.position.set(18, 0, 0)
+      this.rootGroup.rotation.y = -Math.PI / 2
 
       this.model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh
           mesh.castShadow = true
           mesh.receiveShadow = true
-          const cname = (mesh.name || '').toLowerCase()
           if (mesh.material) {
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
             mats.forEach((m: any) => {
               if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
-              if (cname.includes('eye') || (m.name && m.name.toLowerCase().includes('eye'))) {
-                this._eyeMaterials.push(m)
-              }
             })
           }
         }
       })
 
+      // Mapeamento dos ossos e criação das Hitboxes físicas
       this._bones = this._findBones(this.model)
+      this._hitboxes = this._createHitboxes(this.model.scale.x)
 
-      // AnimationMixer com os clipes oficiais
+      // AnimationMixer com todos os clipes do arquivo final
       this.mixer = new THREE.AnimationMixer(this.model)
       gltf.animations.forEach((clip) => {
         const key = clip.name.toLowerCase().replace(/\s+/g, '_')
         this.clips[key] = clip
-        this.clips[clip.name.toLowerCase()] = clip
+        const action = this.mixer!.clipAction(clip)
+        this.actions[key] = action
+
+        // Configuração de loop
+        if (['idle', 'standing_relax', 'walk', 'hold_ball'].includes(key)) {
+          action.setLoop(THREE.LoopRepeat, Infinity)
+        } else {
+          action.setLoop(THREE.LoopOnce, 1)
+          action.clampWhenFinished = true
+        }
       })
 
-      const walkClip = this.clips['walk'] || this.clips['walking']
-      const idleClip = this.clips['idle'] || this.clips['standing_relax']
+      console.log('[KongGorak] Clipes carregados:', Object.keys(this.clips))
 
-      if (walkClip) {
-        this._walkAction = this.mixer.clipAction(walkClip)
-        this._walkAction.setLoop(THREE.LoopRepeat, Infinity)
-      }
-      if (idleClip) {
-        this._idleAction = this.mixer.clipAction(idleClip)
-        this._idleAction.setLoop(THREE.LoopRepeat, Infinity)
-      }
-
-      // Inicia imediatamente caminhando de forma fluida
-      if (this._walkAction) {
-        this._walkAction.reset().play()
-        this._walkAction.setEffectiveWeight(1)
-        this._currentAction = this._walkAction
-      }
+      // Inicia caminhando com o clipe walk oficial
+      this._playLocomotion('walk')
 
       this.rootGroup.add(this.model)
     } catch (err) {
-      console.error('[KongGorak] Erro ao carregar GLB animado:', err)
+      console.error('[KongGorak] Erro ao carregar GLB animado final:', err)
       this._createProceduralFallback()
     }
   }
@@ -217,12 +235,13 @@ export class KongGorak {
       return undefined
     }
 
+    const pelvis = findExact('Pelvis', 'Hips', 'Hip', 'Waist')
     return {
       all,
-      hips: findExact('Pelvis', 'Hips', 'Hip', 'Waist'),
+      hips: pelvis,
+      pelvis,
       spine: findExact('Spine02', 'Spine01', 'Spine'),
       head: findExact('Head'),
-      jaw: findExact('Jaw'),
       leftUpperArm: findExact('L_Upperarm', 'L_UpperArm', 'LeftUpperArm'),
       rightUpperArm: findExact('R_Upperarm', 'R_UpperArm', 'RightUpperArm'),
       leftForearm: findExact('L_Forearm', 'LeftForearm'),
@@ -236,6 +255,32 @@ export class KongGorak {
       leftFoot: findExact('L_Foot', 'LeftFoot'),
       rightFoot: findExact('R_Foot', 'RightFoot')
     }
+  }
+
+  // Cria esferas de colisão física reais presas aos ossos de impacto
+  private _createHitboxes(modelScale: number): Record<string, HitboxItem> {
+    const result: Record<string, HitboxItem> = {}
+    const defs: Record<string, { bone?: THREE.Bone; radius: number; offset: [number, number, number] }> = {
+      leftHand: { bone: this._bones.leftHand, radius: 2.2, offset: [0, 0, 0] },
+      rightHand: { bone: this._bones.rightHand, radius: 2.2, offset: [0, 0, 0] },
+      rightFoot: { bone: this._bones.rightFoot, radius: 2.5, offset: [0, 0, 0] },
+      leftFoot: { bone: this._bones.leftFoot, radius: 2.5, offset: [0, 0, 0] },
+      pelvis: { bone: this._bones.pelvis, radius: 4.0, offset: [0, 0, 0] }
+    }
+
+    const mat = new THREE.MeshBasicMaterial({ visible: false })
+    for (const [name, def] of Object.entries(defs)) {
+      if (!def.bone) continue
+      // Raio ajustado pelo scale do modelo
+      const localRadius = def.radius / (modelScale || 1.0)
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(localRadius, 8, 6), mat)
+      mesh.name = `KongHitbox_${name}`
+      mesh.position.set(...def.offset)
+      mesh.visible = false
+      def.bone.add(mesh)
+      result[name] = { object: mesh, radiusLocal: localRadius, bone: def.bone }
+    }
+    return result
   }
 
   public getBallPosition(): THREE.Vector3 | null {
@@ -254,40 +299,35 @@ export class KongGorak {
     return null
   }
 
-  // Rotação suave natural do corpo pesado
+  // Rotação suave do rootEntity em direção ao alvo
   private _smoothLookAt(target: THREE.Vector3, dt: number) {
-    if (!this.model) return
-    const dx = target.x - this.model.position.x
-    const dz = target.z - this.model.position.z
+    const dx = target.x - this.rootGroup.position.x
+    const dz = target.z - this.rootGroup.position.z
     if (dx * dx + dz * dz < 0.1) return
 
-    this._targetYaw = Math.atan2(dx, dz)
-    // Interpola o ângulo sem saltos
-    let diff = this._targetYaw - this._currentYaw
+    // Ângulo onde o modelo fica de frente para o alvo
+    const targetYaw = Math.atan2(dx, dz)
+    let diff = targetYaw - this.rootGroup.rotation.y
     while (diff < -Math.PI) diff += Math.PI * 2
     while (diff > Math.PI) diff -= Math.PI * 2
 
-    const turnSpeed = 4.2 // Rotação rápida mas orgânica
-    this._currentYaw += diff * Math.min(1, dt * turnSpeed)
-    this.model.rotation.y = this._currentYaw
+    this.rootGroup.rotation.y += diff * Math.min(1, dt * 5.0)
   }
 
   public update(dt: number) {
     if (!this.model) return
 
-    // Protege contra saltos de lag (cap em 0.05s)
     const safeDt = Math.min(dt, 0.05)
-
     this.stateTime += safeDt
     this.actionCooldown = Math.max(0, this.actionCooldown - safeDt)
     this.slamTimer = Math.max(0, this.slamTimer - safeDt)
 
-    // 1. mixer.update executado antes das poses procedurais
+    // 1. Atualização do AnimationMixer
     if (this.mixer) {
       this.mixer.update(safeDt)
     }
 
-    // 2. Se a bola estiver agarrada na mão, atualiza a posição
+    // 2. Mantém a bola na mão se estiver em agarre/espera
     if (this._heldBall) {
       this._keepBallInHand()
     }
@@ -301,54 +341,68 @@ export class KongGorak {
         this._chaseBall(safeDt)
         break
       case 'RAGE':
-        this._rage()
-        break
-      case 'KICK_BALL':
-        this._kickBall()
+        this._updateAttackState('roar_rage', ATTACK_DURATION.RAGE)
         break
       case 'PUNCH_CAR':
-        this._punchCar()
+      case 'PUNCH_BALL':
+        this._updatePunch(safeDt)
+        break
+      case 'KICK_BALL':
+      case 'KICK_CAR':
+        this._updateKick(safeDt)
         break
       case 'GRAB_BALL':
-        this._grabBall()
+        this._updateGrab(safeDt)
+        break
+      case 'HOLD_BALL':
+        this._updateHold(safeDt)
         break
       case 'THROW_BALL':
-        this._throwBall()
+        this._updateThrow(safeDt)
         break
       case 'BUTT_SLAM':
-        this._buttSlam()
+        this._updateSlam(safeDt)
         break
       case 'RECOVER':
-        this._recover()
+        if (this.stateTime > ATTACK_DURATION.RECOVER) this._finish('CHASE_BALL')
         break
       default:
         this._start('PATROL')
     }
 
-    // 4. Se estiver em perseguição/patrulha, avalia alvos ao alcance
-    if (this.state === 'PATROL' || this.state === 'CHASE_BALL') {
+    // 4. Decisão de combate contínua durante caminhada
+    if ((this.state === 'PATROL' || this.state === 'CHASE_BALL') && this.actionCooldown <= 0) {
       this._evaluateCombat()
     }
   }
 
   // ─── LOCOMOÇÃO ─────────────────────────────────────────────────────────────
 
-  private _playLocomotion(type: 'walk' | 'idle') {
-    if (this._isAttacking) return
-    const targetAction = type === 'walk' ? this._walkAction : this._idleAction
-    if (!targetAction || this._currentAction === targetAction) return
+  private _playLocomotion(clipName: string) {
+    if (this._currentLocoClip === clipName) return
+    const action = this.actions[clipName] || this.actions['walk']
+    if (!action) return
 
-    if (this._currentAction) {
-      targetAction.reset().play()
-      this._currentAction.crossFadeTo(targetAction, 0.35, true)
-    } else {
-      targetAction.reset().play()
+    action.reset().play()
+    if (this._currentAction && this._currentAction !== action) {
+      this._currentAction.crossFadeTo(action, 0.25, true)
     }
-    this._currentAction = targetAction
+    this._currentAction = action
+    this._currentLocoClip = clipName
+  }
+
+  private _playActionOnce(clipName: string) {
+    const action = this.actions[clipName]
+    if (!action) return
+    action.reset().play()
+    if (this._currentAction && this._currentAction !== action) {
+      this._currentAction.crossFadeTo(action, 0.2, true)
+    }
+    this._currentAction = action
+    this._currentLocoClip = ''
   }
 
   private _patrol(dt: number) {
-    if (!this.model) return
     const ballPos = this.getBallPosition()
     if (ballPos) {
       this._start('CHASE_BALL')
@@ -356,56 +410,45 @@ export class KongGorak {
     }
 
     this._playLocomotion('walk')
-    this.model.position.x += this.walkDirection * this.walkSpeed * dt
-    this._targetYaw = this.walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2
-    this.model.rotation.y = this._targetYaw
-    this._currentYaw = this._targetYaw
+    this.rootGroup.position.x += this.walkDirection * this.walkSpeed * dt
+    this.rootGroup.rotation.y = this.walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2
 
-    if (Math.abs(this.model.position.x) > 65) {
+    if (Math.abs(this.rootGroup.position.x) > 65) {
       this.walkDirection *= -1
     }
   }
 
   private _chaseBall(dt: number) {
-    if (!this.model) return
     const ballPos = this.getBallPosition()
     if (!ballPos) {
       this._start('PATROL')
       return
     }
 
-    // Olha suavemente para a bola
     this._smoothLookAt(ballPos, dt)
     this._playLocomotion('walk')
 
-    const toBall = ballPos.clone().sub(this.model.position)
+    const toBall = ballPos.clone().sub(this.rootGroup.position)
     toBall.y = 0
     const dist = toBall.length()
 
-    // Se estiver a mais de 13 metros, caminha com passada natural
-    if (dist > 13.0) {
+    // Avança se estiver a mais de 12 metros
+    if (dist > 12.0) {
       toBall.normalize()
-      // Aceleração física suave
-      const targetVel = toBall.multiplyScalar(this.walkSpeed)
-      this._vel.lerp(targetVel, Math.min(1, dt * 5.0))
-      this.model.position.addScaledVector(this._vel, dt)
-    } else {
-      // Perto da bola: desacelera e escolhe golpe
-      this._vel.multiplyScalar(0.75)
-      this.model.position.addScaledVector(this._vel, dt)
+      this.rootGroup.position.addScaledVector(toBall, this.walkSpeed * dt)
     }
   }
 
   // ─── TOMADA DE DECISÃO AGRESSIVA ───────────────────────────────────────────
 
   private _evaluateCombat() {
-    if (!this.model || this.actionCooldown > 0 || this.stateTime < 0.4) return
+    if (this.actionCooldown > 0 || this.stateTime < 0.4) return
 
-    const kongPos = this.model.position
+    const kongPos = this.rootGroup.position
     const ballPos = this.getBallPosition()
     const ballDist = ballPos ? kongPos.distanceTo(ballPos) : Infinity
 
-    // Verifica carros no estádio
+    // Carros próximos
     const cars = this.getCars().filter(Boolean)
     let nearestCar: any = null
     let minCarDist = Infinity
@@ -422,31 +465,29 @@ export class KongGorak {
       }
     }
 
-    // 1. BUTT SLAM (Salto e queda de bunda esmagadora):
-    // Dispara a cada ~8 segundos OU se tiver 2+ carros perto OU carro + bola juntos
+    // 1. BUTT SLAM: a cada ~8–12 segundos OU quando múltiplos alvos estão na zona de perigo
     if (this.slamTimer <= 0 || nearbyCarsCount >= 2 || (nearbyCarsCount >= 1 && ballDist < 18.0)) {
       this.slamTimer = 8.0 + Math.random() * 4.0
       return this._start('BUTT_SLAM')
     }
 
-    // 2. SOCO NO CARRO: se qualquer carro estiver no raio de patada (< 17m), prioriza bater no carro!
-    if (nearestCar && minCarDist < 17.0) {
+    // 2. SOCO NO CARRO: se qualquer carro estiver a menos de 16m
+    if (nearestCar && minCarDist < 16.5) {
       const cPos = this.getCarPosition(nearestCar)
       if (cPos) this._smoothLookAt(cPos, 1.0)
       return this._start('PUNCH_CAR')
     }
 
-    // 3. CHUTE OU AGARRE NA BOLA: se estiver a menos de 15m da bola
+    // 3. AÇÕES NA BOLA: se a bola estiver a menos de 15m
     if (ballPos && ballDist < 15.0) {
       this._smoothLookAt(ballPos, 1.0)
-      // Alterna entre agarrar e chutar
       if (ballDist < 11.5 && Math.random() < 0.45) {
         return this._start('GRAB_BALL')
       }
       return this._start('KICK_BALL')
     }
 
-    // 4. Se a bola estiver longe, garante que está no estado de perseguição
+    // 4. Perseguição padrão
     if (ballPos && this.state !== 'CHASE_BALL') {
       this._start('CHASE_BALL')
     }
@@ -455,198 +496,214 @@ export class KongGorak {
   private _start(next: KongState) {
     this.state = next
     this.stateTime = 0
-    this._hit = false
-    this._vel.set(0, 0, 0)
+    this._hitDone = false
 
-    if (!['PATROL', 'CHASE_BALL'].includes(next)) {
-      this._isAttacking = true
-      // Reduz a influência da caminhada durante golpes
-      if (this._walkAction) this._walkAction.setEffectiveWeight(0.15)
-      if (this._idleAction) this._idleAction.setEffectiveWeight(0.15)
-    } else {
-      this._isAttacking = false
-      if (this._walkAction) this._walkAction.setEffectiveWeight(1.0)
-      if (this._idleAction) this._idleAction.setEffectiveWeight(1.0)
+    // Dispara a animação baked oficial correspondente
+    switch (next) {
+      case 'RAGE':
+        this._playActionOnce(this.clips['roar_rage'] ? 'roar_rage' : 'idle')
+        break
+      case 'PUNCH_CAR':
+      case 'PUNCH_BALL':
+        this._playActionOnce(Math.random() < 0.5 ? 'punch_right' : 'punch_left')
+        break
+      case 'KICK_BALL':
+      case 'KICK_CAR':
+        this._playActionOnce('kick_ball')
+        break
+      case 'GRAB_BALL':
+        this._playActionOnce('grab_ball')
+        break
+      case 'HOLD_BALL':
+        this._playLocomotion('hold_ball')
+        break
+      case 'THROW_BALL':
+        this._playActionOnce('throw_ball')
+        break
+      case 'BUTT_SLAM':
+        this._slamBaseY = this.rootGroup.position.y
+        this._slamLanded = false
+        this._playActionOnce('butt_slam')
+        break
     }
 
     this.effects.onState?.(next)
   }
 
   private _finish(next: KongState = 'CHASE_BALL') {
-    this._hit = false
+    this._hitDone = false
     this.state = next
     this.stateTime = 0
-    this.actionCooldown = 0.7
-    this._isAttacking = false
-
-    if (this._walkAction) this._walkAction.setEffectiveWeight(1.0)
-    if (this._idleAction) this._idleAction.setEffectiveWeight(1.0)
+    this.actionCooldown = 0.8
     this._playLocomotion('walk')
   }
 
-  // ─── GOLPES E ANIMAÇÕES PROCEDURAIS ────────────────────────────────────────
+  // ─── FÍSICA DE CONTATO REAL (HITBOXES) ──────────────────────────────────────
 
-  private _kickBall() {
-    const ballPos = this.getBallPosition()
-    if (ballPos) this._smoothLookAt(ballPos, 0.1)
-
-    const t = Math.min(1, this.stateTime / 0.85)
-    const k = Math.sin(Math.PI * t)
-
-    // Pose de chute vigoroso da perna direita
-    if (this._bones.rightThigh) this._bones.rightThigh.rotation.x = -1.2 * k
-    if (this._bones.rightShin) this._bones.rightShin.rotation.x = 1.4 * k
-    if (this._bones.spine) this._bones.spine.rotation.x = 0.25 * k
-
-    if (this.stateTime > 0.42 && !this._hit) {
-      this._hit = true
-      this._ballImpulse(78)
-      this.effects.kick?.(ballPos || undefined)
-    }
-
-    if (this.stateTime > 0.9) {
-      if (this._bones.rightThigh) this._bones.rightThigh.rotation.x = 0
-      if (this._bones.rightShin) this._bones.rightShin.rotation.x = 0
-      if (this._bones.spine) this._bones.spine.rotation.x = 0
-      this._finish('CHASE_BALL')
-    }
+  // Retorna centro e raio de uma hitbox no espaço de mundo do Three.js
+  private _getHitboxWorld(name: string): { center: THREE.Vector3; radius: number } | null {
+    const item = this._hitboxes[name]
+    if (!item || !item.object) return null
+    item.object.updateWorldMatrix(true, false)
+    const center = item.object.getWorldPosition(new THREE.Vector3())
+    const scale = item.object.getWorldScale(new THREE.Vector3())
+    return { center, radius: item.radiusLocal * Math.max(scale.x, scale.y, scale.z) }
   }
 
-  private _punchCar() {
-    const car = this._nearestCar()
-    const carPos = car ? this.getCarPosition(car) : null
-    if (carPos) this._smoothLookAt(carPos, 0.1)
+  // Testa contato da mão com carros ou bola
+  private _updatePunch(_dt: number) {
+    const duration = ATTACK_DURATION.PUNCH_CAR
+    const progress = this.stateTime / duration
+    const window = CONTACT_WINDOW.PUNCH_CAR
 
-    const t = Math.min(1, this.stateTime / 0.8)
-    const k = Math.sin(Math.PI * t)
+    // Na janela de contato, verifica se a mão encostou em algum carro
+    if (!this._hitDone && progress >= window[0] && progress <= window[1]) {
+      const hbR = this._getHitboxWorld('rightHand')
+      const hbL = this._getHitboxWorld('leftHand')
 
-    // Patada lateral esmagadora com o braço direito
-    if (this._bones.rightUpperArm) {
-      this._bones.rightUpperArm.rotation.x = -1.3 * k
-      this._bones.rightUpperArm.rotation.z = -0.5 * k
-    }
-    if (this._bones.rightForearm) this._bones.rightForearm.rotation.x = -1.1 * k
-    if (this._bones.spine) this._bones.spine.rotation.y = -0.4 * k
+      const cars = this.getCars().filter(Boolean)
+      for (const car of cars) {
+        const cPos = this.getCarPosition(car)
+        if (!cPos) continue
+        // Chassi do carro tem raio aproximado de 3.0m
+        const carRadius = 3.0
+        const hitR = hbR && hbR.center.distanceTo(cPos) <= (hbR.radius + carRadius)
+        const hitL = hbL && hbL.center.distanceTo(cPos) <= (hbL.radius + carRadius)
 
-    if (this.stateTime > 0.38 && !this._hit) {
-      this._hit = true
-      this._carImpulse(58)
-      this.effects.punch?.(carPos || undefined)
-    }
-
-    if (this.stateTime > 0.85) {
-      if (this._bones.rightUpperArm) {
-        this._bones.rightUpperArm.rotation.x = 0
-        this._bones.rightUpperArm.rotation.z = 0
+        if (hitR || hitL) {
+          this._hitDone = true
+          this._applyCarImpulse(car, 60.0)
+          this.effects.punch?.(cPos)
+          break
+        }
       }
-      if (this._bones.rightForearm) this._bones.rightForearm.rotation.x = 0
-      if (this._bones.spine) this._bones.spine.rotation.y = 0
+
+      // Se não atingiu carro, testa se atingiu a bola
+      if (!this._hitDone) {
+        const bPos = this.getBallPosition()
+        if (bPos) {
+          const ballRadius = 2.2
+          const hitR = hbR && hbR.center.distanceTo(bPos) <= (hbR.radius + ballRadius)
+          const hitL = hbL && hbL.center.distanceTo(bPos) <= (hbL.radius + ballRadius)
+          if (hitR || hitL) {
+            this._hitDone = true
+            this._applyBallImpulse(70.0)
+            this.effects.punch?.(bPos)
+          }
+        }
+      }
+    }
+
+    if (this.stateTime >= duration) {
       this._finish('CHASE_BALL')
     }
   }
 
-  private _grabBall() {
-    const ballPos = this.getBallPosition()
-    if (ballPos) this._smoothLookAt(ballPos, 0.1)
+  // Testa contato do pé com a bola
+  private _updateKick(_dt: number) {
+    const duration = ATTACK_DURATION.KICK_BALL
+    const progress = this.stateTime / duration
+    const window = CONTACT_WINDOW.KICK_BALL
 
-    const t = Math.min(1, this.stateTime / 0.75)
-    const k = Math.sin(Math.PI * t)
-
-    // Abaixa o tronco e estica os dois braços para pegar a bola
-    if (this._bones.spine) this._bones.spine.rotation.x = 0.35 * k
-    if (this._bones.rightUpperArm) this._bones.rightUpperArm.rotation.x = -1.0 * k
-    if (this._bones.leftUpperArm) this._bones.leftUpperArm.rotation.x = -1.0 * k
-
-    if (this.stateTime > 0.38 && !this._hit) {
-      this._hit = true
-      this._attachBallToHand()
-      this.effects.grab?.(ballPos || undefined)
+    if (!this._hitDone && progress >= window[0] && progress <= window[1]) {
+      const foot = this._getHitboxWorld('rightFoot')
+      const bPos = this.getBallPosition()
+      if (foot && bPos) {
+        const ballRadius = 2.2
+        if (foot.center.distanceTo(bPos) <= (foot.radius + ballRadius + 1.5)) {
+          this._hitDone = true
+          this._applyBallImpulse(85.0)
+          this.effects.kick?.(bPos)
+        }
+      }
     }
 
-    if (this.stateTime > 0.85) {
+    if (this.stateTime >= duration) {
+      this._finish('CHASE_BALL')
+    }
+  }
+
+  // Agarra a bola fisicamente na mão
+  private _updateGrab(_dt: number) {
+    const duration = ATTACK_DURATION.GRAB_BALL
+    const progress = this.stateTime / duration
+    const window = CONTACT_WINDOW.GRAB_BALL
+
+    if (!this._hitDone && progress >= window[0] && progress <= window[1]) {
+      const hand = this._getHitboxWorld('rightHand')
+      const bPos = this.getBallPosition()
+      if (hand && bPos) {
+        if (hand.center.distanceTo(bPos) <= (hand.radius + 3.5)) {
+          this._hitDone = true
+          this._attachBallToHand()
+          this.effects.grab?.(bPos)
+        }
+      }
+    }
+
+    if (this.stateTime >= duration) {
+      if (this._heldBall) {
+        this._start('HOLD_BALL')
+      } else {
+        this._finish('CHASE_BALL')
+      }
+    }
+  }
+
+  private _updateHold(_dt: number) {
+    if (this.stateTime >= ATTACK_DURATION.HOLD_BALL) {
       this._start('THROW_BALL')
     }
   }
 
-  private _throwBall() {
-    const t = Math.min(1, this.stateTime / 0.9)
-    const k = Math.sin(Math.PI * t)
-
-    // Ergue a mão acima da cabeça e arremessa para a frente
-    if (this._bones.spine) this._bones.spine.rotation.x = -0.4 * k
-    if (this._bones.rightUpperArm) this._bones.rightUpperArm.rotation.x = -1.5 * k
-
-    if (this.stateTime > 0.36 && !this._hit) {
-      this._hit = true
+  // Arremessa a bola para frente
+  private _updateThrow(_dt: number) {
+    const duration = ATTACK_DURATION.THROW_BALL
+    if (!this._hitDone && this.stateTime >= 0.38) {
+      this._hitDone = true
       this._releaseBallWithArc()
       this.effects.throw?.(this.getBallPosition() || undefined)
     }
 
-    if (this.stateTime > 0.92) {
-      if (this._bones.spine) this._bones.spine.rotation.x = 0
-      if (this._bones.rightUpperArm) this._bones.rightUpperArm.rotation.x = 0
-      if (this._bones.leftUpperArm) this._bones.leftUpperArm.rotation.x = 0
+    if (this.stateTime >= duration) {
       this._finish('CHASE_BALL')
     }
   }
 
-  private _buttSlam() {
-    const duration = 1.3
-    const t = Math.min(1, this.stateTime / duration)
+  // Queda de bunda (Butt Slam) com impacto no solo
+  private _updateSlam(_dt: number) {
+    const duration = ATTACK_DURATION.BUTT_SLAM
+    const progress = this.stateTime / duration
 
-    // Curva de pulo: sobe rápido até o topo e cai esmagando
-    if (this.model) {
-      const jumpArc = Math.sin(Math.PI * Math.min(1, this.stateTime / 1.05))
-      this.model.position.y = Math.max(0, jumpArc * 15.0)
+    // Arco vertical do pulo: sobe até 15 metros e desce com tudo
+    if (progress < 0.65) {
+      const jumpArc = Math.sin((progress / 0.65) * Math.PI)
+      this.rootGroup.position.y = this._slamBaseY + jumpArc * 15.0
+    } else {
+      this.rootGroup.position.y = this._slamBaseY
     }
-
-    const k = Math.sin(Math.PI * t)
-    // Encolhe as pernas no ar para preparar a queda de bunda
-    if (this._bones.leftThigh) this._bones.leftThigh.rotation.x = -0.7 * k
-    if (this._bones.rightThigh) this._bones.rightThigh.rotation.x = -0.7 * k
-    if (this._bones.spine) this._bones.spine.rotation.x = 0.5 * k
 
     // Momento do impacto com o solo
-    if (this.stateTime > 0.82 && !this._hit) {
-      this._hit = true
-      if (this.model) this.model.position.y = 0
+    if (!this._slamLanded && progress >= 0.62) {
+      this._slamLanded = true
+      this.rootGroup.position.y = this._slamBaseY
       this._radialImpulse()
-      this.effects.slam?.(this.model?.position)
+      this.effects.slam?.(this.rootGroup.position)
     }
 
-    if (this.stateTime > 1.35) {
-      if (this.model) this.model.position.y = 0
-      if (this._bones.leftThigh) this._bones.leftThigh.rotation.x = 0
-      if (this._bones.rightThigh) this._bones.rightThigh.rotation.x = 0
-      if (this._bones.spine) this._bones.spine.rotation.x = 0
+    if (this.stateTime >= duration) {
+      this.rootGroup.position.y = this._slamBaseY
       this._finish('CHASE_BALL')
     }
   }
 
-  private _rage() {
-    const k = Math.sin(Math.PI * Math.min(1, this.stateTime / 1.4))
-    if (this._bones.spine) this._bones.spine.rotation.x = -0.3 * k
-    if (this._bones.jaw) this._bones.jaw.rotation.x = 0.5 * k
-    this.effects.rage?.(k)
-
-    this._eyeMaterials.forEach((m) => {
-      m.emissive = new THREE.Color(0x00f0ff)
-      m.emissiveIntensity = k * 3.5
-    })
-
-    if (this.stateTime > 1.5) {
-      this._eyeMaterials.forEach((m) => { m.emissiveIntensity = 0 })
-      if (this._bones.spine) this._bones.spine.rotation.x = 0
-      if (this._bones.jaw) this._bones.jaw.rotation.x = 0
+  private _updateAttackState(clipName: string, duration: number) {
+    if (this.stateTime >= duration) {
       this._finish('CHASE_BALL')
     }
   }
 
-  private _recover() {
-    if (this.stateTime > 0.4) this._finish('CHASE_BALL')
-  }
-
-  // ─── BOLA NA MÃO ───────────────────────────────────────────────────────────
+  // ─── BOLA ANEXADA À MÃO ────────────────────────────────────────────────────
 
   private _attachBallToHand() {
     if (!this.ball || !this._bones.rightHand || this._heldBall) return
@@ -696,69 +753,57 @@ export class KongGorak {
     this.physics.setSensor?.(ball, false)
     this.physics.setKinematic?.(ball, false)
 
-    const direction = this.model.getWorldDirection(new THREE.Vector3())
+    // Arremesso para frente e para cima
+    const direction = new THREE.Vector3()
+    this.rootGroup.getWorldDirection(direction)
     direction.y = 0.45
     direction.normalize()
-    this.physics.applyImpulse?.(ball, direction.multiplyScalar(80))
+    this.physics.applyImpulse?.(ball, direction.multiplyScalar(85.0))
     this._heldBall = null
   }
 
-  // ─── FÍSICA E IMPACTOS ─────────────────────────────────────────────────────
+  // ─── IMPULSOS FÍSICOS NATIVOS ──────────────────────────────────────────────
 
-  private _nearestCar(): any {
-    const cars = this.getCars().filter(Boolean)
-    if (!cars.length || !this.model) return null
-    return cars.sort((a, b) => {
-      const pA = this.getCarPosition(a)
-      const pB = this.getCarPosition(b)
-      if (!pA || !pB) return 0
-      return this.model!.position.distanceTo(pA) - this.model!.position.distanceTo(pB)
-    })[0]
-  }
-
-  private _ballImpulse(force: number) {
-    if (!this.ball || this.ball.userData?.kongHeld || !this.model) return
+  private _applyBallImpulse(force: number) {
+    if (!this.ball || this.ball.userData?.kongHeld) return
     const bPos = this.getBallPosition()
     if (!bPos) return
-    const direction = bPos.clone().sub(this.model.position).normalize()
-    direction.y = 0.32
+    const direction = bPos.clone().sub(this.rootGroup.position).normalize()
+    direction.y = 0.35
     direction.normalize()
     this.physics.applyImpulse?.(this.ball, direction.multiplyScalar(force))
   }
 
-  private _carImpulse(force: number) {
-    const car = this._nearestCar()
-    if (!car || !this.model) return
+  private _applyCarImpulse(car: any, force: number) {
     const cPos = this.getCarPosition(car)
     if (!cPos) return
-    const direction = cPos.clone().sub(this.model.position).normalize()
-    direction.y = 0.7
+    const direction = cPos.clone().sub(this.rootGroup.position).normalize()
+    direction.y = 0.65
     direction.normalize()
     this.physics.applyImpulse?.(car, direction.multiplyScalar(force))
     this.physics.applyAngularImpulse?.(car, new THREE.Vector3(0, force * 0.45, force * 0.35))
   }
 
   private _radialImpulse() {
-    if (!this.model) return
     const objects = [this.ball, ...this.getCars()].filter(Boolean)
     for (const object of objects) {
       const objPos = object === this.ball ? this.getBallPosition() : this.getCarPosition(object)
       if (!objPos) continue
-      const direction = objPos.clone().sub(this.model.position)
+      const direction = objPos.clone().sub(this.rootGroup.position)
       const distance = Math.max(0.1, direction.length())
       if (distance < this.impactRadius) {
-        direction.normalize().multiplyScalar(52 * (1 - distance / this.impactRadius))
+        direction.normalize().multiplyScalar(55 * (1 - distance / this.impactRadius))
         direction.y = Math.max(direction.y, 0.5)
         this.physics.applyImpulse?.(object, direction)
         if (typeof object.applySpinOut === 'function') {
-          object.applySpinOut(2.0)
+          object.applySpinOut(2.2)
         }
       }
     }
-    this.camera?.shake?.(0.7, 0.95)
+    this.camera?.shake?.(0.75, 1.0)
   }
 
-  // ─── PROCEDURAL FALLBACK ───────────────────────────────────────────────────
+  // ─── FALLBACK PROCEDURAL ───────────────────────────────────────────────────
 
   private _createProceduralFallback() {
     const group = new THREE.Group()
@@ -780,9 +825,11 @@ export class KongGorak {
       this.mixer.stopAllAction()
       this.mixer = null
     }
-    this._walkAction = null
-    this._idleAction = null
-    this._currentAction = null
+    for (const hitbox of Object.values(this._hitboxes)) {
+      hitbox.object.parent?.remove(hitbox.object)
+      hitbox.object.geometry?.dispose()
+    }
+    this._hitboxes = {}
     if (this.model) {
       this.rootGroup.remove(this.model)
       this.model.traverse((child) => {
