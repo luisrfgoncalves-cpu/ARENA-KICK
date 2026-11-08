@@ -145,6 +145,16 @@ export class GamepadManager {
     }
   }
 
+  isAnyButtonPressed(): boolean {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : []
+    const gp = this.gamepadIndex !== null ? gamepads[this.gamepadIndex] : gamepads[0]
+    if (!gp) return false
+    for (let i = 0; i < gp.buttons.length; i++) {
+      if (gp.buttons[i]?.pressed) return true
+    }
+    return false
+  }
+
   vibrate(duration = 150, strongMagnitude = 0.6, weakMagnitude = 0.4) {
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : []
     const gp = this.gamepadIndex !== null ? gamepads[this.gamepadIndex] : null

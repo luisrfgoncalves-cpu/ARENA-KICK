@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 72" width="100%" height="100%">
+  <!-- Sombra e brilho de base -->
+  <ellipse cx="60" cy="62" rx="52" ry="8" fill="#f97316" opacity="0.45"/>
+  <!-- Rodas off-road robustas -->
+  <circle cx="26" cy="52" r="12" fill="#1e293b" stroke="#000" stroke-width="2.5"/>
+  <circle cx="26" cy="52" r="5" fill="#f97316"/>
+  <circle cx="94" cy="52" r="12" fill="#1e293b" stroke="#000" stroke-width="2.5"/>
+  <circle cx="94" cy="52" r="5" fill="#f97316"/>
+  <!-- Torre e Gancho de Guincho traseiro -->
+  <path d="M82 40 L104 22 L108 26 L88 44 Z" fill="#f97316" stroke="#0f172a" stroke-width="2"/>
+  <path d="M104 22 L110 32 L107 34" fill="none" stroke="#facc15" stroke-width="3" stroke-linecap="round"/>
+  <!-- Cabine e carroceria do guincho Tody (Teal-blue & Laranja) -->
+  <path d="M14 48 L22 34 L54 34 L66 48 Z" fill="#0284c7" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M24 34 L32 20 L50 20 L56 34 Z" fill="#0f172a" stroke="#0284c7" stroke-width="2"/>
+  <path d="M30 32 L36 22 L48 22 L52 32 Z" fill="#38bdf8" opacity="0.8"/>
+  <path d="M12 48 L106 48 L104 54 L14 54 Z" fill="#f97316" stroke="#0f172a" stroke-width="2"/>
+  <circle cx="16" cy="46" r="4" fill="#facc15"/>
+</svg>

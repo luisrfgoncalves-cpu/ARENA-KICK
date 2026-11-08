@@ -3,7 +3,7 @@
 //  Com Garagem 3D, Seleção de Carros Reais e Customização de Times
 // ============================================================
 import { Game } from './game'
-import type { TurboSoccerGame, TurboTuning, TurboTheme, TurboMatchFormat, GoalExplosionType, TurboGameMode } from './turbosoccer'
+import type { TurboSoccerGame, TurboTuning, TurboTheme, TurboMatchFormat, GoalExplosionType, TurboGameMode, TurboBotLevel } from './turbosoccer'
 import type { NetworkManager } from './network'
 import { publishPublicRoom, updatePublicRoomPlayerCount, removePublicRoom, renderPublicRooms, setupLobbyListener } from './publicLobby'
 import { TeamKey, FieldTheme } from './assets'
@@ -23,7 +23,7 @@ let gameMode: 'bot' | '2p' = 'bot'
 // Customizações ativas
 let selectedCar = 'octane-cartoon'
 let selectedTurboTheme: TurboTheme = 'classic'
-let selectedTurboLevel: 'easy' | 'medium' | 'hard' = 'medium'
+let selectedTurboLevel: TurboBotLevel = 'medium'
 let selectedTurboFormat: TurboMatchFormat = '1v1'
 let selectedBBFormat: '1v1' | '2v2' = '1v1'
 let selectedGoalExplosion: GoalExplosionType = (localStorage.getItem('arena_kick_goal_explosion') as GoalExplosionType) || 'toon'
@@ -239,7 +239,7 @@ document.querySelectorAll('.turbo-diff-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.turbo-diff-btn').forEach((b) => b.classList.remove('active'))
     btn.classList.add('active')
-    selectedTurboLevel = ((btn as HTMLElement).dataset.turboLevel as 'easy' | 'medium' | 'hard') || 'medium'
+    selectedTurboLevel = ((btn as HTMLElement).dataset.turboLevel as TurboBotLevel) || 'medium'
     showToast(`🤖 Bot: ${btn.textContent?.trim()}`)
   })
 })

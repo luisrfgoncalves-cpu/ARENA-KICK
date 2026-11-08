@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 72" width="100%" height="100%">
+  <!-- Sombra e brilho de base -->
+  <ellipse cx="60" cy="62" rx="52" ry="8" fill="#ef4444" opacity="0.45"/>
+  <!-- Rodas esportivas robustas com calota verde-limão -->
+  <circle cx="28" cy="52" r="11" fill="#1e293b" stroke="#000" stroke-width="2.5"/>
+  <circle cx="28" cy="52" r="5" fill="#84cc16"/>
+  <circle cx="92" cy="52" r="11" fill="#1e293b" stroke="#000" stroke-width="2.5"/>
+  <circle cx="92" cy="52" r="5" fill="#84cc16"/>
+  <!-- Equipamento no teto (Rack & Radares fantasma) -->
+  <rect x="36" y="14" width="46" height="5" rx="2" fill="#334155" stroke="#0f172a" stroke-width="1.5"/>
+  <circle cx="44" cy="12" r="3" fill="#84cc16"/>
+  <circle cx="74" cy="12" r="3" fill="#ef4444"/>
+  <!-- Carroceria Van Gost (Branco, Vermelho vivo e Verde-limão) -->
+  <path d="M14 48 L20 22 L88 19 L104 36 L104 52 L14 52 Z" fill="#f8fafc" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Faixa lateral esportiva vermelha profunda -->
+  <path d="M14 42 L104 38 L104 48 L14 48 Z" fill="#dc2626"/>
+  <path d="M14 48 L104 48 L104 51 L14 51 Z" fill="#84cc16"/>
+  <!-- Janelas e para-brisa escuro com reflexo -->
+  <path d="M24 24 L38 24 L38 36 L24 36 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <path d="M42 24 L64 24 L64 36 L42 36 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <path d="M68 24 L94 24 L98 36 L68 36 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <circle cx="100" cy="45" r="4" fill="#facc15"/>
+</svg>

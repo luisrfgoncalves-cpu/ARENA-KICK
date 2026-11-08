@@ -91,7 +91,7 @@ function getRankFromMMR(mmr: number): { tier: RankTier; label: string; emoji: st
 
 export type TurboTheme = 'classic' | 'cyber' | 'futsal' | 'snowday'
 
-export type TurboBotLevel = 'easy' | 'medium' | 'hard'
+export type TurboBotLevel = 'easy' | 'medium' | 'hard' | 'expert'
 export type TurboMatchFormat = '1v1' | '2v2' | '3v3' | '4v4'
 export type GoalExplosionType = 'toon' | 'supernova' | 'lightning' | 'confetti'
 export type TurboGameMode = 'standard' | 'rumble' | 'snowday'
@@ -341,7 +341,7 @@ export class TurboSoccerGame {
   private botRumbleStates: Map<CarObject, { powerup: RumblePowerup | null; timer: number; active: { type: RumblePowerup; timeLeft: number } | null }> = new Map()
 
   // Instant Replay (Zero-Allocation Preallocated Ring Buffer para 60 FPS estavel sem GC pauses)
-  private static readonly MAX_REPLAY_FRAMES = 200
+  private static readonly MAX_REPLAY_FRAMES = 480
   private replayRingBuffer: Array<{
     ballPos: THREE.Vector3
     ballRot: THREE.Euler
@@ -704,7 +704,7 @@ export class TurboSoccerGame {
       }
 
       // Carrega modelos 3D reais (GLB) para todos os carros — variedade total sem caixas geométricas
-      const botModelPool = ['buggy', 'ferrari', 'toycar', 'cartoon-yellow', 'cartoon-green', 'cartoon-purple', 'cartoon-moto', 'sportscar', 'volt-striker', 'titan-shift', 'nova-forge']
+      const botModelPool = ['buggy', 'ferrari', 'toycar', 'cartoon-yellow', 'cartoon-green', 'cartoon-purple', 'cartoon-moto', 'sportscar', 'volt-striker', 'titan-shift', 'nova-forge', 'guincho-tody', 'van-gost']
       const loadPromises: Promise<any>[] = []
 
       loadPromises.push(this.playerCar.loadModel(this.selectedCarModelId))
@@ -1414,7 +1414,7 @@ export class TurboSoccerGame {
 
     lctx.font = '900 52px Impact, sans-serif'
     lctx.fillStyle = '#facc15'
-    lctx.fillText('⚡ ARENA KICK ⚽  TURBO SOCCER  ⚡ ARENA KICK ⚽  TURBO SOCCER  ⚡', 20, 84)
+    lctx.fillText('⚡ ARENA KICK ⚽  FUT CAR  ⚡ ARENA KICK ⚽  FUT CAR  ⚡', 20, 84)
 
     const boardTex = new THREE.CanvasTexture(lc)
     boardTex.wrapS = THREE.RepeatWrapping
@@ -2449,9 +2449,9 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         border:2px solid #00cfff;border-radius:20px;padding:8px 22px;box-shadow:0 0 25px rgba(0,207,255,0.6);
         pointer-events:all;z-index:220;">
         <span style="font-size:16px;">⏪</span>
-        <span style="color:#00cfff;font-weight:900;font-size:13px;letter-spacing:2px;">REPLAY DA JOGADA (CÂMERA LENTA)</span>
+        <span style="color:#00cfff;font-weight:900;font-size:13px;letter-spacing:2px;">REPLAY DA JOGADA (TRANSMISSÃO DE TV)</span>
         <button id="btn-skip-replay" style="background:#ff5500;border:none;color:white;border-radius:12px;
-          padding:5px 14px;font-size:10px;font-weight:900;cursor:pointer;font-family:'Orbitron',sans-serif;margin-left:6px;">PULAR [ESPAÇO]</button>
+          padding:6px 16px;font-size:10px;font-weight:900;cursor:pointer;font-family:'Orbitron',sans-serif;margin-left:6px;">PULAR [QUALQUER BOTÃO DO CONTROLE / ESPAÇO]</button>
       </div>
 
       <!-- CARD DE POWER-UP (funciona em todos os modos - mystery boxes) -->
@@ -3814,7 +3814,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
                 oil: '🛢️ MANCHA DE ÓLEO!',
                 magnet: '🧲 ÍMÃ DA BOLA!',
                 shockwave: '💨 ONDA DE CHOQUE!',
-                punch: '🔥 SUPER SOCO!',
+                punch: '🥊 SUPER SOCO!',
                 overdrive: '⚡ NITRO OVERDRIVE!'
               }
               const label = itemNames[awarded] || '📦 ITEM OBTIDO!'
@@ -3836,6 +3836,98 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           mb.group.visible = true
         }
       }
+    }
+  }
+
+  // ── GERADOR DE ÍCONES CARTOON ILUSTRADOS PARA PODERES (100% CEL-SHADING SEM EMOJIS GENÉRICOS) ──
+  private getCartoonPowerupSVG(power: RumblePowerup, size = 44): string {
+    switch (power) {
+      case 'punch':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#f59e0b" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#fbbf24" opacity="0.4"/>
+          <!-- Mola mecânica cartoon espiral -->
+          <path d="M10 44 C 16 42, 14 34, 20 36 C 24 38, 22 30, 28 32" fill="none" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round"/>
+          <path d="M10 44 C 16 42, 14 34, 20 36 C 24 38, 22 30, 28 32" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Luva de Boxe Vermelha Super Soco -->
+          <path d="M26 34 C 24 24, 30 14, 42 16 C 50 18, 54 26, 52 34 C 50 42, 42 46, 32 44 C 26 42, 24 36, 26 34 Z" fill="#ef4444" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M30 26 C 24 24, 22 18, 28 16 C 34 14, 36 20, 34 24 Z" fill="#dc2626" stroke="#0f172a" stroke-width="2"/>
+          <rect x="20" y="36" width="7" height="11" rx="2" transform="rotate(-30 20 36)" fill="#f8fafc" stroke="#0f172a" stroke-width="2"/>
+          <path d="M38 20 C 44 20, 48 24, 48 28" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+          <!-- Explosão de impacto POW -->
+          <polygon points="50,14 54,20 60,18 56,24 62,28 54,29 55,36 49,31 44,35 46,28 40,26 47,23" fill="#facc15" stroke="#0f172a" stroke-width="1.5"/>
+        </svg>`
+
+      case 'missile':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#ef4444" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#f87171" opacity="0.3"/>
+          <polygon points="12,48 6,56 16,52 14,60 22,50" fill="#facc15" stroke="#ea580c" stroke-width="1.5"/>
+          <path d="M18 46 L38 26 C 46 18, 54 14, 56 16 C 58 18, 54 26, 46 34 L26 54 Z" fill="#0284c7" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M42 22 C 48 16, 54 14, 56 16 C 58 18, 56 24, 50 30 Z" fill="#dc2626" stroke="#0f172a" stroke-width="2"/>
+          <polygon points="40,28 42,24 44,28 46,24 48,28" fill="#ffffff" stroke="#0f172a" stroke-width="1"/>
+          <circle cx="48" cy="20" r="2.5" fill="#facc15" stroke="#0f172a" stroke-width="1"/>
+          <polygon points="20,44 14,38 24,36" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>
+          <polygon points="28,52 26,62 34,56" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>
+        </svg>`
+
+      case 'freeze':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#0284c7" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#38bdf8" opacity="0.35"/>
+          <polygon points="32,14 50,22 32,32 14,22" fill="#bae6fd" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+          <polygon points="14,22 32,32 32,52 14,40" fill="#38bdf8" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+          <polygon points="50,22 32,32 32,52 50,40" fill="#0284c7" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M20 25 L28 35 M36 36 L44 26" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="44" cy="18" r="2" fill="#ffffff"/>
+          <circle cx="20" cy="46" r="2" fill="#ffffff"/>
+        </svg>`
+
+      case 'oil':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#ca8a04" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#facc15" opacity="0.3"/>
+          <ellipse cx="36" cy="48" rx="22" ry="9" fill="#0f172a" stroke="#000" stroke-width="2"/>
+          <ellipse cx="38" cy="47" rx="14" ry="4" fill="#334155" opacity="0.7"/>
+          <circle cx="46" cy="40" r="3" fill="#0f172a"/>
+          <g transform="rotate(-35 24 30)">
+            <rect x="14" y="16" width="22" height="28" rx="4" fill="#eab308" stroke="#0f172a" stroke-width="2.5"/>
+            <line x1="14" y1="24" x2="36" y2="24" stroke="#0f172a" stroke-width="2"/>
+            <line x1="14" y1="36" x2="36" y2="36" stroke="#0f172a" stroke-width="2"/>
+            <circle cx="25" cy="30" r="4" fill="#0f172a"/>
+            <polygon points="25,28 23,32 27,32" fill="#facc15"/>
+          </g>
+        </svg>`
+
+      case 'magnet':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#7c3aed" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#a855f7" opacity="0.35"/>
+          <path d="M18 42 L18 26 C 18 16, 46 16, 46 26 L46 42 L38 42 L38 28 C 38 23, 26 23, 26 28 L26 42 Z" fill="#ef4444" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+          <rect x="18" y="34" width="8" height="8" fill="#e2e8f0" stroke="#0f172a" stroke-width="2"/>
+          <rect x="38" y="34" width="8" height="8" fill="#e2e8f0" stroke="#0f172a" stroke-width="2"/>
+          <path d="M22 46 C 22 52, 42 52, 42 46" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="3,3" stroke-linecap="round"/>
+          <path d="M20 50 C 20 58, 44 58, 44 50" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round"/>
+        </svg>`
+
+      case 'shockwave':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#ea580c" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#fb923c" opacity="0.35"/>
+          <circle cx="32" cy="32" r="20" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="6,4" opacity="0.9"/>
+          <circle cx="32" cy="32" r="14" fill="none" stroke="#facc15" stroke-width="3.5" stroke-dasharray="8,5"/>
+          <circle cx="32" cy="32" r="7" fill="#f8fafc" stroke="#0f172a" stroke-width="2"/>
+          <path d="M32 10 L34 18 M54 32 L46 34 M32 54 L30 46 M10 32 L18 30" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>`
+
+      case 'overdrive':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#d97706" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#f59e0b" opacity="0.4"/>
+          <path d="M22 46 C 18 36, 26 24, 32 20 C 38 24, 46 36, 42 46 C 36 52, 28 52, 22 46 Z" fill="#00cfff" stroke="#0f172a" stroke-width="2.5"/>
+          <path d="M26 44 C 24 38, 28 30, 32 26 C 36 30, 40 38, 38 44 Z" fill="#ffffff"/>
+          <polygon points="34,8 20,32 30,32 26,56 46,26 34,26" fill="#facc15" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>`
     }
   }
 
@@ -3866,20 +3958,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     this.rouletteTickTimer -= dt
 
     const icons: RumblePowerup[] = ['missile', 'freeze', 'oil', 'magnet', 'shockwave', 'punch', 'overdrive']
-    const iconEmojis: Record<RumblePowerup, string> = {
-      missile: '🚀',
-      freeze: '🧊',
-      oil: '🛢️',
-      magnet: '🧲',
-      shockwave: '💨',
-      punch: '🔥',
-      overdrive: '⚡'
-    }
 
     if (this.rouletteTickTimer <= 0) {
       this.rouletteTickTimer = 0.075
       const randomPower = icons[Math.floor(Math.random() * icons.length)]
-      if (this.hudRumbleIcon) this.hudRumbleIcon.textContent = iconEmojis[randomPower]
+      if (this.hudRumbleIcon) this.hudRumbleIcon.innerHTML = this.getCartoonPowerupSVG(randomPower, 40)
       if (this.hudRumbleName) this.hudRumbleName.textContent = 'SORTEANDO...'
       this.audio.playRouletteTick()
     }
@@ -5415,158 +5498,311 @@ private resolveCarCarCollision() {
   }
 
 
-  //  BOT IA COMPETITIVO E BALANCEADO (DISPUTA JUSTA & HUMANA)
+  // ════════════════════════════════════════════════════════════════════════════════════════
+  //  BOT IA COMPETITIVO — ARQUITETURA HFSM / ÁRVORE DE DECISÃO PROFISSIONAL (4 NÍVEIS)
+  //  - Níveis: FÁCIL (easy), MÉDIO (medium), DIFÍCIL (hard), CAMPEÃO (expert)
+  //  - Predição Balística da Bola com Física e Quiques
+  //  - Distribuição Tática Dinâmica de Papéis (Atacante, Meio-Campo, Goleiro, Flanker)
+  //  - Fim de Giros em Círculos: Desaceleração tática, alinhamento parado e marcha à ré
+  //  - Prevenção Rigorosa de Gol Contra (Desvio para a lateral se houver risco de auto-gol)
+  //  - Sabotagem com Poderes: Disparos letais de mísseis, gelo e super socos calculados
+  // ════════════════════════════════════════════════════════════════════════════════════════
 
   private updateBotAI(dt: number) {
-    // Roda a IA para todos os carros bot (blue team + orange aliados)
-    for (const car of this.allCars) {
-      if ((car === this.playerCar && !this.spectatorMode) || car.isDemoed) continue
-      // Online 1v1: botCar é o carro remoto — não usar IA nele
-      if (this.isOnline1v1 && car === this.botCar) continue
-      this.runSingleBotAI(car, dt)
-    }
+    // 1. Agrupa os carros ativos por equipe para distribuição dinâmica de papéis
+    const blueActive = this.blueCars.filter(c => !c.isDemoed && (!this.isOnline1v1 || c !== this.botCar))
+    const orangeActive = this.orangeCars.filter(c => !c.isDemoed && (c !== this.playerCar || this.spectatorMode))
+
+    this.assignTeamRolesAndRun(blueActive, true, dt)
+    this.assignTeamRolesAndRun(orangeActive, false, dt)
   }
 
-  private runSingleBotAI(bc: CarObject, dt: number) {
+  private assignTeamRolesAndRun(teamCars: CarObject[], isBlue: boolean, dt: number) {
+    if (teamCars.length === 0) return
+
     const bp = this.ball.pos
-    const isBlue = this.blueCars.includes(bc)
-    // Blue ataca em +Z (lado laranja), Orange aliados atacam em -Z (lado azul)
+    const bv = this.ball.vel
     const opponentGoalZ = isBlue ? FIELD_L / 2 : -FIELD_L / 2
     const ownGoalZ = isBlue ? -FIELD_L / 2 : FIELD_L / 2
 
-    // 1. OPORTUNIDADE TÁTICA DE PEGAR CAIXAS DE PODER SE ESTIVEREM NO CAMINHO
-    let targetX: number
-    let targetZ: number
-    let seekingBox = false
+    // Calibração do tempo de predição balística pelo nível de dificuldade
+    const predTime = this.botLevel === 'easy' ? 0.16 : this.botLevel === 'medium' ? 0.38 : this.botLevel === 'hard' ? 0.65 : 0.90
+    const predX = Math.max(-FIELD_W / 2 + 4, Math.min(FIELD_W / 2 - 4, bp.x + bv.x * predTime))
+    const predZ = Math.max(-FIELD_L / 2 + 4, Math.min(FIELD_L / 2 - 4, bp.z + bv.z * predTime))
+    const predY = Math.max(BALL_R, bp.y + bv.y * predTime - 0.5 * this.studioParams.gravity * predTime * predTime)
 
-    // Bot procura caixa ativa próxima se não tiver poder guardado
+    // Avalia e classifica os membros da equipe pela melhor oportunidade de finalização
+    const scoredCars = teamCars.map(c => {
+      const dBall = Math.hypot(predX - c.pos.x, predZ - c.pos.z)
+      // Bônus se o carro já estiver posicionado atrás da bola em relação ao gol adversário
+      const isBehindBall = isBlue ? c.pos.z < predZ - 1.5 : c.pos.z > predZ + 1.5
+      const alignmentBonus = isBehindBall ? -22 : 15
+      return { car: c, score: dBall + alignmentBonus }
+    })
+
+    scoredCars.sort((a, b) => a.score - b.score)
+
+    // Atribuição Dinâmica de Papéis
+    // 0: Atacante Principal (Striker)
+    // 1: Suporte / Rebote Ofensivo / Coletor de Poderes (Support)
+    // 2: Goleiro / Último Homem de Defesa (Goalkeeper)
+    // 3: Flanker / Sabotador Agressivo (Flanker)
+    for (let i = 0; i < scoredCars.length; i++) {
+      const { car } = scoredCars[i]
+      const role = i === 0 ? 'striker' : i === 1 ? 'support' : i === 2 ? 'goalie' : 'flanker'
+      this.runSingleBotHFSM(car, isBlue, role, dt, predX, predY, predZ, opponentGoalZ, ownGoalZ)
+    }
+  }
+
+  private runSingleBotHFSM(
+    bc: CarObject,
+    isBlue: boolean,
+    role: 'striker' | 'support' | 'goalie' | 'flanker',
+    dt: number,
+    predX: number,
+    predY: number,
+    predZ: number,
+    opponentGoalZ: number,
+    ownGoalZ: number
+  ) {
+    const bp = this.ball.pos
+    const distBall = Math.hypot(bp.x - bc.pos.x, bp.z - bc.pos.z)
+    const distPred = Math.hypot(predX - bc.pos.x, predZ - bc.pos.z)
+
     let botState = this.botRumbleStates.get(bc)
     if (!botState) {
-      botState = { powerup: null, timer: 6.0, active: null }
+      botState = { powerup: null, timer: 5.0, active: null }
       this.botRumbleStates.set(bc, botState)
     }
 
-    if (!botState.powerup && !botState.active && Math.random() < 0.6) {
-      let nearestBoxDist = 32
-      let nearestBoxPos: THREE.Vector3 | null = null
-      for (const mb of this.mysteryBoxes) {
-        if (!mb.active) continue
-        const dBox = bc.pos.distanceTo(mb.pos)
-        if (dBox < nearestBoxDist) {
-          nearestBoxDist = dBox
-          nearestBoxPos = mb.pos
+    // ── 1. USO TÁTICO E SABOTAGEM COM PODERES ─────────────────────────────
+    if (botState.powerup && !botState.active) {
+      const rivalCars = isBlue
+        ? this.orangeCars.filter(c => !c.isDemoed)
+        : this.blueCars.filter(c => !c.isDemoed)
+
+      let nearestRival: CarObject | null = null
+      let nearestRivalDist = 999
+      for (const r of rivalCars) {
+        const d = bc.pos.distanceTo(r.pos)
+        if (d < nearestRivalDist) {
+          nearestRivalDist = d
+          nearestRival = r
         }
       }
-      if (nearestBoxPos && nearestBoxDist < 25) {
-        targetX = nearestBoxPos.x
-        targetZ = nearestBoxPos.z
-        seekingBox = true
+
+      const distGoalOpponent = Math.abs(predZ - opponentGoalZ)
+
+      if (botState.powerup === 'punch') {
+        // Super Soco: aciona se estiver perto da bola para mandar um canhão a gol, ou para desarmar
+        if (distBall < 18 || (distBall < 35 && distGoalOpponent < 65)) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'missile') {
+        // Míssil: dispara no rival se ele estiver à frente e a até 85m
+        if (nearestRival && nearestRivalDist < 85) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'freeze') {
+        // Gelo: congela o rival se ele estiver com a bola ou em perigo
+        if (nearestRival && nearestRivalDist < 65) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'oil') {
+        // Óleo: larga na traseira se um rival estiver perseguindo
+        if (nearestRival && nearestRivalDist < 20) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'magnet') {
+        // Ímã: atrai a bola solta
+        if (distBall > 16 && distBall < 45) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'shockwave') {
+        // Choque: afasta rivais da área
+        if (distBall < 22 || nearestRivalDist < 18) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'overdrive') {
+        if (role === 'striker' || distBall > 30) {
+          this.activateBotRumble(bc, botState)
+        }
       }
     }
 
-    const distBall = Math.hypot(bp.x - bc.pos.x, bp.z - bc.pos.z)
+    // ── 2. DETERMINAÇÃO DE DESTINO (ÁRVORE DE COMPORTAMENTO) ──────────────
+    let targetX = predX
+    let targetZ = predZ
+    let shouldBrakeAtTarget = false
 
-    // 2. FORMAÇÃO TÁTICA EM EQUIPE: DISTRIBUIÇÃO INTELIGENTE DE PAPÉIS
-    const myTeam = isBlue ? this.blueCars : this.orangeCars
-    const myIndexInTeam = myTeam.indexOf(bc)
+    // Vetor bola -> gol adversário
+    const toOppGoalX = 0 - predX
+    const toOppGoalZ = opponentGoalZ - predZ
+    const oppDist = Math.hypot(toOppGoalX, toOppGoalZ) || 1
+    const normOppX = toOppGoalX / oppDist
+    const normOppZ = toOppGoalZ / oppDist
 
-    // Se houver mais de 1 bot no time, atribui funções táticas:
-    // Index 0: Atacante Principal (busca a bola e chuta a gol)
-    // Index 1: Meio-campo / Suporte Ofensivo (busca caixas de poder para atingir adversários e apoiar o jogador)
-    // Index 2+: Zagueiro / Goleiro Recuado (cobertura da defesa)
-    const isDefender = myIndexInTeam >= 2
-    const isSupport  = myIndexInTeam === 1
+    // PREVENÇÃO REAL DE GOL CONTRA:
+    // Se o bot estiver entre a bola e o próprio gol, bater reto empurraria a bola para dentro da meta!
+    const isDangerousOwnGoalAngle = isBlue
+      ? (bc.pos.z > bp.z && bp.z < -FIELD_L * 0.25)
+      : (bc.pos.z < bp.z && bp.z > FIELD_L * 0.25)
 
-    if (!seekingBox) {
-      if (isDefender) {
-        // Zagueiro / Goleiro: protege a frente da própria trave
-        const defZ = isBlue ? -FIELD_L * 0.38 : FIELD_L * 0.38
-        targetX = Math.max(-GOAL_W * 0.8, Math.min(GOAL_W * 0.8, bp.x * 0.85))
+    if (isDangerousOwnGoalAngle && distBall < 25) {
+      // Manobra de segurança: afasta-se na lateral para rebater a bola em diagonal para a parede lateral
+      const safeSide = bc.pos.x >= 0 ? 1 : -1
+      targetX = bp.x + safeSide * 14
+      targetZ = bp.z - (isBlue ? 6 : -6)
+    } else if (role === 'goalie') {
+      // GOLEIRO / ÂNCORA DEFENSIVA:
+      // Fica posicionado cobrindo o gol próprio. Se a bola invadir a área de risco (< 38m da baliza), sai e isola!
+      const ballNearOurGoal = isBlue ? bp.z < -FIELD_L * 0.35 : bp.z > FIELD_L * 0.35
+      if (ballNearOurGoal && Math.abs(bp.x) < GOAL_W) {
+        // Sai do gol para dar o chutão de alívio para longe
+        targetX = predX
+        targetZ = predZ
+      } else {
+        // Cobre a linha da trave acompanhando o ângulo da bola
+        const defZ = isBlue ? -FIELD_L * 0.44 : FIELD_L * 0.44
+        targetX = Math.max(-GOAL_W * 0.42, Math.min(GOAL_W * 0.42, bp.x * 0.65))
         targetZ = defZ
-      } else if (isSupport && (!botState.powerup && !botState.active)) {
-        // Suporte busca caixas de poder para atrapalhar os rivais com mísseis/gelo
-        let nearestBoxDist = 50
-        let nearestBoxPos: THREE.Vector3 | null = null
+        shouldBrakeAtTarget = true
+      }
+    } else if (role === 'support' || role === 'flanker') {
+      // MEIO-CAMPO / APOIO OU FLANKER:
+      // Se não tiver poder, prioriza pegar uma caixa ativa próxima
+      let nearestBoxPos: THREE.Vector3 | null = null
+      let nearestBoxDist = 48
+      if (!botState.powerup && !botState.active) {
         for (const mb of this.mysteryBoxes) {
           if (!mb.active) continue
-          const dBox = bc.pos.distanceTo(mb.pos)
-          if (dBox < nearestBoxDist) {
-            nearestBoxDist = dBox
+          const d = bc.pos.distanceTo(mb.pos)
+          if (d < nearestBoxDist) {
+            nearestBoxDist = d
             nearestBoxPos = mb.pos
           }
         }
-        if (nearestBoxPos) {
-          targetX = nearestBoxPos.x
-          targetZ = nearestBoxPos.z
-        } else {
-          targetX = bp.x * 0.7
-          targetZ = (bp.z + opponentGoalZ) * 0.4
-        }
+      }
+
+      if (nearestBoxPos) {
+        targetX = nearestBoxPos.x
+        targetZ = nearestBoxPos.z
       } else {
-        // Atacante / Condução: alinha perfeitamente atrás da bola para chutar em direção ao gol rival
-        const toGoalX = 0 - bp.x
-        const toGoalZ = opponentGoalZ - bp.z
-        const goalDist = Math.hypot(toGoalX, toGoalZ) || 1
-        const normGoalX = toGoalX / goalDist
-        const normGoalZ = toGoalZ / goalDist
+        // Posicionamento de contenção e rebote atrás do atacante
+        const offsetZ = isBlue ? -32 : 32
+        const offsetX = role === 'flanker' ? (bc.pos.x >= 0 ? 28 : -28) : 0
+        targetX = Math.max(-FIELD_W * 0.38, Math.min(FIELD_W * 0.38, bp.x * 0.5 + offsetX))
+        targetZ = Math.max(-FIELD_L * 0.38, Math.min(FIELD_L * 0.38, bp.z + offsetZ))
+        shouldBrakeAtTarget = true
+      }
+    } else {
+      // ATACANTE PRINCIPAL (STRIKER):
+      // Ponto de armação de chute: posiciona-se exatamente atrás da bola alinhado com a baliza rival
+      const strikeBehindX = predX - normOppX * 4.8
+      const strikeBehindZ = predZ - normOppZ * 4.8
+      const distBehind = Math.hypot(strikeBehindX - bc.pos.x, strikeBehindZ - bc.pos.z)
 
-        // Ponto de preparação atrás da bola na linha do gol adversário
-        const strikeBehindX = bp.x - normGoalX * 4.2
-        const strikeBehindZ = bp.z - normGoalZ * 4.2
+      const isWellPositionedBehind = isBlue ? bc.pos.z < predZ - 1.8 : bc.pos.z > predZ + 1.8
 
-        const ballInOwnHalf = isBlue ? bp.z < -4 : bp.z > 4
-        const distBehind = Math.hypot(strikeBehindX - bc.pos.x, strikeBehindZ - bc.pos.z)
-
-        if (ballInOwnHalf && distBall > 12) {
-          // Modo Defesa Inteligente: posiciona-se entre a bola e o próprio gol
-          targetX = bp.x * 0.65
-          targetZ = (bp.z + ownGoalZ) * 0.52
-        } else if (distBehind > 3.2) {
-          // Manobra de contorno: vai para trás da bola para chutar em direção ao gol
-          targetX = strikeBehindX
-          targetZ = strikeBehindZ
-        } else {
-          // Disparada para o chute com potência
-          targetX = bp.x
-          targetZ = bp.z + normGoalZ * 1.5
-        }
+      if (!isWellPositionedBehind && distBall < 28) {
+        // Contorno tático suave: circula pela lateral para ficar atrás da bola
+        const sideSign = (bc.pos.x - predX) >= 0 ? 1 : -1
+        targetX = predX + sideSign * 8.5
+        targetZ = strikeBehindZ
+      } else if (distBehind > 3.0) {
+        targetX = strikeBehindX
+        targetZ = strikeBehindZ
+      } else {
+        // Disparada fulminante para estufar as redes adversárias
+        targetX = predX + normOppX * 2.5
+        targetZ = predZ + normOppZ * 2.5
       }
     }
 
-    // Limites de segurança da arena
-    targetX = Math.max(-FIELD_W / 2 + 3, Math.min(FIELD_W / 2 - 3, targetX!))
-    targetZ = Math.max(-FIELD_L / 2 + 3, Math.min(FIELD_L / 2 - 3, targetZ!))
+    // Limites de segurança da arena física
+    targetX = Math.max(-FIELD_W / 2 + 3.5, Math.min(FIELD_W / 2 - 3.5, targetX))
+    targetZ = Math.max(-FIELD_L / 2 + 3.5, Math.min(FIELD_L / 2 - 3.5, targetZ))
 
+    // ── 3. NAVEGAÇÃO E ELIMINAÇÃO TOTAL DE GIROS EM CÍRCULOS ──────────────
     const dx = targetX - bc.pos.x
     const dz = targetZ - bc.pos.z
-    const targetYaw = Math.atan2(dx, dz)
+    const distTarget = Math.hypot(dx, dz)
+
+    let targetYaw = Math.atan2(dx, dz)
+
+    // Se o bot estiver no alvo de posicionamento tático (defesa ou apoio):
+    // Desacelera para zero e gira o carro PARADO para encarar a bola (zero voltas em círculos!)
+    if (shouldBrakeAtTarget && distTarget < 4.2) {
+      bc.speed = Math.max(0, bc.speed - 2.5 * dt)
+      if (bc.speed < 0.05) bc.speed = 0
+
+      // Encarar a bola diretamente
+      const toBallYaw = Math.atan2(bp.x - bc.pos.x, bp.z - bc.pos.z)
+      let faceAngleDiff = toBallYaw - bc.yaw
+      while (faceAngleDiff > Math.PI)  faceAngleDiff -= Math.PI * 2
+      while (faceAngleDiff < -Math.PI) faceAngleDiff += Math.PI * 2
+      bc.yaw += Math.max(-3.5 * dt, Math.min(3.5 * dt, faceAngleDiff * 3.5 * dt))
+      bc.steerFront(0)
+      this.applyCarPhysics(bc, dt)
+      return
+    }
 
     let angleDiff = targetYaw - bc.yaw
     while (angleDiff > Math.PI)  angleDiff -= Math.PI * 2
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
 
-    // Parâmetros calibrados por nível de dificuldade
-    const turnGain = this.botLevel === 'easy' ? 2.8 : this.botLevel === 'hard' ? 4.8 : 3.8
-    const speedCap = this.botLevel === 'easy' ? 0.78 : this.botLevel === 'hard' ? 1.15 : 0.95
-    const accel    = this.botLevel === 'easy' ? 1.5 : this.botLevel === 'hard' ? 2.3 : 1.9
+    // Parâmetros calibrados para os 4 níveis de inteligência
+    const turnGain = this.botLevel === 'easy' ? 3.0
+      : this.botLevel === 'medium' ? 4.2
+      : this.botLevel === 'hard' ? 5.4
+      : 6.8 // expert / campeão
 
-    // Giro suave e responsivo
-    bc.yaw += Math.max(-3.0 * dt, Math.min(3.0 * dt, angleDiff * turnGain * dt))
-    bc.steerFront(Math.max(-0.45, Math.min(0.45, angleDiff * 0.85)))
+    const speedCap = this.botLevel === 'easy' ? 0.82
+      : this.botLevel === 'medium' ? 0.98
+      : this.botLevel === 'hard' ? 1.18
+      : 1.30 // expert / campeão
 
-    // Acelera forte quando alinhado com a bola ou alvo
-    const isLinedUp = Math.abs(angleDiff) < 0.45
-    const striking  = distBall < 6.0 && isLinedUp
+    const accel = this.botLevel === 'easy' ? 1.6
+      : this.botLevel === 'medium' ? 2.1
+      : this.botLevel === 'hard' ? 2.7
+      : 3.4
+
+    // Manobra rápida de marcha à ré: se o alvo estiver a mais de 105° atrás e perto, dá ré em vez de dar uma volta inteira
+    const isTargetBehind = Math.abs(angleDiff) > Math.PI * 0.60
+    if (isTargetBehind && distTarget < 16 && Math.abs(bc.speed) < 0.4) {
+      bc.speed = Math.max(-0.55, bc.speed - accel * dt)
+      const reverseSteer = angleDiff > 0 ? 0.45 : -0.45
+      bc.yaw -= reverseSteer * 2.2 * dt
+      bc.steerFront(reverseSteer)
+      this.applyCarPhysics(bc, dt)
+      return
+    }
+
+    // Esterço e alinhamento do carro
+    const maxTurnStep = (this.botLevel === 'expert' ? 5.2 : 4.0) * dt
+    bc.yaw += Math.max(-maxTurnStep, Math.min(maxTurnStep, angleDiff * turnGain * dt))
+    bc.steerFront(Math.max(-0.48, Math.min(0.48, angleDiff * 0.9)))
+
+    const isLinedUp = Math.abs(angleDiff) < 0.40
+    const striking = distBall < 7.0 && isLinedUp
     const baseSpeed = striking
-      ? speedCap * 1.05
-      : isLinedUp ? speedCap : speedCap * 0.55
+      ? speedCap * 1.10
+      : isLinedUp ? speedCap : speedCap * 0.60
 
     bc.speed = Math.max(-0.35, Math.min(baseSpeed, bc.speed + accel * dt))
 
-    // Pulo aéreo tático no chute se a bola estiver no ar
-    if (bp.y > 2.2 && distBall < 7.5 && bc.grounded && isLinedUp) {
-      bc.velY = 13.5
+    // ── 4. JOGADAS AÉREAS E FINALIZAÇÕES ACROBÁTICAS ───────────────────────
+    const canAerial = this.botLevel !== 'easy'
+    if (canAerial && predY > 2.2 && distBall < 9.5 && bc.grounded && isLinedUp) {
+      const jumpImpulse = this.botLevel === 'expert' ? 17.5 : this.botLevel === 'hard' ? 15.5 : 13.5
+      bc.velY = jumpImpulse
       bc.grounded = false
+
+      // Acrobacia aérea / flip nos níveis avançados
+      if (this.botLevel === 'expert' && distBall < 6.0) {
+        bc.pitch = 0.5
+        bc.rollAngle = 0.4
+      }
     }
 
     this.applyCarPhysics(bc, dt)
@@ -6034,7 +6270,7 @@ private resolveCarCarCollision() {
       opacity:0;
     `
     banner.innerHTML = `
-      <div style="font-size:36px;line-height:1;filter:drop-shadow(0 0 10px ${color});">${label.split(' ')[0]}</div>
+      <div style="filter:drop-shadow(0 0 10px ${color});display:flex;align-items:center;justify-content:center;">${this.getCartoonPowerupSVG(type, 46)}</div>
       <div style="display:flex;flex-direction:column;text-align:left;">
         <div style="font-family:'Luckiest Guy',cursive;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.6);">ITEM COLETADO!</div>
         <div style="font-family:'Luckiest Guy',cursive;font-size:16px;color:${color};letter-spacing:1px;line-height:1.2;">${label.replace(label.split(' ')[0] + ' ', '')}</div>
@@ -6238,11 +6474,12 @@ private resolveCarCarCollision() {
       this.hudReplayBanner.style.display = 'flex'
     }
 
+    // Timeout de segurança longo (12s) para nunca cortar o replay no meio
     setTimeout(() => {
       if (this.isReplaying) {
         this.stopGoalReplay()
       }
-    }, 3500)
+    }, 12000)
   }
 
   public stopGoalReplay() {
@@ -6257,7 +6494,18 @@ private resolveCarCarCollision() {
   private updateReplayPlayback(dt: number) {
     if (!this.isReplaying || this.replayPlaybackFrames.length === 0) return
 
-    this.replayPlaybackIdx += Math.max(1, Math.round(dt * 30))
+    // Pular replay imediatamente se qualquer botão do controle estiver pressionado
+    if (this.gamepad.isAnyButtonPressed()) {
+      this.stopGoalReplay()
+      return
+    }
+
+    // Câmera lenta dramática (Slow Motion 0.6x) nos últimos 25% da jogada quando a bola entra no gol
+    const progress = this.replayPlaybackIdx / this.replayPlaybackFrames.length
+    const isClimax = progress > 0.72
+    const frameStep = isClimax ? Math.max(1, Math.round(dt * 30)) : Math.max(1, Math.round(dt * 60))
+
+    this.replayPlaybackIdx += frameStep
 
     if (this.replayPlaybackIdx >= this.replayPlaybackFrames.length) {
       this.stopGoalReplay()
@@ -6281,9 +6529,16 @@ private resolveCarCarCollision() {
       c.applyTransform()
     }
 
-    this._camReplayTarget.copy(this.ball.pos).add(this._camOffset)
-    this.camera.position.lerp(this._camReplayTarget, 0.12)
-    this.camera.lookAt(this.ball.pos)
+    // Câmera Dinâmica de Transmissão de TV (Broadcast Arena Angle)
+    // Ângulo elevado cinematográfico que acompanha a jogada com naturalidade sem distorcer os modelos
+    const camSide = frame.ballPos.x >= 0 ? 1 : -1
+    const targetCamX = frame.ballPos.x * 0.35 + (camSide * 38)
+    const targetCamY = 15.5 + Math.max(0, frame.ballPos.y * 0.4)
+    const targetCamZ = frame.ballPos.z * 0.65 - 20 * (frame.ballPos.z >= 0 ? 1 : -1)
+
+    this._camReplayTarget.set(targetCamX, targetCamY, targetCamZ)
+    this.camera.position.lerp(this._camReplayTarget, 0.08)
+    this.camera.lookAt(frame.ballPos)
   }
 
   public activatePlayerRumble() {
@@ -6338,8 +6593,20 @@ private resolveCarCarCollision() {
     const p = st.powerup
     st.powerup = null
 
+    // Seleciona o alvo adversário mais próximo (se for azul mira nos laranjas/jogador; se for laranja mira nos azuis)
+    const isBlue = this.blueCars.includes(bot)
+    const rivalCars = isBlue ? this.orangeCars.filter(c => !c.isDemoed) : this.blueCars.filter(c => !c.isDemoed)
+    let bestTarget: CarObject = isBlue ? this.playerCar : (this.blueCars[0] || this.playerCar)
+    let minD = 999
+    for (const r of rivalCars) {
+      const d = bot.pos.distanceTo(r.pos)
+      if (d < minD) {
+        minD = d
+        bestTarget = r
+      }
+    }
+
     if (p === 'missile') {
-      // Bot dispara míssil no jogador
       const mGroup = new THREE.Group()
       const cone = new THREE.Mesh(
         new THREE.ConeGeometry(0.8, 2.4, 12),
@@ -6358,7 +6625,7 @@ private resolveCarCarCollision() {
         pos: spawnPos,
         vel: fwd,
         owner: bot,
-        target: this.playerCar,
+        target: bestTarget,
         lifetime: 4.5
       })
       this.showQuickChat('🤖 BOT DISPAROU MÍSSIL!')
@@ -6630,15 +6897,6 @@ private resolveCarCarCollision() {
     this.hudRumbleCard.style.display = 'flex'
 
     if (this.rumbleActive) {
-      const icons: Record<RumblePowerup, string> = {
-        magnet: '🧲',
-        shockwave: '💨',
-        punch: '🔥',
-        overdrive: '⚡',
-        missile: '🚀',
-        freeze: '🧊',
-        oil: '🛢️'
-      }
       const names: Record<RumblePowerup, string> = {
         magnet: 'ÍMÃ ATIVO',
         shockwave: 'CHOQUE!',
@@ -6648,7 +6906,7 @@ private resolveCarCarCollision() {
         freeze: 'CONGELANDO!',
         oil: 'ÓLEO!'
       }
-      this.hudRumbleIcon.textContent = icons[this.rumbleActive.type]
+      this.hudRumbleIcon.innerHTML = this.getCartoonPowerupSVG(this.rumbleActive.type, 38)
       this.hudRumbleName.textContent = `${names[this.rumbleActive.type]} (${this.rumbleActive.timeLeft.toFixed(1)}s)`
       this.hudRumbleCard.style.borderColor = '#00ff88'
       this.hudRumbleCard.style.boxShadow = '0 0 25px rgba(0,255,136,0.7)'
@@ -6661,15 +6919,6 @@ private resolveCarCarCollision() {
     }
 
     if (this.rumblePowerup) {
-      const icons: Record<RumblePowerup, string> = {
-        magnet: '🧲',
-        shockwave: '💨',
-        punch: '🔥',
-        overdrive: '⚡',
-        missile: '🚀',
-        freeze: '🧊',
-        oil: '🛢️'
-      }
       const names: Record<RumblePowerup, string> = {
         magnet: 'ÍMÃ DA BOLA',
         shockwave: 'ONDA DE CHOQUE',
@@ -6679,7 +6928,7 @@ private resolveCarCarCollision() {
         freeze: 'RAIO DE GELO',
         oil: 'MANCHA DE ÓLEO'
       }
-      this.hudRumbleIcon.textContent = icons[this.rumblePowerup]
+      this.hudRumbleIcon.innerHTML = this.getCartoonPowerupSVG(this.rumblePowerup, 40)
       this.hudRumbleName.textContent = names[this.rumblePowerup]
       this.hudRumbleCard.style.borderColor = '#ffd23f'
       this.hudRumbleCard.style.boxShadow = '0 0 25px rgba(255,210,63,0.7)'
@@ -6690,7 +6939,7 @@ private resolveCarCarCollision() {
       const tBtn2 = document.getElementById('tt-use-powerup') as HTMLButtonElement | null
       if (tBtn2) tBtn2.style.display = 'flex'
     } else {
-      this.hudRumbleIcon.textContent = '⏳'
+      this.hudRumbleIcon.innerHTML = `<span style="font-size:32px;">⏳</span>`
       this.hudRumbleName.textContent = `RECARGA: ${Math.ceil(this.rumbleTimer)}s`
       this.hudRumbleCard.style.borderColor = 'rgba(255,255,255,0.25)'
       this.hudRumbleCard.style.boxShadow = 'none'
