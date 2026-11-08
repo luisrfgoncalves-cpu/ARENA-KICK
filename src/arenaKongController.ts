@@ -1,12 +1,13 @@
 // ============================================================
-//  arenaKongController.ts — Controlador IA e Poses Procedurais
-//  do Gorila Neutro "Kong Gorak" na Arena Kong (Versão Atualizada)
+//  arenaKongController.ts — Controlador IA e Animações Fluidas
+//  do Gorila Neutro "Kong Gorak" na Arena Kong (Corrigido & Otimizado)
 //  - Clipes reais do GLB: idle, standing_relax, walk
-//  - Poses procedurais não-acumulativas restaurando pose base (_rest)
-//  - Locomoção pausada durante ataques para evitar sobrescrita do mixer
-//  - Agarrar e soltar bola com attach/detach na mão direita (rightHand)
+//  - Locomoção contínua e fluida sem resetar o AnimationAction a cada frame
+//  - Transição cruzada suave (crossFade) entre idle e walk
+//  - Mapeamento preciso dos ossos principais (sem confundir com Twist bones)
+//  - Poses procedurais sincronizadas restaurando pose base (_rest)
+//  - Agarre e arremesso real da bola na mão direita (rightHand)
 //  - Impulsos físicos lineares e angulares nos carros e na bola
-//  - Tremor de câmera, partículas e efeitos sonoros
 // ============================================================
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -86,6 +87,7 @@ export class KongGorak {
   private _heldBall: any = null
   private _locomotionAction: THREE.AnimationAction | null = null
   private _previousAction: THREE.AnimationAction | null = null
+  private _currentLocomotionName = ''
 
   private _bones: BoneMap = { all: [] }
   private _rest = new Map<THREE.Bone, BoneRestTransform>()
@@ -129,7 +131,7 @@ export class KongGorak {
       this.model = gltf.scene
       this.model.name = 'KongGorakModel'
 
-      // Normaliza para gorila gigante colossal (~28 metros de altura)
+      // Normaliza para gorila colossal (~28 metros de altura)
       const bbox = new THREE.Box3().setFromObject(this.model)
       const size = bbox.getSize(new THREE.Vector3())
       const targetHeight = 28.0
@@ -138,6 +140,7 @@ export class KongGorak {
         this.model.scale.setScalar(scale)
       }
 
+      // Posição inicial ao lado da bola no meio-campo virado para o centro
       this.model.position.set(16, 0, 0)
       this.model.lookAt(0, 0, 0)
 
@@ -159,7 +162,7 @@ export class KongGorak {
         }
       })
 
-      // Mapeamento dos ossos e gravação exata da pose de repouso (REST POSE)
+      // Mapeamento preciso dos ossos principais (excluindo twists auxiliares)
       this._bones = this._findBones(this.model)
       this._rest.clear()
       this._bones.all.forEach((bone) => {
@@ -177,7 +180,8 @@ export class KongGorak {
         this.clips[clip.name.toLowerCase()] = clip
       })
 
-      this._setLocomotion('idle')
+      // Inicia em 'walk' para já entrar em patrulha sem ficar travado em T-pose
+      this._setLocomotion('walk')
       this.rootGroup.add(this.model)
     } catch (err) {
       console.error('[KongGorak] Erro ao carregar GLB animado:', err)
@@ -190,30 +194,44 @@ export class KongGorak {
     root.traverse((object) => {
       if ((object as THREE.Bone).isBone) all.push(object as THREE.Bone)
     })
-    const find = (...terms: string[]) =>
-      all.find((bone) => {
-        const name = bone.name.toLowerCase().replace(/[^a-z0-9]/g, '')
-        return terms.some((term) => name.includes(term))
-      })
+
+    // Busca exata ou por termo que NÃO seja Twist
+    const findExact = (...terms: string[]): THREE.Bone | undefined => {
+      // 1. Tenta igualdade exata de nome ignorando maiúsculas
+      for (const t of terms) {
+        const found = all.find((b) => b.name.toLowerCase() === t.toLowerCase())
+        if (found) return found
+      }
+      // 2. Tenta correspondência que contenha o termo mas NÃO contenha 'twist'
+      for (const t of terms) {
+        const cleanT = t.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const found = all.find((b) => {
+          const cleanB = b.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+          return cleanB.includes(cleanT) && !cleanB.includes('twist')
+        })
+        if (found) return found
+      }
+      return undefined
+    }
 
     return {
       all,
-      hips: find('hips', 'pelvis', 'root'),
-      spine: find('spine', 'chest', 'torso'),
-      head: find('head'),
-      jaw: find('jaw', 'mouth'),
-      leftUpperArm: find('leftupperarm', 'lupperarm', 'upperarml', 'arml'),
-      rightUpperArm: find('rightupperarm', 'rupperarm', 'upperarmr', 'armr'),
-      leftForearm: find('leftforearm', 'lforearm', 'forearml'),
-      rightForearm: find('rightforearm', 'rforearm', 'forearmr'),
-      leftHand: find('lefthand', 'lhand', 'handl'),
-      rightHand: find('righthand', 'rhand', 'handr'),
-      leftThigh: find('leftthigh', 'lthigh', 'thighl'),
-      rightThigh: find('rightthigh', 'rthigh', 'thighr'),
-      leftShin: find('leftshin', 'lshin', 'calfl'),
-      rightShin: find('rightshin', 'rshin', 'calfr'),
-      leftFoot: find('leftfoot', 'lfoot', 'footl'),
-      rightFoot: find('rightfoot', 'rfoot', 'footr')
+      hips: findExact('Pelvis', 'Hip', 'Waist', 'Root'),
+      spine: findExact('Spine02', 'Spine01', 'Spine'),
+      head: findExact('Head'),
+      jaw: findExact('Jaw', 'Head'),
+      leftUpperArm: findExact('L_Upperarm', 'LeftUpperArm'),
+      rightUpperArm: findExact('R_Upperarm', 'RightUpperArm'),
+      leftForearm: findExact('L_Forearm', 'LeftForearm'),
+      rightForearm: findExact('R_Forearm', 'RightForearm'),
+      leftHand: findExact('L_Hand', 'LeftHand'),
+      rightHand: findExact('R_Hand', 'RightHand'),
+      leftThigh: findExact('L_Thigh', 'LeftThigh'),
+      rightThigh: findExact('R_Thigh', 'RightThigh'),
+      leftShin: findExact('L_Calf', 'LeftCalf', 'LeftShin'),
+      rightShin: findExact('R_Calf', 'RightCalf', 'RightShin'),
+      leftFoot: findExact('L_Foot', 'LeftFoot'),
+      rightFoot: findExact('R_Foot', 'RightFoot')
     }
   }
 
@@ -222,15 +240,17 @@ export class KongGorak {
     this.stateTime += dt
     this.actionCooldown = Math.max(0, this.actionCooldown - dt)
 
-    // Atualiza mixer das animações de locomoção
+    // 1. Executa mixer.update(dt) UMA ÚNICA VEZ por frame para avançar a animação
     if (this.mixer) {
       this.mixer.update(dt)
     }
 
+    // 2. Se a bola estiver agarrada na mão, mantém acompanhando
     if (this._heldBall) {
       this._keepBallInHand()
     }
 
+    // 3. Executa a máquina de estados (HFSM)
     switch (this.state) {
       case 'PATROL':
         this._patrol(dt)
@@ -268,16 +288,44 @@ export class KongGorak {
     }
   }
 
+  /**
+   * Controla a locomoção de forma contínua:
+   * NÃO reinicia a ação se ela já estiver ativa e rodando!
+   * Permite que o ciclo de caminhada (walk) complete naturalmente.
+   */
   private _setLocomotion(name: string) {
     if (!this.mixer || !this.clips[name]) return
-    const next = this.mixer.clipAction(this.clips[name])
-    next.enabled = true
-    next.setLoop(THREE.LoopRepeat, Infinity)
-    if (this._locomotionAction && this._locomotionAction !== next) {
-      this._locomotionAction.fadeOut(0.16)
+    const nextAction = this.mixer.clipAction(this.clips[name])
+    nextAction.enabled = true
+    nextAction.setLoop(THREE.LoopRepeat, Infinity)
+
+    // Padrão solicitado: se já é a ação atual e ela está ativa e rodando (e não pausada), RETORNA IMEDIATAMENTE!
+    if (this._locomotionAction === nextAction && nextAction.isRunning() && !nextAction.paused) {
+      return
     }
-    next.reset().fadeIn(0.16).play()
-    this._locomotionAction = next
+
+    // Se a mesma ação estava apenas pausada (ex: saindo de um ataque), retoma sem reiniciar o tempo
+    if (this._locomotionAction === nextAction && nextAction.paused) {
+      nextAction.paused = false
+      nextAction.setEffectiveTimeScale(1)
+      nextAction.setEffectiveWeight(1)
+      this._currentLocomotionName = name
+      return
+    }
+
+    // Transição suave (crossFade) entre animações diferentes (ex: idle <-> walk)
+    if (this._locomotionAction && this._locomotionAction !== nextAction) {
+      nextAction.reset()
+      nextAction.setEffectiveTimeScale(1)
+      nextAction.setEffectiveWeight(1)
+      nextAction.play()
+      this._locomotionAction.crossFadeTo(nextAction, 0.25, true)
+    } else {
+      nextAction.reset().fadeIn(0.2).play()
+    }
+
+    this._locomotionAction = nextAction
+    this._currentLocomotionName = name
   }
 
   private _pauseLocomotion() {
@@ -293,7 +341,7 @@ export class KongGorak {
     this._restoreRestPose()
     if (this._previousAction) {
       this._previousAction.paused = false
-      this._previousAction.reset().fadeIn(0.16).play()
+      this._previousAction.fadeIn(0.18).play()
       this._locomotionAction = this._previousAction
       this._previousAction = null
     } else {
@@ -367,6 +415,7 @@ export class KongGorak {
 
   private _patrol(dt: number) {
     if (!this.model) return
+    // NÃO reinicia walk a cada frame: _setLocomotion retorna imediatamente se walk já estiver rodando
     this._setLocomotion('walk')
     this.model.position.x += this.walkDirection * this.speed * dt
 
