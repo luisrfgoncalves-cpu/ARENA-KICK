@@ -357,6 +357,20 @@ export class TurboSoccerGame {
   private hudRumbleName?: HTMLElement
   private hudRumbleHint?: HTMLElement
   private hudNitroArc: SVGElement | null = null
+  private missileWarningHUD?: HTMLDivElement
+  private isRouletteSpinning = false
+  private rouletteTimer = 0
+  private rouletteTickTimer = 0
+  private rouletteTarget: RumblePowerup = 'missile'
+  private rouletteTargetLabel = ''
+  private missileLockAlertTimer = 0
+  private magnetArcLine?: THREE.Line
+  private magnetArcGeometry?: THREE.BufferGeometry
+  private launchPads: Array<{
+    mesh: THREE.Group
+    pos: THREE.Vector3
+    cooldown: number
+  }> = []
 
   // Scratch vectors reutilizaveis (Zero Allocation no game loop a 60 FPS)
   private readonly _camTargetPos = new THREE.Vector3()
@@ -541,7 +555,12 @@ export class TurboSoccerGame {
       this.buildCartoonArena()
       this.buildObstacles3D()
       this.buildBoostCoins()
-      this.buildMysteryBoxes()
+      // ARENA POWER-KICK (ou modo Rumble): Caixas surpresa e Launch Pads na arena!
+      if (this.theme === 'classic' || this.gameMode === 'rumble') {
+        this.buildMysteryBoxes()
+        this.buildLaunchPads()
+      }
+      this.buildMagnetArc()
       this.buildGoals()
       this.buildBall()
       this.loadSceneryClouds()
@@ -1598,9 +1617,14 @@ export class TurboSoccerGame {
     ctx.font = '900 96px Arial, sans-serif'
     ctx.fillText(`${m}:${s < 10 ? '0' : ''}${s}`, w / 2, 160)
 
-    ctx.fillStyle = '#e2e8f0'
-    ctx.font = '900 44px Arial, sans-serif'
-    ctx.fillText('ARENA KICK', w / 2, 302)
+    ctx.font = '900 42px Arial, sans-serif'
+    if (this.theme === 'classic' || this.gameMode === 'rumble') {
+      ctx.fillStyle = '#facc15'
+      ctx.fillText('⚡ ARENA POWER-KICK ⚡', w / 2, 302)
+    } else {
+      ctx.fillStyle = '#e2e8f0'
+      ctx.fillText('ARENA KICK', w / 2, 302)
+    }
 
     this.scoreboardTex.needsUpdate = true
   }
@@ -2335,6 +2359,19 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       hud.appendChild(roleBadge)
     }
 
+    // ── ALERTA DE MÍSSIL TELEGUIADO (RADAR HUD) ──────────────
+    const missileAlert = document.createElement('div')
+    missileAlert.id = 'turbo-missile-alert'
+    missileAlert.style.cssText = `
+      position:absolute;top:14%;left:50%;transform:translateX(-50%);display:none;
+      background:rgba(220,38,38,0.92);border:3px solid #ffffff;border-radius:14px;
+      padding:8px 22px;color:#ffffff;font-family:'Luckiest Guy',cursive;font-size:17px;
+      letter-spacing:1px;box-shadow:0 0 30px rgba(239,68,68,0.95),0 4px 0 #7f1d1d;
+      z-index:90;pointer-events:none;text-align:center;
+    `
+    hud.appendChild(missileAlert)
+    this.missileWarningHUD = missileAlert
+
     // Card de power-up: funciona em TODOS os modos (mystery boxes em qualquer modo)
     if (this.hudRumbleCard) {
       // Começa oculto; updateRumbleHUD() mostra quando o jogador tem um item
@@ -2588,8 +2625,12 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         this.updateDynamicObstacles(dt)
         this.updateBoostCoins(dt)
         this.updateMysteryBoxes(dt)
+        this.updateLaunchPads(dt)
         this.updateProjectilesAndTraps(dt)
         this.updateDemoRespawn(dt)
+        this.updateMagnetArc()
+        this.updateMissileAlert(dt)
+        this.updateRoulette(dt)
 
         // ── ONLINE 1v1: snapshot do Host → cliente ───────────
         if (this.isOnline1v1 && this.turboNet?.isHost) {
@@ -3542,15 +3583,15 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
             const awarded = pool[Math.floor(Math.random() * pool.length)]
 
             if (car === this.playerCar) {
-              this.rumblePowerup = awarded
+              if (this.isRouletteSpinning || this.rumblePowerup || this.rumbleActive) {
+                // Já possui poder ou está sorteando
+                break
+              }
               // SOM DE EXPLOSÃO DA CAIXA: playDemo() = postHit + powerHit = efeito de impacto forte
               this.audio.playDemo()
-              // SOM SECUNDÁRIO de coleta (jingle de recompensa)
-              setTimeout(() => { try { this.audio.playCoin() } catch {} }, 180)
               this.triggerImpactFlash(mb.pos)
               this.emitCartoonStarBurst(mb.pos, 24, 0xfacc15)
               this.emitCartoonStarBurst(mb.pos, 12, 0xff5500)
-              this.updateRumbleHUD()
               const itemNames: Record<RumblePowerup, string> = {
                 missile: '🚀 MÍSSIL TELEGUIDADO!',
                 freeze: '🧊 RAIO DE GELO!',
@@ -3561,11 +3602,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
                 overdrive: '⚡ NITRO OVERDRIVE!'
               }
               const label = itemNames[awarded] || '📦 ITEM OBTIDO!'
-              // Banner grande animado de item coletado
-              this.showItemAwardBanner(awarded, label)
+              // Inicia a Roleta de poderes no HUD (0.75s de suspense antes de revelar)
+              this.startRouletteSpin(awarded, label)
             } else {
               const bst = this.botRumbleStates.get(car)
-              if (bst && !bst.active) {
+              if (bst && !bst.active && !bst.powerup) {
                 bst.powerup = awarded
               }
             }
@@ -3578,6 +3619,263 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           mb.active = true
           mb.group.visible = true
         }
+      }
+    }
+  }
+
+  // ── ROLETA DE ITENS CARTOON NO HUD (MARIO KART / RUMBLE STYLE) ──────
+  private startRouletteSpin(awarded: RumblePowerup, label: string) {
+    this.isRouletteSpinning = true
+    this.rouletteTimer = 0.75
+    this.rouletteTickTimer = 0
+    this.rouletteTarget = awarded
+    this.rouletteTargetLabel = label
+    if (this.hudRumbleCard) {
+      this.hudRumbleCard.style.display = 'flex'
+      this.hudRumbleCard.style.borderColor = '#ffd23f'
+      this.hudRumbleCard.style.boxShadow = '0 0 35px rgba(255, 210, 63, 0.95)'
+    }
+    if (this.hudRumbleHint) {
+      this.hudRumbleHint.textContent = 'SORTEANDO PODER...'
+    }
+    const useBtn = document.getElementById('turbo-use-btn') as HTMLButtonElement | null
+    if (useBtn) useBtn.style.display = 'none'
+    const tBtn = document.getElementById('tt-use-powerup') as HTMLButtonElement | null
+    if (tBtn) tBtn.style.display = 'none'
+  }
+
+  private updateRoulette(dt: number) {
+    if (!this.isRouletteSpinning) return
+    this.rouletteTimer -= dt
+    this.rouletteTickTimer -= dt
+
+    const icons: RumblePowerup[] = ['missile', 'freeze', 'oil', 'magnet', 'shockwave', 'punch', 'overdrive']
+    const iconEmojis: Record<RumblePowerup, string> = {
+      missile: '🚀',
+      freeze: '🧊',
+      oil: '🛢️',
+      magnet: '🧲',
+      shockwave: '💨',
+      punch: '🔥',
+      overdrive: '⚡'
+    }
+
+    if (this.rouletteTickTimer <= 0) {
+      this.rouletteTickTimer = 0.075
+      const randomPower = icons[Math.floor(Math.random() * icons.length)]
+      if (this.hudRumbleIcon) this.hudRumbleIcon.textContent = iconEmojis[randomPower]
+      if (this.hudRumbleName) this.hudRumbleName.textContent = 'SORTEANDO...'
+      this.audio.playRouletteTick()
+    }
+
+    if (this.rouletteTimer <= 0) {
+      this.isRouletteSpinning = false
+      this.rumblePowerup = this.rouletteTarget
+      this.audio.playCoin()
+      this.updateRumbleHUD()
+      this.showItemAwardBanner(this.rouletteTarget, this.rouletteTargetLabel)
+    }
+  }
+
+  // ── LAUNCH PADS CARTOON NA ARENA POWER-KICK ────────────────────────
+  private buildLaunchPads() {
+    this.launchPads = []
+    if (this.theme !== 'classic' && this.gameMode !== 'rumble') return
+
+    const padPositions = [
+      { x: -FIELD_W * 0.35, z:  FIELD_L * 0.18, targetYaw: Math.PI },
+      { x:  FIELD_W * 0.35, z:  FIELD_L * 0.18, targetYaw: Math.PI },
+      { x: -FIELD_W * 0.35, z: -FIELD_L * 0.18, targetYaw: 0 },
+      { x:  FIELD_W * 0.35, z: -FIELD_L * 0.18, targetYaw: 0 }
+    ]
+
+    for (const p of padPositions) {
+      const g = new THREE.Group()
+      g.position.set(p.x, 0.08, p.z)
+
+      const baseGeo = new THREE.CylinderGeometry(4.2, 4.5, 0.25, 20)
+      const baseMat = new THREE.MeshToonMaterial({ color: 0x1e293b, gradientMap: TOON_GRADIENT })
+      const baseMesh = new THREE.Mesh(baseGeo, baseMat)
+      g.add(baseMesh)
+
+      const borderGeo = new THREE.CylinderGeometry(4.55, 4.85, 0.22, 20)
+      const borderMat = new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
+      baseMesh.add(new THREE.Mesh(borderGeo, borderMat))
+
+      const c = document.createElement('canvas')
+      c.width = 256
+      c.height = 256
+      const ctx = c.getContext('2d')!
+      ctx.fillStyle = '#0f172a'
+      ctx.beginPath()
+      ctx.arc(128, 128, 122, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.lineWidth = 14
+      ctx.strokeStyle = '#facc15'
+      ctx.stroke()
+
+      ctx.fillStyle = '#facc15'
+      ctx.beginPath()
+      ctx.moveTo(128, 35)
+      ctx.lineTo(210, 115)
+      ctx.lineTo(170, 115)
+      ctx.lineTo(128, 75)
+      ctx.lineTo(86, 115)
+      ctx.lineTo(46, 115)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.beginPath()
+      ctx.moveTo(128, 115)
+      ctx.lineTo(210, 195)
+      ctx.lineTo(170, 195)
+      ctx.lineTo(128, 155)
+      ctx.lineTo(86, 195)
+      ctx.lineTo(46, 195)
+      ctx.closePath()
+      ctx.fill()
+
+      const chevronTex = new THREE.CanvasTexture(c)
+      const decalGeo = new THREE.PlaneGeometry(8.2, 8.2)
+      const decalMat = new THREE.MeshBasicMaterial({
+        map: chevronTex,
+        transparent: true
+      })
+      const decal = new THREE.Mesh(decalGeo, decalMat)
+      decal.rotation.x = -Math.PI / 2
+      decal.rotation.z = p.targetYaw
+      decal.position.y = 0.16
+      g.add(decal)
+
+      const light = new THREE.PointLight(0xfacc15, 2.0, 14)
+      light.position.y = 0.9
+      g.add(light)
+
+      this.scene.add(g)
+      this.launchPads.push({
+        mesh: g,
+        pos: new THREE.Vector3(p.x, 0, p.z),
+        cooldown: 0
+      })
+    }
+  }
+
+  private updateLaunchPads(dt: number) {
+    if (this.launchPads.length === 0) return
+    for (const pad of this.launchPads) {
+      if (pad.cooldown > 0) {
+        pad.cooldown -= dt
+        pad.mesh.scale.setScalar(0.92 + Math.max(0, pad.cooldown) * 0.04)
+        continue
+      }
+      pad.mesh.scale.setScalar(1.0 + Math.sin(Date.now() * 0.005) * 0.04)
+
+      for (const car of this.allCars) {
+        if (!car.group.visible || car.isDemoed) continue
+        const d = Math.hypot(car.pos.x - pad.pos.x, car.pos.z - pad.pos.z)
+        if (d < 4.2) {
+          pad.cooldown = 2.0
+          this.audio.playLaunchPad()
+          this.emitCartoonStarBurst(car.pos, 28, 0xfacc15)
+          this.emitCartoonStarBurst(car.pos, 16, 0x00cfff)
+          this.triggerCameraShake(0.85)
+
+          const boostSpd = 34
+          car.velX += Math.sin(car.yaw) * boostSpd
+          car.velZ += Math.cos(car.yaw) * boostSpd
+          car.velY = Math.max(car.velY, 18.5)
+          car.grounded = false
+          car.boost = Math.min(100, car.boost + 30)
+          if (car === this.playerCar) {
+            this.showQuickChat('🚀 SUPER SALTO!')
+          }
+          break
+        }
+      }
+    }
+  }
+
+  // ── FEIXE ELÉTRICO VISUAL DO SUPER ÍMÃ ─────────────────────────────
+  private buildMagnetArc() {
+    const pointsCount = 16
+    const positions = new Float32Array(pointsCount * 3)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x00e5ff,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.95
+    })
+    const line = new THREE.Line(geo, mat)
+    line.visible = false
+    this.scene.add(line)
+    this.magnetArcLine = line
+    this.magnetArcGeometry = geo
+  }
+
+  private updateMagnetArc() {
+    if (!this.magnetArcLine || !this.magnetArcGeometry) return
+    const isMagnetActive = this.rumbleActive?.type === 'magnet'
+
+    if (isMagnetActive) {
+      this.magnetArcLine.visible = true
+      const p1 = this.playerCar.pos.clone().add(new THREE.Vector3(0, 1.2, 0))
+      const p2 = this.ball.pos.clone().add(new THREE.Vector3(0, 1.3, 0))
+      const count = 16
+      const attr = this.magnetArcGeometry.attributes.position as THREE.BufferAttribute
+      const arr = attr.array as Float32Array
+
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1)
+        const cur = p1.clone().lerp(p2, t)
+        if (i > 0 && i < count - 1) {
+          const jitterAmount = Math.min(2.0, p1.distanceTo(p2) * 0.08)
+          cur.x += (Math.random() - 0.5) * jitterAmount
+          cur.y += (Math.random() - 0.5) * jitterAmount * 0.8
+          cur.z += (Math.random() - 0.5) * jitterAmount
+        }
+        arr[i * 3]     = cur.x
+        arr[i * 3 + 1] = cur.y
+        arr[i * 3 + 2] = cur.z
+      }
+      attr.needsUpdate = true
+
+      if (Math.random() < 0.22) {
+        this.audio.playElectricZap()
+      }
+    } else {
+      if (this.magnetArcLine.visible) {
+        this.magnetArcLine.visible = false
+      }
+    }
+  }
+
+  // ── ALERTA DE MÍSSIL TELEGUIADO NO JOGADOR (RWR) ───────────────────
+  private updateMissileAlert(dt: number) {
+    let targeting = false
+    let minDist = 999
+    for (const m of this.activeMissiles) {
+      if (m.target === this.playerCar && !this.playerCar.isDemoed) {
+        targeting = true
+        const d = m.pos.distanceTo(this.playerCar.pos)
+        if (d < minDist) minDist = d
+      }
+    }
+
+    if (targeting && minDist < 80) {
+      this.missileLockAlertTimer -= dt
+      if (this.missileLockAlertTimer <= 0) {
+        this.audio.playLockOnAlert()
+        this.missileLockAlertTimer = Math.max(0.12, (minDist / 80) * 0.38)
+      }
+      if (this.missileWarningHUD) {
+        this.missileWarningHUD.style.display = 'block'
+        this.missileWarningHUD.innerHTML = `🚨 <b>ALERTA DE MÍSSIL!</b> [${minDist.toFixed(0)}m]`
+      }
+    } else {
+      if (this.missileWarningHUD && this.missileWarningHUD.style.display !== 'none') {
+        this.missileWarningHUD.style.display = 'none'
       }
     }
   }
@@ -6013,6 +6311,7 @@ private resolveCarCarCollision() {
   }
 
   private updateRumbleHUD() {
+    if (this.isRouletteSpinning) return
     if (!this.hudRumbleCard || !this.hudRumbleIcon || !this.hudRumbleName) return
 
     // Mostra o card em QUALQUER modo de jogo quando o jogador tem item ou está usando
@@ -6378,6 +6677,23 @@ private resolveCarCarCollision() {
       this.scene.remove(p.group)
     }
     this.activePunches = []
+
+    for (const lp of this.launchPads) {
+      this.scene.remove(lp.mesh)
+    }
+    this.launchPads = []
+
+    if (this.magnetArcLine) {
+      this.scene.remove(this.magnetArcLine)
+      this.magnetArcGeometry?.dispose()
+      this.magnetArcLine = undefined
+      this.magnetArcGeometry = undefined
+    }
+
+    if (this.missileWarningHUD) {
+      this.missileWarningHUD.remove()
+      this.missileWarningHUD = undefined
+    }
 
     for (const p of this.smokePuffs) {
       this.scene.remove(p.mesh)

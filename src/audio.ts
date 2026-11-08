@@ -360,6 +360,90 @@ export class AudioManager {
     this.synthesizeBoom(160, 0.4, 0.95)
   }
 
+  /** Alerta sonoro de míssil teleguiado travado no jogador (Radar Warning Receiver) */
+  public playLockOnAlert() {
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(880, now)
+      osc.frequency.setValueAtTime(1100, now + 0.04)
+      gain.gain.setValueAtTime(0.35, now)
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.1)
+    } catch {}
+  }
+
+  /** Som de clique rápido da roleta de poderes cartoon */
+  public playRouletteTick() {
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(1400, now)
+      osc.frequency.exponentialRampToValueAtTime(450, now + 0.025)
+      gain.gain.setValueAtTime(0.28, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.03)
+    } catch {}
+  }
+
+  /** Som de rampa de propulsão / Launch Pad sônico */
+  public playLaunchPad() {
+    this.playDash()
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(200, now)
+      osc.frequency.exponentialRampToValueAtTime(950, now + 0.35)
+      gain.gain.setValueAtTime(0.45, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.4)
+    } catch {}
+  }
+
+  /** Som de choque / feixe elétrico do super ímã cartoon */
+  public playElectricZap() {
+    if (this.muted) return
+    try {
+      const ctx = Howler.ctx
+      if (!ctx) return
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(420 + Math.random() * 220, now)
+      gain.gain.setValueAtTime(0.22, now)
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.07)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.07)
+    } catch {}
+  }
+
   playCoin() {
     this.play('kickoffArp')
   }
