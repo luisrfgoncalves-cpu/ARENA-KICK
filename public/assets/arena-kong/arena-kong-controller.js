@@ -1,15 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * Kong Gorak — controlador de IA e ações procedurais para Three.js (Corrigido).
- *
- * ORDEM NO LOOP:
- *   mixer.update(dt);
- *   controller.update(dt);
- *
- * CORREÇÃO DA LOCOMOÇÃO:
- *   _setLocomotion verifica se a ação já está rodando para NUNCA chamar
- *   reset().play() a cada frame, permitindo que a animação walk flua livremente.
+ * Kong Gorak — controlador de IA e ações procedurais para Three.js (Fluido & Reativo).
  */
 export class KongGorakController {
   constructor({ model, mixer = null, clips = {}, scene, ball, cars = [], physics = {}, goal = null, camera = null, effects = {} }) {
@@ -28,13 +20,12 @@ export class KongGorakController {
     this.stateTime = 0;
     this.actionCooldown = 0;
     this.walkDirection = 1;
-    this.speed = 18.0;
-    this.impactRadius = 36.0;
+    this.speed = 20.0;
+    this.impactRadius = 38.0;
     this._hit = false;
     this._heldBall = null;
     this._locomotionAction = null;
-    this._previousAction = null;
-    this._currentLocomotionName = '';
+    this._currentClipName = '';
 
     this._bones = this._findBones(model);
     this._rest = new Map();
@@ -91,10 +82,39 @@ export class KongGorakController {
     };
   }
 
+  getBallPosition() {
+    if (!this.ball) return null;
+    if (this.ball.pos && typeof this.ball.pos.x === 'number') return this.ball.pos;
+    if (this.ball.position && typeof this.ball.position.x === 'number') return this.ball.position;
+    if (this.ball.mesh && this.ball.mesh.position) return this.ball.mesh.position;
+    return null;
+  }
+
+  getCarPosition(car) {
+    if (!car) return null;
+    if (car.pos && typeof car.pos.x === 'number') return car.pos;
+    if (car.position && typeof car.position.x === 'number') return car.position;
+    if (car.group && car.group.position) return car.group.position;
+    return null;
+  }
+
+  _lookAtTarget(target) {
+    if (!this.model) return;
+    const direction = target.clone().sub(this.model.position);
+    direction.y = 0;
+    if (direction.lengthSq() > 0.001) {
+      this.model.lookAt(target.x, this.model.position.y, target.z);
+    }
+  }
+
   update(dt) {
     if (!this.model) return;
     this.stateTime += dt;
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
+
+    if (this.mixer) {
+      this.mixer.update(dt);
+    }
 
     if (this._heldBall) this._keepBallInHand();
 
@@ -116,55 +136,46 @@ export class KongGorakController {
 
   _setLocomotion(name) {
     if (!this.mixer || !this.clips?.[name]) return;
+    if (this._currentClipName === name && this._locomotionAction && !this._locomotionAction.paused) {
+      return;
+    }
+
     const nextAction = this.mixer.clipAction(this.clips[name]);
     nextAction.enabled = true;
     nextAction.setLoop(THREE.LoopRepeat, Infinity);
 
-    if (this._locomotionAction === nextAction && nextAction.isRunning() && !nextAction.paused) {
-      return;
-    }
-
-    if (this._locomotionAction === nextAction && nextAction.paused) {
-      nextAction.paused = false;
-      nextAction.setEffectiveTimeScale(1);
-      nextAction.setEffectiveWeight(1);
-      this._currentLocomotionName = name;
+    if (this._currentClipName === name && this._locomotionAction && this._locomotionAction.paused) {
+      this._locomotionAction.paused = false;
       return;
     }
 
     if (this._locomotionAction && this._locomotionAction !== nextAction) {
       nextAction.reset();
-      nextAction.setEffectiveTimeScale(1);
-      nextAction.setEffectiveWeight(1);
       nextAction.play();
       this._locomotionAction.crossFadeTo(nextAction, 0.25, true);
     } else {
-      nextAction.reset().fadeIn(0.2).play();
+      nextAction.reset().play();
     }
 
     this._locomotionAction = nextAction;
-    this._currentLocomotionName = name;
+    this._currentClipName = name;
   }
 
   _pauseLocomotion() {
     if (this._locomotionAction) {
       this._locomotionAction.fadeOut(0.08);
       this._locomotionAction.paused = true;
-      this._previousAction = this._locomotionAction;
     }
     this._restoreRestPose();
   }
 
-  _resumeLocomotion(name = 'idle') {
+  _resumeLocomotion(name = 'walk') {
     this._restoreRestPose();
-    if (this._previousAction) {
-      this._previousAction.paused = false;
-      this._previousAction.fadeIn(0.18).play();
-      this._locomotionAction = this._previousAction;
-      this._previousAction = null;
-    } else {
-      this._setLocomotion(name);
+    if (this._locomotionAction) {
+      this._locomotionAction.paused = false;
+      this._locomotionAction.fadeIn(0.18).play();
     }
+    this._setLocomotion(name);
   }
 
   _restoreRestPose() {
@@ -178,21 +189,46 @@ export class KongGorakController {
   }
 
   _chooseAction() {
-    if (this.actionCooldown > 0 || this.stateTime < 0.8 || !this.model) return;
-    const ballPos = this.ball?.pos || this.ball?.position || this.ball?.mesh?.position;
+    if (this.actionCooldown > 0 || this.stateTime < 0.6 || !this.model) return;
+    const ballPos = this.getBallPosition();
     const kongPos = this.model.position;
     const ballDistance = ballPos ? kongPos.distanceTo(ballPos) : Infinity;
-    const car = this._nearestCar();
-    const carDistance = car ? kongPos.distanceTo(car.pos || car.position) : Infinity;
 
-    if (ballPos && Math.abs(ballPos.z) > 110 && ballDistance < 80) return this._start('CHASE_BALL');
-    if (ballDistance < 18.0) {
-      if (ballDistance < 12.0 && Math.random() < 0.35) return this._start('GRAB_BALL');
-      if (Math.random() < 0.50) return this._start('KICK_BALL');
+    const cars = (typeof this.cars === 'function' ? this.cars() : this.cars).filter(Boolean);
+    let nearestCar = null;
+    let minCarDist = Infinity;
+    let carsNearCount = 0;
+
+    for (const car of cars) {
+      const cPos = this.getCarPosition(car);
+      if (!cPos) continue;
+      const d = kongPos.distanceTo(cPos);
+      if (d < 22.0) carsNearCount++;
+      if (d < minCarDist) {
+        minCarDist = d;
+        nearestCar = car;
+      }
     }
-    if (carDistance < 20.0 && Math.random() < 0.40) return this._start('PUNCH_CAR');
-    if ((carDistance < 24.0 || ballDistance < 24.0) && Math.random() < 0.15) return this._start('BUTT_SLAM');
-    if (Math.random() < 0.03) return this._start('RAGE');
+
+    if ((carsNearCount >= 2 || (carsNearCount >= 1 && ballDistance < 20.0)) && Math.random() < 0.35) {
+      return this._start('BUTT_SLAM');
+    }
+
+    if (ballPos && ballDistance < 18.0) {
+      this._lookAtTarget(ballPos);
+      if (ballDistance < 13.0 && Math.random() < 0.45) return this._start('GRAB_BALL');
+      return this._start('KICK_BALL');
+    }
+
+    if (nearestCar && minCarDist < 20.0) {
+      const cPos = this.getCarPosition(nearestCar);
+      if (cPos) this._lookAtTarget(cPos);
+      return this._start('PUNCH_CAR');
+    }
+
+    if (ballPos && this.state !== 'CHASE_BALL') {
+      return this._start('CHASE_BALL');
+    }
   }
 
   _start(next) {
@@ -203,37 +239,47 @@ export class KongGorakController {
     this.effects.onState?.(next);
   }
 
-  _finish(next = 'PATROL') {
+  _finish(next = 'CHASE_BALL') {
     this._hit = false;
     this.state = next;
     this.stateTime = 0;
-    this.actionCooldown = 1.2;
-    this._resumeLocomotion(next === 'PATROL' ? 'walk' : 'idle');
+    this.actionCooldown = 0.8;
+    this._restoreRestPose();
+    this._resumeLocomotion(next === 'CHASE_BALL' ? 'walk' : 'idle');
   }
 
   _patrol(dt) {
+    if (!this.model) return;
+    const ballPos = this.getBallPosition();
+    if (ballPos) {
+      this._start('CHASE_BALL');
+      return;
+    }
     this._setLocomotion('walk');
     this.model.position.x += this.walkDirection * this.speed * dt;
     if (Math.abs(this.model.position.x) > 65) {
       this.walkDirection *= -1;
       this.model.rotation.y = this.walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2;
     }
-    const ballPos = this.ball?.pos || this.ball?.position || this.ball?.mesh?.position;
-    if (ballPos && this.model.position.distanceTo(ballPos) < 45) this._start('CHASE_BALL');
   }
 
   _chaseBall(dt) {
+    if (!this.model) return;
     this._setLocomotion('walk');
-    const ballPos = this.ball?.pos || this.ball?.position || this.ball?.mesh?.position;
-    if (!ballPos) return this._finish();
+    const ballPos = this.getBallPosition();
+    if (!ballPos) return this._finish('PATROL');
+
+    this._lookAtTarget(ballPos);
+
     const direction = ballPos.clone().sub(this.model.position);
     direction.y = 0;
-    if (direction.length() > 14.0) {
+    const dist = direction.length();
+
+    if (dist > 14.0) {
       direction.normalize();
       this.model.position.addScaledVector(direction, this.speed * 1.35 * dt);
-      this.model.lookAt(ballPos.x, this.model.position.y, ballPos.z);
     } else {
-      this._finish('PATROL');
+      this._chooseAction();
     }
   }
 
@@ -243,41 +289,47 @@ export class KongGorakController {
     const k = Math.max(t, hold);
     this._poseRoar(k);
     this.effects.rage?.(k);
-    if (this.stateTime > 1.6) this._finish();
+    if (this.stateTime > 1.6) this._finish('CHASE_BALL');
   }
 
   _kickBall() {
+    const ballPos = this.getBallPosition();
+    if (ballPos) this._lookAtTarget(ballPos);
     const t = Math.min(1, this.stateTime / 0.9);
     this._poseKick(t);
-    if (this.stateTime > 0.48 && !this._hit) {
+    if (this.stateTime > 0.45 && !this._hit) {
       this._hit = true;
-      this._ballImpulse(62);
-      this.effects.kick?.(this.ball?.pos || this.ball?.position);
+      this._ballImpulse(75);
+      this.effects.kick?.(ballPos || undefined);
     }
-    if (this.stateTime > 1.0) this._finish();
+    if (this.stateTime > 0.95) this._finish('CHASE_BALL');
   }
 
   _punchCar() {
+    const car = this._nearestCar();
+    const carPos = car ? this.getCarPosition(car) : null;
+    if (carPos) this._lookAtTarget(carPos);
     const t = Math.min(1, this.stateTime / 0.85);
     this._posePunch(t);
     if (this.stateTime > 0.42 && !this._hit) {
       this._hit = true;
-      this._carImpulse(48);
-      const car = this._nearestCar();
-      this.effects.punch?.(car?.pos || car?.position);
+      this._carImpulse(55);
+      this.effects.punch?.(carPos || undefined);
     }
-    if (this.stateTime > 0.98) this._finish();
+    if (this.stateTime > 0.92) this._finish('CHASE_BALL');
   }
 
   _grabBall() {
+    const ballPos = this.getBallPosition();
+    if (ballPos) this._lookAtTarget(ballPos);
     const t = Math.min(1, this.stateTime / 0.8);
     this._poseGrab(t);
     if (this.stateTime > 0.42 && !this._hit) {
       this._hit = true;
       this._attachBallToHand();
-      this.effects.grab?.(this.ball?.pos || this.ball?.position);
+      this.effects.grab?.(ballPos || undefined);
     }
-    if (this.stateTime > 1.1) this._start('THROW_BALL');
+    if (this.stateTime > 1.05) this._start('THROW_BALL');
   }
 
   _throwBall() {
@@ -286,9 +338,9 @@ export class KongGorakController {
     if (this.stateTime > 0.34 && !this._hit) {
       this._hit = true;
       this._releaseBallWithArc();
-      this.effects.throw?.(this.ball?.pos || this.ball?.position);
+      this.effects.throw?.(this.getBallPosition() || undefined);
     }
-    if (this.stateTime > 0.95) this._finish();
+    if (this.stateTime > 0.92) this._finish('CHASE_BALL');
   }
 
   _buttSlam() {
@@ -304,14 +356,14 @@ export class KongGorakController {
       this._radialImpulse();
       this.effects.slam?.(this.model?.position);
     }
-    if (this.stateTime > 1.38) {
+    if (this.stateTime > 1.35) {
       if (this.model) this.model.position.y = 0;
-      this._finish();
+      this._finish('CHASE_BALL');
     }
   }
 
   _recover() {
-    if (this.stateTime > 0.5) this._finish();
+    if (this.stateTime > 0.4) this._finish('CHASE_BALL');
   }
 
   _poseRoar(k) {
@@ -428,7 +480,7 @@ export class KongGorakController {
     const direction = this.model.getWorldDirection(new THREE.Vector3());
     direction.y = 0.42;
     direction.normalize();
-    this.physics.applyImpulse?.(ball, direction.multiplyScalar(68));
+    this.physics.applyImpulse?.(ball, direction.multiplyScalar(75));
     this._heldBall = null;
   }
 
@@ -436,15 +488,16 @@ export class KongGorakController {
     const cars = (typeof this.cars === 'function' ? this.cars() : this.cars).filter(Boolean);
     if (!cars.length || !this.model) return null;
     return cars.sort((a, b) => {
-      const pA = a.pos || a.position;
-      const pB = b.pos || b.position;
+      const pA = this.getCarPosition(a);
+      const pB = this.getCarPosition(b);
+      if (!pA || !pB) return 0;
       return this.model.position.distanceTo(pA) - this.model.position.distanceTo(pB);
     })[0];
   }
 
   _ballImpulse(force) {
     if (!this.ball || this.ball.userData?.kongHeld || !this.model) return;
-    const bPos = this.ball.pos || this.ball.position || this.ball.mesh?.position;
+    const bPos = this.getBallPosition();
     if (!bPos) return;
     const direction = bPos.clone().sub(this.model.position).normalize();
     direction.y = 0.28;
@@ -455,7 +508,8 @@ export class KongGorakController {
   _carImpulse(force) {
     const car = this._nearestCar();
     if (!car || !this.model) return;
-    const cPos = car.pos || car.position;
+    const cPos = this.getCarPosition(car);
+    if (!cPos) return;
     const direction = cPos.clone().sub(this.model.position).normalize();
     direction.y = 0.65;
     direction.normalize();
@@ -468,12 +522,12 @@ export class KongGorakController {
     const cars = typeof this.cars === 'function' ? this.cars() : this.cars;
     const objects = [this.ball, ...cars].filter(Boolean);
     for (const object of objects) {
-      const objPos = object.pos || object.position || object.mesh?.position;
+      const objPos = object === this.ball ? this.getBallPosition() : this.getCarPosition(object);
       if (!objPos) continue;
       const direction = objPos.clone().sub(this.model.position);
       const distance = Math.max(0.1, direction.length());
       if (distance < this.impactRadius) {
-        direction.normalize().multiplyScalar(45 * (1 - distance / this.impactRadius));
+        direction.normalize().multiplyScalar(48 * (1 - distance / this.impactRadius));
         direction.y = Math.max(direction.y, 0.45);
         this.physics.applyImpulse?.(object, direction);
         if (typeof object.applySpinOut === 'function') {

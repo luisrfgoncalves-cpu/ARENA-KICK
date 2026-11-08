@@ -1,13 +1,12 @@
 // ============================================================
-//  arenaKongController.ts — Controlador IA e Animações Fluidas
-//  do Gorila Neutro "Kong Gorak" na Arena Kong (Corrigido & Otimizado)
-//  - Clipes reais do GLB: idle, standing_relax, walk
-//  - Locomoção contínua e fluida sem resetar o AnimationAction a cada frame
-//  - Transição cruzada suave (crossFade) entre idle e walk
-//  - Mapeamento preciso dos ossos principais (sem confundir com Twist bones)
-//  - Poses procedurais sincronizadas restaurando pose base (_rest)
-//  - Agarre e arremesso real da bola na mão direita (rightHand)
-//  - Impulsos físicos lineares e angulares nos carros e na bola
+//  arenaKongController.ts — Controlador IA e Poses Procedurais
+//  Kong Gorak na Arena Kong (Versão Fluida com Alta Reatividade)
+//  - Locomoção contínua: o clipe walk NUNCA é resetado enquanto roda
+//  - Orientação no plano XZ: sempre olha para o alvo ativo
+//  - Percepção ampla: persegue a bola em QUALQUER região do estádio
+//  - Hierarquia de prioridade: Bola -> Carros -> Butt Slam -> Patrulha
+//  - Poses procedurais limpas com restauração de pose base (_rest)
+//  - Agarre e arremesso real com bola presa ao osso rightHand
 // ============================================================
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -80,14 +79,13 @@ export class KongGorak {
   public stateTime = 0
   public actionCooldown = 0
   public walkDirection = 1
-  public speed = 18.0
-  public impactRadius = 36.0
+  public speed = 20.0
+  public impactRadius = 38.0
 
   private _hit = false
   private _heldBall: any = null
   private _locomotionAction: THREE.AnimationAction | null = null
-  private _previousAction: THREE.AnimationAction | null = null
-  private _currentLocomotionName = ''
+  private _currentClipName = ''
 
   private _bones: BoneMap = { all: [] }
   private _rest = new Map<THREE.Bone, BoneRestTransform>()
@@ -180,7 +178,7 @@ export class KongGorak {
         this.clips[clip.name.toLowerCase()] = clip
       })
 
-      // Inicia em 'walk' para já entrar em patrulha sem ficar travado em T-pose
+      // Inicia em caminhada imediatamente
       this._setLocomotion('walk')
       this.rootGroup.add(this.model)
     } catch (err) {
@@ -195,14 +193,11 @@ export class KongGorak {
       if ((object as THREE.Bone).isBone) all.push(object as THREE.Bone)
     })
 
-    // Busca exata ou por termo que NÃO seja Twist
     const findExact = (...terms: string[]): THREE.Bone | undefined => {
-      // 1. Tenta igualdade exata de nome ignorando maiúsculas
       for (const t of terms) {
         const found = all.find((b) => b.name.toLowerCase() === t.toLowerCase())
         if (found) return found
       }
-      // 2. Tenta correspondência que contenha o termo mas NÃO contenha 'twist'
       for (const t of terms) {
         const cleanT = t.toLowerCase().replace(/[^a-z0-9]/g, '')
         const found = all.find((b) => {
@@ -235,22 +230,47 @@ export class KongGorak {
     }
   }
 
+  public getBallPosition(): THREE.Vector3 | null {
+    if (!this.ball) return null
+    if (this.ball.pos && typeof this.ball.pos.x === 'number') return this.ball.pos
+    if (this.ball.position && typeof this.ball.position.x === 'number') return this.ball.position
+    if (this.ball.mesh && this.ball.mesh.position) return this.ball.mesh.position
+    return null
+  }
+
+  public getCarPosition(car: any): THREE.Vector3 | null {
+    if (!car) return null
+    if (car.pos && typeof car.pos.x === 'number') return car.pos
+    if (car.position && typeof car.position.x === 'number') return car.position
+    if (car.group && car.group.position) return car.group.position
+    return null
+  }
+
+  private _lookAtTarget(target: THREE.Vector3) {
+    if (!this.model) return
+    const direction = target.clone().sub(this.model.position)
+    direction.y = 0
+    if (direction.lengthSq() > 0.001) {
+      this.model.lookAt(target.x, this.model.position.y, target.z)
+    }
+  }
+
   public update(dt: number) {
     if (!this.model) return
     this.stateTime += dt
     this.actionCooldown = Math.max(0, this.actionCooldown - dt)
 
-    // 1. Executa mixer.update(dt) UMA ÚNICA VEZ por frame para avançar a animação
+    // 1. mixer.update(dt) UMA ÚNICA VEZ por frame antes da lógica
     if (this.mixer) {
       this.mixer.update(dt)
     }
 
-    // 2. Se a bola estiver agarrada na mão, mantém acompanhando
+    // 2. Mantém a bola na mão caso esteja agarrada
     if (this._heldBall) {
       this._keepBallInHand()
     }
 
-    // 3. Executa a máquina de estados (HFSM)
+    // 3. Executa a máquina de estados
     switch (this.state) {
       case 'PATROL':
         this._patrol(dt)
@@ -289,64 +309,56 @@ export class KongGorak {
   }
 
   /**
-   * Controla a locomoção de forma contínua:
-   * NÃO reinicia a ação se ela já estiver ativa e rodando!
-   * Permite que o ciclo de caminhada (walk) complete naturalmente.
+   * Locomoção contínua e fluida:
+   * Se a ação já estiver rodando, NUNCA chama reset() ou play(),
+   * permitindo que o ciclo da caminhada (walk) complete naturalmente.
    */
   private _setLocomotion(name: string) {
     if (!this.mixer || !this.clips[name]) return
+
+    // Se já é a animação atual e não está pausada, RETORNA IMEDIATAMENTE!
+    if (this._currentClipName === name && this._locomotionAction && !this._locomotionAction.paused) {
+      return
+    }
+
     const nextAction = this.mixer.clipAction(this.clips[name])
     nextAction.enabled = true
     nextAction.setLoop(THREE.LoopRepeat, Infinity)
 
-    // Padrão solicitado: se já é a ação atual e ela está ativa e rodando (e não pausada), RETORNA IMEDIATAMENTE!
-    if (this._locomotionAction === nextAction && nextAction.isRunning() && !nextAction.paused) {
+    // Se a mesma animação estava pausada, despausa sem resetar o tempo
+    if (this._currentClipName === name && this._locomotionAction && this._locomotionAction.paused) {
+      this._locomotionAction.paused = false
       return
     }
 
-    // Se a mesma ação estava apenas pausada (ex: saindo de um ataque), retoma sem reiniciar o tempo
-    if (this._locomotionAction === nextAction && nextAction.paused) {
-      nextAction.paused = false
-      nextAction.setEffectiveTimeScale(1)
-      nextAction.setEffectiveWeight(1)
-      this._currentLocomotionName = name
-      return
-    }
-
-    // Transição suave (crossFade) entre animações diferentes (ex: idle <-> walk)
+    // Transição suave (crossFade) entre idle e walk
     if (this._locomotionAction && this._locomotionAction !== nextAction) {
       nextAction.reset()
-      nextAction.setEffectiveTimeScale(1)
-      nextAction.setEffectiveWeight(1)
       nextAction.play()
       this._locomotionAction.crossFadeTo(nextAction, 0.25, true)
     } else {
-      nextAction.reset().fadeIn(0.2).play()
+      nextAction.reset().play()
     }
 
     this._locomotionAction = nextAction
-    this._currentLocomotionName = name
+    this._currentClipName = name
   }
 
   private _pauseLocomotion() {
     if (this._locomotionAction) {
       this._locomotionAction.fadeOut(0.08)
       this._locomotionAction.paused = true
-      this._previousAction = this._locomotionAction
     }
     this._restoreRestPose()
   }
 
-  private _resumeLocomotion(name = 'idle') {
+  private _resumeLocomotion(name = 'walk') {
     this._restoreRestPose()
-    if (this._previousAction) {
-      this._previousAction.paused = false
-      this._previousAction.fadeIn(0.18).play()
-      this._locomotionAction = this._previousAction
-      this._previousAction = null
-    } else {
-      this._setLocomotion(name)
+    if (this._locomotionAction) {
+      this._locomotionAction.paused = false
+      this._locomotionAction.fadeIn(0.18).play()
     }
+    this._setLocomotion(name)
   }
 
   private _restoreRestPose() {
@@ -359,39 +371,62 @@ export class KongGorak {
     }
   }
 
+  /**
+   * Prioridade de comportamento orientada a alvos reais (sem depender de Math.random):
+   * 1. Bola próxima (< 18m) -> Chutar ou Agarrar
+   * 2. Carros próximos (< 20m) -> Bater com o punho/mão
+   * 3. Múltiplos alvos próximos (< 22m) -> Butt Slam
+   * 4. Bola no campo (em qualquer lugar!) -> Olhar para ela e Perseguir
+   * 5. Nenhum alvo -> Patrulhar
+   */
   private _chooseAction() {
-    if (this.actionCooldown > 0 || this.stateTime < 0.8 || !this.model) return
+    if (this.actionCooldown > 0 || this.stateTime < 0.6 || !this.model) return
 
-    const ballPos = this.ball?.pos || this.ball?.position || this.ball?.mesh?.position
+    const ballPos = this.getBallPosition()
     const kongPos = this.model.position
     const ballDistance = ballPos ? kongPos.distanceTo(ballPos) : Infinity
-    const car = this._nearestCar()
-    const carDistance = car ? kongPos.distanceTo(car.pos || car.position) : Infinity
 
-    // Se a bola estiver prestes a entrar em qualquer um dos dois gols, corre para bloquear
-    if (ballPos && Math.abs(ballPos.z) > 110 && ballDistance < 80) {
-      return this._start('CHASE_BALL')
+    const cars = this.getCars().filter(Boolean)
+    let nearestCar: any = null
+    let minCarDist = Infinity
+    let carsNearCount = 0
+
+    for (const car of cars) {
+      const cPos = this.getCarPosition(car)
+      if (!cPos) continue
+      const d = kongPos.distanceTo(cPos)
+      if (d < 22.0) carsNearCount++
+      if (d < minCarDist) {
+        minCarDist = d
+        nearestCar = car
+      }
     }
 
-    // Interações na bola
-    if (ballDistance < 18.0) {
-      if (ballDistance < 12.0 && Math.random() < 0.35) return this._start('GRAB_BALL')
-      if (Math.random() < 0.50) return this._start('KICK_BALL')
-    }
-
-    // Interações nos carros
-    if (carDistance < 20.0 && Math.random() < 0.40) {
-      return this._start('PUNCH_CAR')
-    }
-
-    // Salto e terremoto se cercado por carros ou bola
-    if ((carDistance < 24.0 || ballDistance < 24.0) && Math.random() < 0.15) {
+    // 1. Múltiplos objetos muito próximos -> Butt Slam esmagador
+    if ((carsNearCount >= 2 || (carsNearCount >= 1 && ballDistance < 20.0)) && Math.random() < 0.35) {
       return this._start('BUTT_SLAM')
     }
 
-    // Rugido agressivo espontâneo
-    if (Math.random() < 0.03) {
-      return this._start('RAGE')
+    // 2. Bola ao alcance de toque
+    if (ballPos && ballDistance < 18.0) {
+      this._lookAtTarget(ballPos)
+      // Se estiver muito perto, alterna entre agarrar e chutar
+      if (ballDistance < 13.0 && Math.random() < 0.45) {
+        return this._start('GRAB_BALL')
+      }
+      return this._start('KICK_BALL')
+    }
+
+    // 3. Carro em alcance de soco
+    if (nearestCar && minCarDist < 20.0) {
+      const cPos = this.getCarPosition(nearestCar)
+      if (cPos) this._lookAtTarget(cPos)
+      return this._start('PUNCH_CAR')
+    }
+
+    // 4. Percepção ampla da bola em QUALQUER região do campo (sem restrição de Z)
+    if (ballPos && this.state !== 'CHASE_BALL') {
+      return this._start('CHASE_BALL')
     }
   }
 
@@ -405,17 +440,23 @@ export class KongGorak {
     this.effects.onState?.(next)
   }
 
-  private _finish(next: KongState = 'PATROL') {
+  private _finish(next: KongState = 'CHASE_BALL') {
     this._hit = false
     this.state = next
     this.stateTime = 0
-    this.actionCooldown = 1.2
-    this._resumeLocomotion(next === 'PATROL' ? 'walk' : 'idle')
+    this.actionCooldown = 0.8
+    this._restoreRestPose()
+    this._resumeLocomotion(next === 'CHASE_BALL' ? 'walk' : 'idle')
   }
 
   private _patrol(dt: number) {
     if (!this.model) return
-    // NÃO reinicia walk a cada frame: _setLocomotion retorna imediatamente se walk já estiver rodando
+    const ballPos = this.getBallPosition()
+    if (ballPos) {
+      this._start('CHASE_BALL')
+      return
+    }
+
     this._setLocomotion('walk')
     this.model.position.x += this.walkDirection * this.speed * dt
 
@@ -423,27 +464,28 @@ export class KongGorak {
       this.walkDirection *= -1
       this.model.rotation.y = this.walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2
     }
-
-    const ballPos = this.ball?.pos || this.ball?.position || this.ball?.mesh?.position
-    if (ballPos && this.model.position.distanceTo(ballPos) < 45) {
-      this._start('CHASE_BALL')
-    }
   }
 
   private _chaseBall(dt: number) {
     if (!this.model) return
     this._setLocomotion('walk')
-    const ballPos = this.ball?.pos || this.ball?.position || this.ball?.mesh?.position
-    if (!ballPos) return this._finish()
+    const ballPos = this.getBallPosition()
+    if (!ballPos) return this._finish('PATROL')
+
+    // SEMPRE vira o corpo e olha diretamente para a bola no plano XZ
+    this._lookAtTarget(ballPos)
 
     const direction = ballPos.clone().sub(this.model.position)
     direction.y = 0
-    if (direction.length() > 14.0) {
+    const dist = direction.length()
+
+    // Avança em direção à bola com passos largos
+    if (dist > 14.0) {
       direction.normalize()
       this.model.position.addScaledVector(direction, this.speed * 1.35 * dt)
-      this.model.lookAt(ballPos.x, this.model.position.y, ballPos.z)
     } else {
-      this._finish('PATROL')
+      // Chegou na bola: escolhe chute ou agarre
+      this._chooseAction()
     }
   }
 
@@ -464,60 +506,75 @@ export class KongGorak {
       this._eyeMaterials.forEach((m) => {
         m.emissiveIntensity = 0
       })
-      this._finish()
+      this._finish('CHASE_BALL')
     }
   }
 
   private _kickBall() {
+    const ballPos = this.getBallPosition()
+    if (ballPos) this._lookAtTarget(ballPos)
+
     const t = Math.min(1, this.stateTime / 0.9)
     this._poseKick(t)
-    if (this.stateTime > 0.48 && !this._hit) {
+
+    // Impacto exatamente no momento de contato da perna
+    if (this.stateTime > 0.45 && !this._hit) {
       this._hit = true
-      this._ballImpulse(62)
-      this.effects.kick?.(this.ball?.pos || this.ball?.position)
+      this._ballImpulse(75)
+      this.effects.kick?.(ballPos || undefined)
     }
-    if (this.stateTime > 1.0) this._finish()
+    if (this.stateTime > 0.95) this._finish('CHASE_BALL')
   }
 
   private _punchCar() {
+    const car = this._nearestCar()
+    const carPos = car ? this.getCarPosition(car) : null
+    if (carPos) this._lookAtTarget(carPos)
+
     const t = Math.min(1, this.stateTime / 0.85)
     this._posePunch(t)
+
+    // Impacto no momento que o braço conecta
     if (this.stateTime > 0.42 && !this._hit) {
       this._hit = true
-      this._carImpulse(48)
-      const car = this._nearestCar()
-      this.effects.punch?.(car?.pos || car?.position)
+      this._carImpulse(55)
+      this.effects.punch?.(carPos || undefined)
     }
-    if (this.stateTime > 0.98) this._finish()
+    if (this.stateTime > 0.92) this._finish('CHASE_BALL')
   }
 
   private _grabBall() {
+    const ballPos = this.getBallPosition()
+    if (ballPos) this._lookAtTarget(ballPos)
+
     const t = Math.min(1, this.stateTime / 0.8)
     this._poseGrab(t)
+
     if (this.stateTime > 0.42 && !this._hit) {
       this._hit = true
       this._attachBallToHand()
-      this.effects.grab?.(this.ball?.pos || this.ball?.position)
+      this.effects.grab?.(ballPos || undefined)
     }
-    if (this.stateTime > 1.1) this._start('THROW_BALL')
+    if (this.stateTime > 1.05) this._start('THROW_BALL')
   }
 
   private _throwBall() {
     const t = Math.min(1, this.stateTime / 0.85)
     this._poseThrow(t)
+
     if (this.stateTime > 0.34 && !this._hit) {
       this._hit = true
       this._releaseBallWithArc()
-      this.effects.throw?.(this.ball?.pos || this.ball?.position)
+      this.effects.throw?.(this.getBallPosition() || undefined)
     }
-    if (this.stateTime > 0.95) this._finish()
+    if (this.stateTime > 0.92) this._finish('CHASE_BALL')
   }
 
   private _buttSlam() {
     const t = Math.min(1, this.stateTime / 1.25)
     this._poseSlam(t)
 
-    // Salto aéreo e queda esmagadora de bunda
+    // Salto no ar e queda esmagadora de bunda
     if (this.model) {
       const jumpProgress = Math.sin(Math.PI * Math.min(1, this.stateTime / 1.1))
       this.model.position.y = Math.max(0, jumpProgress * 14.0)
@@ -529,14 +586,14 @@ export class KongGorak {
       this._radialImpulse()
       this.effects.slam?.(this.model?.position)
     }
-    if (this.stateTime > 1.38) {
+    if (this.stateTime > 1.35) {
       if (this.model) this.model.position.y = 0
-      this._finish()
+      this._finish('CHASE_BALL')
     }
   }
 
   private _recover() {
-    if (this.stateTime > 0.5) this._finish()
+    if (this.stateTime > 0.4) this._finish('CHASE_BALL')
   }
 
   private _poseRoar(k: number) {
@@ -653,7 +710,7 @@ export class KongGorak {
     const direction = this.model.getWorldDirection(new THREE.Vector3())
     direction.y = 0.42
     direction.normalize()
-    this.physics.applyImpulse?.(ball, direction.multiplyScalar(68))
+    this.physics.applyImpulse?.(ball, direction.multiplyScalar(75))
     this._heldBall = null
   }
 
@@ -661,15 +718,16 @@ export class KongGorak {
     const cars = this.getCars().filter(Boolean)
     if (!cars.length || !this.model) return null
     return cars.sort((a, b) => {
-      const pA = a.pos || a.position
-      const pB = b.pos || b.position
+      const pA = this.getCarPosition(a)
+      const pB = this.getCarPosition(b)
+      if (!pA || !pB) return 0
       return this.model!.position.distanceTo(pA) - this.model!.position.distanceTo(pB)
     })[0]
   }
 
   private _ballImpulse(force: number) {
     if (!this.ball || this.ball.userData?.kongHeld || !this.model) return
-    const bPos = this.ball.pos || this.ball.position || this.ball.mesh?.position
+    const bPos = this.getBallPosition()
     if (!bPos) return
     const direction = bPos.clone().sub(this.model.position).normalize()
     direction.y = 0.28
@@ -680,7 +738,8 @@ export class KongGorak {
   private _carImpulse(force: number) {
     const car = this._nearestCar()
     if (!car || !this.model) return
-    const cPos = car.pos || car.position
+    const cPos = this.getCarPosition(car)
+    if (!cPos) return
     const direction = cPos.clone().sub(this.model.position).normalize()
     direction.y = 0.65
     direction.normalize()
@@ -692,12 +751,12 @@ export class KongGorak {
     if (!this.model) return
     const objects = [this.ball, ...this.getCars()].filter(Boolean)
     for (const object of objects) {
-      const objPos = object.pos || object.position || object.mesh?.position
+      const objPos = object === this.ball ? this.getBallPosition() : this.getCarPosition(object)
       if (!objPos) continue
       const direction = objPos.clone().sub(this.model.position)
       const distance = Math.max(0.1, direction.length())
       if (distance < this.impactRadius) {
-        direction.normalize().multiplyScalar(45 * (1 - distance / this.impactRadius))
+        direction.normalize().multiplyScalar(48 * (1 - distance / this.impactRadius))
         direction.y = Math.max(direction.y, 0.45)
         this.physics.applyImpulse?.(object, direction)
         if (typeof object.applySpinOut === 'function') {
