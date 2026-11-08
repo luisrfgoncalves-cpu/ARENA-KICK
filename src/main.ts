@@ -21,7 +21,7 @@ let selectedDiff: 'easy' | 'medium' | 'hard' = 'easy'
 let gameMode: 'bot' | '2p' = 'bot'
 
 // Customizações ativas
-let selectedCar = 'octane-cartoon'
+let selectedCar = localStorage.getItem('arena_kick_selected_car') || 'octane-cartoon'
 let selectedTurboTheme: TurboTheme = 'classic'
 let selectedTurboLevel: TurboBotLevel = 'medium'
 let selectedTurboFormat: TurboMatchFormat = '1v1'
@@ -202,6 +202,11 @@ async function openGarage() {
       garagePreviewLoading = false
     }
   }
+  // Sincroniza o card ativo com o carro salvo
+  document.querySelectorAll('.car-card').forEach((c) => {
+    const isSel = (c as HTMLElement).dataset.car === selectedCar
+    c.classList.toggle('active', isSel)
+  })
   garagePreview?.setCar(selectedCar)
   updatePreviewLabel()
 }
@@ -228,6 +233,7 @@ document.querySelectorAll('.car-card').forEach((card) => {
     card.classList.add('active')
     ;(card as HTMLElement).style.borderColor = ''
     selectedCar = (card as HTMLElement).dataset.car || 'ferrari'
+    localStorage.setItem('arena_kick_selected_car', selectedCar)
     garagePreview?.setCar(selectedCar)
     updatePreviewLabel()
     showToast(`🏎️ Veículo Selecionado: ${(card.querySelector('.mode-name') as HTMLElement)?.textContent}`)

@@ -48,12 +48,12 @@ export const CAR_MODELS: Record<string, CarModelEntry> = {
     attrs: { shieldBonus: 2.0, jumpBonus: 6 }  // +2s de escudo, +6 de altura de pulo
   },
   'guincho-tody': {
-    file: '/assets/models/powerkick-cars/guincho-tody.glb',
+    file: '/models/guincho-tody.glb',
     label: 'Guincho Tody',
     attrs: { pushBonus: 1.40, nitroBonus: 1.10 }  // +40% de força de reboque e empurrão
   },
   'van-gost': {
-    file: '/assets/models/powerkick-cars/van-gost.glb',
+    file: '/models/van-gost.glb',
     label: 'Van Gost',
     attrs: { shieldBonus: 2.5, pushBonus: 1.20 }  // Blindagem fantasma: +2.5s escudo
   },

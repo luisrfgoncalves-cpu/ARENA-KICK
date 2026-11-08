@@ -7480,7 +7480,7 @@ export class CarObject {
           resolve()
         }
       }
-      setTimeout(done, 3500)
+      setTimeout(done, 15000)
 
       const loader = new GLTFLoader()
       const applyGltf = (gltf: any) => {
@@ -7529,16 +7529,34 @@ export class CarObject {
                   : new THREE.Color(0xffffff)
                 let origMap = origMat.map || null
 
-                if (origMap) {
+                if (modelId === 'guincho-tody') {
+                  // Personalização visual Guincho Tody: Cabine Teal Blue e para-lamas Laranja
+                  if (cname.includes('wheel') || cname.includes('tire')) {
+                    origColor = new THREE.Color(0x1e293b)
+                  } else if (cname.includes('fender') || cname.includes('bumper')) {
+                    origColor = new THREE.Color(0xf97316)
+                  } else {
+                    origColor = new THREE.Color(0x0284c7)
+                  }
+                  origMap = null
+                } else if (modelId === 'van-gost') {
+                  // Personalização visual Van Gost: Branco quente, faixas esportivas vermelhas
+                  if (cname.includes('wheel') || cname.includes('tire')) {
+                    origColor = new THREE.Color(0x1e293b)
+                  } else if (cname.includes('detail') || cname.includes('stripe')) {
+                    origColor = new THREE.Color(0xdc2626)
+                  } else {
+                    origColor = new THREE.Color(0xf8fafc)
+                  }
+                  origMap = null
+                } else if (origMap) {
                   // Configura SRGBColorSpace para reprodução fiel das cores albedo do GLB
                   origMap.colorSpace = THREE.SRGBColorSpace
                   origMap.needsUpdate = true
-                  // Mantém a cor neutra branca (0xffffff) para não tingir nem apagar
-                  // as regiões roxas, ciano, brancas/prateadas e os detalhes de rodas da textura
                   origColor = new THREE.Color(0xffffff)
                 }
 
-                if (this.forceTeamColor && !origMap) {
+                if (this.forceTeamColor && !origMap && modelId !== 'guincho-tody' && modelId !== 'van-gost') {
                   const mname = (child.name || '').toLowerCase()
                   const matName = (origMat.name || '').toLowerCase()
                   const isNeutral = mname.includes('wheel') || mname.includes('tire') || mname.includes('roda') ||
@@ -7561,8 +7579,60 @@ export class CarObject {
 
           this.group.add(model)
 
-          // Luz Neon Underglow no chão sob o veículo (Ciano para Nova Forge, cor do time para os demais)
-          const underglowColor = modelId === 'nova-forge' ? 0x00f0ff : this.teamColor
+          // Equipamento exclusivo do Guincho Tody: Torre de guincho com mastro e gancho de reboque
+          if (modelId === 'guincho-tody') {
+            const towGroup = new THREE.Group()
+            const poleGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.6, 8)
+            const poleMat = new THREE.MeshToonMaterial({ color: 0xf97316, gradientMap: TOON_GRADIENT })
+            const pole1 = new THREE.Mesh(poleGeo, poleMat)
+            pole1.position.set(-0.55, 1.4, -0.9)
+            pole1.rotation.z = -0.2
+            towGroup.add(pole1)
+            const pole2 = new THREE.Mesh(poleGeo, poleMat)
+            pole2.position.set(0.55, 1.4, -0.9)
+            pole2.rotation.z = 0.2
+            towGroup.add(pole2)
+            const barGeo = new THREE.CylinderGeometry(0.09, 0.09, 1.3, 8)
+            const bar = new THREE.Mesh(barGeo, poleMat)
+            bar.rotation.z = Math.PI / 2
+            bar.position.set(0, 2.1, -0.9)
+            towGroup.add(bar)
+            const hookGeo = new THREE.TorusGeometry(0.22, 0.06, 8, 16, Math.PI * 1.4)
+            const hookMat = new THREE.MeshToonMaterial({ color: 0xfacc15, gradientMap: TOON_GRADIENT })
+            const hook = new THREE.Mesh(hookGeo, hookMat)
+            hook.position.set(0, 1.45, -1.2)
+            hook.rotation.x = Math.PI / 2
+            towGroup.add(hook)
+            const beaconGeo = new THREE.CylinderGeometry(0.22, 0.26, 0.3, 12)
+            const beaconMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+            const beacon = new THREE.Mesh(beaconGeo, beaconMat)
+            beacon.position.set(0, 2.2, 0.4)
+            towGroup.add(beacon)
+            this.group.add(towGroup)
+          }
+
+          // Equipamento exclusivo da Van Gost: Rack de teto fantasma com sensores e luzes
+          if (modelId === 'van-gost') {
+            const vanGroup = new THREE.Group()
+            const rackGeo = new THREE.BoxGeometry(1.6, 0.12, 2.2)
+            const rackMat = new THREE.MeshToonMaterial({ color: 0x1e293b, gradientMap: TOON_GRADIENT })
+            const rack = new THREE.Mesh(rackGeo, rackMat)
+            rack.position.set(0, 2.25, -0.2)
+            vanGroup.add(rack)
+            const lightL = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshBasicMaterial({ color: 0x84cc16 }))
+            lightL.position.set(-0.55, 2.38, 0.6)
+            vanGroup.add(lightL)
+            const lightR = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshBasicMaterial({ color: 0xef4444 }))
+            lightR.position.set(0.55, 2.38, 0.6)
+            vanGroup.add(lightR)
+            this.group.add(vanGroup)
+          }
+
+          // Luz Neon Underglow no chão sob o veículo
+          const underglowColor = modelId === 'nova-forge' ? 0x00f0ff
+            : modelId === 'guincho-tody' ? 0xf97316
+            : modelId === 'van-gost' ? 0x22c55e
+            : this.teamColor
           const underglow = new THREE.PointLight(underglowColor, 2.8, 10)
           underglow.position.set(0, 0.4, 0)
           this.group.add(underglow)
