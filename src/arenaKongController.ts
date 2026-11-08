@@ -35,6 +35,8 @@ export interface KongEffectsAdapter {
   grab?: (pos?: THREE.Vector3) => void
   throw?: (pos?: THREE.Vector3) => void
   slam?: (pos?: THREE.Vector3) => void
+  hitObstacle?: (pos?: THREE.Vector3) => void
+  step?: (pos?: THREE.Vector3) => void
   rage?: (k: number) => void
   onState?: (state: KongState) => void
 }
@@ -81,6 +83,8 @@ export class KongGorak {
   private _currentAction: THREE.AnimationAction | null = null
   private _currentActionName = ''
   private _bones: BoneMap = { all: [] }
+  private _punchSide: 'punch_left' | 'punch_right' = 'punch_right'
+  private _footstepTimer = 0
 
   // Pulo do Butt Slam
   private _slamBaseY = 0
@@ -92,6 +96,7 @@ export class KongGorak {
   private scene: THREE.Scene
   private ball: any
   private getCars: () => any[]
+  private getObstacles?: () => any[]
   private physics: KongPhysicsAdapter
   private camera: KongCameraAdapter
   private effects: KongEffectsAdapter
@@ -100,6 +105,7 @@ export class KongGorak {
     scene,
     ball,
     getCars,
+    getObstacles,
     physics = {},
     camera = {},
     effects = {}
@@ -107,6 +113,7 @@ export class KongGorak {
     scene: THREE.Scene
     ball: any
     getCars: () => any[]
+    getObstacles?: () => any[]
     physics?: KongPhysicsAdapter
     camera?: KongCameraAdapter
     effects?: KongEffectsAdapter
@@ -114,6 +121,7 @@ export class KongGorak {
     this.scene = scene
     this.ball = ball
     this.getCars = getCars
+    this.getObstacles = getObstacles
     this.physics = physics
     this.camera = camera
     this.effects = effects
@@ -127,10 +135,10 @@ export class KongGorak {
       this.model = gltf.scene
       this.model.name = 'KongGorakModel'
 
-      // Ajusta para altura colossal de ~27 metros
+      // Ajusta para altura colossal de ~21 metros (monumental, mas com alcance real de membros até o chão!)
       const bbox = new THREE.Box3().setFromObject(this.model)
       const size = bbox.getSize(new THREE.Vector3())
-      const targetHeight = 27.0
+      const targetHeight = 21.0
       if (size.y > 0.1) {
         const scale = targetHeight / size.y
         this.model.scale.setScalar(scale)
@@ -312,6 +320,9 @@ export class KongGorak {
       this.mixer.update(safeDt)
     }
 
+    // 1.1 Aplica camada procedural de postura e inclinação em direção ao solo (Fim do T-pose e socos no chão!)
+    this._applyProceduralAdjustments(safeDt)
+
     // 2. Se a bola estiver agarrada na mão
     if (this._heldBall) {
       this._keepBallInHand()
@@ -363,13 +374,12 @@ export class KongGorak {
     this.rootGroup.position.x = Math.max(-107, Math.min(107, this.rootGroup.position.x))
     this.rootGroup.position.z = Math.max(-177, Math.min(177, this.rootGroup.position.z))
 
-    // 6. ─── MELHORIA B: Collider de corpo completo (bola não atravessa o Kong) ─
-    // Roda a cada 3 frames para economizar CPU (Box3.setFromObject é pesado)
+    // 6. ─── MELHORIA B: Collider de corpo completo (bola e obstáculos não atravessam o Kong) ─
     this._bodyColliderFrame = (this._bodyColliderFrame + 1) % 3
     if (this._bodyColliderFrame === 0 && this.state !== 'GRAB_BALL' && this.state !== 'HOLD_BALL') {
+      const kongBox = new THREE.Box3().setFromObject(this.rootGroup)
       const ballPos = this.getBallPosition()
       if (ballPos && !this.ball?.userData?.kongHeld) {
-        const kongBox = new THREE.Box3().setFromObject(this.rootGroup)
         const dist = kongBox.distanceToPoint(ballPos)
         if (dist < 3.5) {
           // A bola entrou no volume do corpo — empurra para fora
@@ -379,6 +389,106 @@ export class KongGorak {
           this.physics.applyImpulse?.(this.ball, pushDir)
         }
       }
+
+      // Colisão do corpo do Kong com obstáculos (barris e cones)
+      const obstacles = this.getObstacles?.() || []
+      for (const obs of obstacles) {
+        if (!obs || !obs.pos) continue
+        const obsDist = kongBox.distanceToPoint(obs.pos)
+        if (obsDist < 3.0) {
+          const pushDir = obs.pos.clone().sub(this.rootGroup.position).normalize()
+          pushDir.y = 0.35
+          obs.vel.copy(pushDir.multiplyScalar(35))
+          obs.rotVel.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 14)
+          this.effects.hitObstacle?.(obs.pos)
+        }
+      }
+    }
+  }
+
+  // ─── POSTURA PROCEDURAL: INCLINAÇÃO REAL EM DIREÇÃO AO CHÃO E FIM DO T-POSE ──
+  private _applyProceduralAdjustments(_dt: number) {
+    if (!this._bones.spine) return
+
+    // 1. Postura natural de gorila durante locomoção (fim do T-Pose!)
+    if (this.state === 'PATROL' || this.state === 'CHASE_BALL') {
+      this._bones.spine.rotateX(0.24)
+      if (this._bones.leftUpperArm) {
+        this._bones.leftUpperArm.rotateZ(0.35)
+        this._bones.leftUpperArm.rotateX(-0.18)
+      }
+      if (this._bones.rightUpperArm) {
+        this._bones.rightUpperArm.rotateZ(-0.35)
+        this._bones.rightUpperArm.rotateX(-0.18)
+      }
+    }
+
+    // 2. Soco Martelo Descendente: tronco curva para frente e para baixo e o punho atinge o solo!
+    if (this.state === 'PUNCH_CAR' || this.state === 'PUNCH_BALL') {
+      const progress = Math.min(1, this.stateTime / 0.95)
+      const strike = progress < 0.45
+        ? Math.sin((progress / 0.45) * (Math.PI / 2))
+        : 1.0 - Math.pow((progress - 0.45) / 0.55, 2)
+
+      // Inclina a coluna para frente em direção ao chão (cerca de 33 graus)
+      this._bones.spine.rotateX(0.58 * strike)
+
+      const isRight = this._punchSide === 'punch_right'
+      const arm = isRight ? this._bones.rightUpperArm : this._bones.leftUpperArm
+      const forearm = isRight ? this._bones.rightForearm : this._bones.leftForearm
+      if (arm) {
+        arm.rotateX(-0.95 * strike)
+        arm.rotateZ(isRight ? -0.22 * strike : 0.22 * strike)
+      }
+      if (forearm) {
+        forearm.rotateX(-0.80 * strike)
+      }
+    }
+
+    // 3. Chute Rasteiro de Varredura na Grama
+    if (this.state === 'KICK_BALL') {
+      const progress = Math.min(1, this.stateTime / 1.05)
+      const kick = Math.sin(progress * Math.PI)
+      this._bones.spine.rotateX(0.28 * kick)
+      if (this._bones.rightThigh) {
+        this._bones.rightThigh.rotateX(-0.85 * kick)
+      }
+      if (this._bones.rightShin) {
+        this._bones.rightShin.rotateX(1.05 * kick)
+      }
+    }
+
+    // 4. Agarrar a Bola rente ao chão
+    if (this.state === 'GRAB_BALL') {
+      const progress = Math.min(1, this.stateTime / 0.9)
+      const bend = Math.sin(progress * Math.PI)
+      this._bones.spine.rotateX(0.72 * bend)
+      if (this._bones.rightUpperArm) {
+        this._bones.rightUpperArm.rotateX(-1.15 * bend)
+      }
+      if (this._bones.rightForearm) {
+        this._bones.rightForearm.rotateX(-0.85 * bend)
+      }
+    }
+
+    // 5. Butt Slam com Arco Corporal Real (Pulo, Encolhimento e Queda)
+    if (this.state === 'BUTT_SLAM') {
+      const progress = Math.min(1, this.stateTime / 2.2)
+      if (progress < 0.5) {
+        const up = Math.sin((progress / 0.5) * (Math.PI / 2))
+        this._bones.spine.rotateX(-0.35 * up)
+        if (this._bones.leftUpperArm) this._bones.leftUpperArm.rotateX(-1.2 * up)
+        if (this._bones.rightUpperArm) this._bones.rightUpperArm.rotateX(-1.2 * up)
+      } else {
+        const down = Math.sin(((progress - 0.5) / 0.5) * Math.PI)
+        if (this._bones.leftThigh) this._bones.leftThigh.rotateX(-1.05 * down)
+        if (this._bones.rightThigh) this._bones.rightThigh.rotateX(-1.05 * down)
+        this._bones.spine.rotateX(0.42 * down)
+      }
+    }
+
+    if (this.model) {
+      this.model.updateWorldMatrix(true, true)
     }
   }
 
@@ -394,6 +504,12 @@ export class KongGorak {
     this._playAction('walk', true)
     this.rootGroup.position.x += this.walkDirection * this.walkSpeed * dt
     this.rootGroup.rotation.y = this.walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2
+
+    this._footstepTimer += dt
+    if (this._footstepTimer >= 0.55) {
+      this._footstepTimer = 0
+      this.effects.step?.(this.rootGroup.position)
+    }
 
     if (Math.abs(this.rootGroup.position.x) > 65) {
       this.walkDirection *= -1
@@ -419,6 +535,12 @@ export class KongGorak {
     if (dist > 11.0) {
       toBall.normalize()
       this.rootGroup.position.addScaledVector(toBall, this.walkSpeed * dt)
+
+      this._footstepTimer += dt
+      if (this._footstepTimer >= 0.55) {
+        this._footstepTimer = 0
+        this.effects.step?.(this.rootGroup.position)
+      }
     }
   }
 
@@ -488,7 +610,8 @@ export class KongGorak {
         break
       case 'PUNCH_CAR':
       case 'PUNCH_BALL':
-        this._playAction(Math.random() < 0.5 ? 'punch_right' : 'punch_left')
+        this._punchSide = Math.random() < 0.5 ? 'punch_right' : 'punch_left'
+        this._playAction(this._punchSide)
         break
       case 'KICK_BALL':
         this._playAction('kick_ball')
@@ -555,6 +678,23 @@ export class KongGorak {
           this.effects.punch?.(bPos)
         }
       }
+
+      // Se não atingiu carro nem bola, testa se acertou um barril ou cone
+      if (!this._hitDone) {
+        const obstacles = this.getObstacles?.() || []
+        for (const obs of obstacles) {
+          if (!obs || !obs.pos) continue
+          if (handPos.distanceTo(obs.pos) <= 6.5) {
+            this._hitDone = true
+            const dir = obs.pos.clone().sub(this.rootGroup.position).normalize()
+            dir.y = 0.45
+            obs.vel.copy(dir.multiplyScalar(65.0))
+            obs.rotVel.set((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 16)
+            this.effects.hitObstacle?.(obs.pos)
+            break
+          }
+        }
+      }
     }
 
     if (this.stateTime >= duration) {
@@ -573,6 +713,23 @@ export class KongGorak {
         this._hitDone = true
         this._applyBallImpulse(90.0)
         this.effects.kick?.(bPos)
+      }
+
+      // Se não acertou bola, testa obstáculos (cones e barris)
+      if (!this._hitDone) {
+        const obstacles = this.getObstacles?.() || []
+        for (const obs of obstacles) {
+          if (!obs || !obs.pos) continue
+          if (footPos.distanceTo(obs.pos) <= 6.5) {
+            this._hitDone = true
+            const dir = obs.pos.clone().sub(this.rootGroup.position).normalize()
+            dir.y = 0.52
+            obs.vel.copy(dir.multiplyScalar(78.0))
+            obs.rotVel.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 20)
+            this.effects.hitObstacle?.(obs.pos)
+            break
+          }
+        }
       }
     }
 
@@ -745,6 +902,22 @@ export class KongGorak {
         }
       }
     }
+
+    // Efeito radial em cones e barris (voam alto no Butt Slam!)
+    const obstacles = this.getObstacles?.() || []
+    for (const obs of obstacles) {
+      if (!obs || !obs.pos) continue
+      const direction = obs.pos.clone().sub(this.rootGroup.position)
+      const distance = Math.max(0.1, direction.length())
+      if (distance < this.impactRadius) {
+        const force = 55 * (1 - distance / this.impactRadius)
+        direction.normalize()
+        direction.y = 0.70
+        obs.vel.addScaledVector(direction, force)
+        obs.rotVel.set((Math.random() - 0.5) * 22, (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 22)
+      }
+    }
+
     this.camera?.shake?.(0.75, 1.0)
   }
 

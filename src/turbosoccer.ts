@@ -747,32 +747,45 @@ export class TurboSoccerGame {
         const kongEffects = {
           kick: (pos?: THREE.Vector3) => {
             this.audio.playPowerHit()
-            if (pos) this.emitCartoonStarBurst(pos, 32, 0xfacc15)
+            this.audio.synthesizeBoom(90, 0.4, 0.8)
+            if (pos) this.emitCartoonStarBurst(pos, 35, 0xfacc15)
           },
           punch: (pos?: THREE.Vector3) => {
             this.audio.playPunchImpact()
-            if (pos) this.emitCartoonStarBurst(pos, 36, 0xef4444)
+            this.audio.playHit()
+            this.triggerCameraShake(0.35)
+            if (pos) this.emitCartoonStarBurst(pos, 40, 0xef4444)
           },
           grab: (pos?: THREE.Vector3) => {
             this.audio.playDash()
-            if (pos) this.emitCartoonStarBurst(pos, 20, 0x00f0ff)
+            if (pos) this.emitCartoonStarBurst(pos, 22, 0x00f0ff)
           },
           throw: (pos?: THREE.Vector3) => {
             this.audio.playPowerHit()
+            this.audio.synthesizeBoom(70, 0.5, 1.0)
             this.triggerCameraShake(0.55)
             if (pos) this.emitCartoonStarBurst(pos, 44, 0x22c55e)
           },
           slam: (pos?: THREE.Vector3) => {
             this.audio.playPunchImpact()
-            this.audio.synthesizeBoom(65, 0.7, 1.3)
+            this.audio.synthesizeBoom(55, 0.85, 1.6)
             this.triggerCameraShake(0.95)
             if (pos) {
               this.emitCartoonStarBurst(pos, 60, 0x22c55e)
-              this.emitCartoonStarBurst(pos, 30, 0xffffff)
+              this.emitCartoonStarBurst(pos, 35, 0xffffff)
             }
           },
+          hitObstacle: (pos?: THREE.Vector3) => {
+            this.audio.playWallBounce()
+            this.audio.playCollisionTiered(25)
+            if (pos) this.emitCartoonStarBurst(pos, 28, 0xd97706)
+          },
+          step: (_pos?: THREE.Vector3) => {
+            this.audio.synthesizeBoom(40, 0.12, 0.18)
+            this.triggerCameraShake(0.06)
+          },
           rage: (_k: number) => {
-            this.audio.synthesizeBoom(85, 0.85, 1.4)
+            this.audio.synthesizeBoom(80, 0.9, 1.5)
             this.triggerCameraShake(0.5)
           }
         }
@@ -781,6 +794,7 @@ export class TurboSoccerGame {
           scene: this.scene,
           ball: this.ball,
           getCars: () => this.allCars,
+          getObstacles: () => this.dynamicObstacles,
           physics: kongPhysics,
           camera: kongCamera,
           effects: kongEffects
