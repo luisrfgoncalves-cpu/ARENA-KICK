@@ -47,6 +47,7 @@ interface BoneMap {
   pelvis?: THREE.Bone
   spine?: THREE.Bone
   head?: THREE.Bone
+  jaw?: THREE.Bone
   leftUpperArm?: THREE.Bone
   rightUpperArm?: THREE.Bone
   leftForearm?: THREE.Bone
@@ -59,6 +60,12 @@ interface BoneMap {
   rightShin?: THREE.Bone
   leftFoot?: THREE.Bone
   rightFoot?: THREE.Bone
+  hitboxLHand?: THREE.Bone
+  hitboxRHand?: THREE.Bone
+  hitboxLFoot?: THREE.Bone
+  hitboxRFoot?: THREE.Bone
+  hitboxPelvis?: THREE.Bone
+  ballHoldPoint?: THREE.Bone
 }
 
 export class KongGorak {
@@ -132,7 +139,7 @@ export class KongGorak {
   async load(): Promise<void> {
     const loader = new GLTFLoader()
     try {
-      const gltf = await loader.loadAsync('/assets/arena-kong/arena-kong-gorak-final-complete.glb')
+      const gltf = await loader.loadAsync('/assets/arena-kong/arena-kong-gorak-final-mocap.glb')
       this.model = gltf.scene
       this.model.name = 'KongGorakModel'
 
@@ -233,6 +240,7 @@ export class KongGorak {
       pelvis,
       spine: findExact('Spine02', 'Spine01', 'Spine'),
       head: findExact('Head'),
+      jaw: findExact('Jaw'),
       leftUpperArm: findExact('L_Upperarm', 'L_UpperArm', 'LeftUpperArm'),
       rightUpperArm: findExact('R_Upperarm', 'R_UpperArm', 'RightUpperArm'),
       leftForearm: findExact('L_Forearm', 'LeftForearm'),
@@ -244,7 +252,13 @@ export class KongGorak {
       leftShin: findExact('L_Calf', 'LeftCalf', 'LeftShin'),
       rightShin: findExact('R_Calf', 'RightCalf', 'RightShin'),
       leftFoot: findExact('L_Foot', 'LeftFoot'),
-      rightFoot: findExact('R_Foot', 'RightFoot')
+      rightFoot: findExact('R_Foot', 'RightFoot'),
+      hitboxLHand: findExact('Hitbox_L_Hand'),
+      hitboxRHand: findExact('Hitbox_R_Hand'),
+      hitboxLFoot: findExact('Hitbox_L_Foot'),
+      hitboxRFoot: findExact('Hitbox_R_Foot'),
+      hitboxPelvis: findExact('Hitbox_Pelvis'),
+      ballHoldPoint: findExact('Ball_Hold_Point')
     }
   }
 
@@ -417,99 +431,11 @@ export class KongGorak {
     }
   }
 
-  // ─── POSTURA PROCEDURAL: INCLINAÇÃO REAL EM DIREÇÃO AO CHÃO E FIM DO T-POSE ──
-  private _setBonePose(bone: THREE.Bone | undefined, rx: number, ry: number, rz: number) {
-    if (!bone) return
-    const rest = this._restPose.get(bone)
-    if (!rest) return
-    const delta = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'))
-    bone.quaternion.copy(rest.quaternion).multiply(delta)
-  }
-
-  private _restoreRestPose() {
-    this._bones.all.forEach((bone) => {
-      const rest = this._restPose.get(bone)
-      if (rest) {
-        bone.quaternion.copy(rest.quaternion)
-      }
-    })
-  }
-
+  // ─── POSTURA E SINCRONIZAÇÃO DAS MATRIZES MUNDIAIS ───────────────────────
   private _applyProceduralAdjustments(_dt: number) {
-    if (!this._bones.spine) return
-
-    // 1. Em locomoção (PATROL ou CHASE_BALL), deixa o clipe walk original tocar limpo e fluido sem acúmulo
-    if (this.state === 'PATROL' || this.state === 'CHASE_BALL') {
-      return
-    }
-
-    // 2. Soco Martelo Descendente: tronco curva em arco descendente e o punho atinge a grama!
-    if (this.state === 'PUNCH_CAR' || this.state === 'PUNCH_BALL') {
-      const p = Math.min(1, Math.max(0, this.stateTime / 0.95))
-      let strike = 0
-      let pitch = 0
-      if (p < 0.35) {
-        const t = p / 0.35
-        strike = -0.30 * Math.sin(t * Math.PI * 0.5)
-        pitch = -0.10 * Math.sin(t * Math.PI * 0.5)
-      } else if (p < 0.60) {
-        const t = (p - 0.35) / 0.25
-        strike = Math.sin(t * Math.PI * 0.5)
-        pitch = 0.65 * Math.sin(t * Math.PI * 0.5) // 37 graus de inclinação para frente!
-      } else {
-        const t = (p - 0.60) / 0.40
-        strike = Math.max(0, 1.0 - t * t)
-        pitch = Math.max(0, 0.65 * (1.0 - t))
-      }
-
-      this._setBonePose(this._bones.spine, pitch, 0, 0)
-
-      const isRight = this._punchSide === 'punch_right'
-      const arm = isRight ? this._bones.rightUpperArm : this._bones.leftUpperArm
-      const forearm = isRight ? this._bones.rightForearm : this._bones.leftForearm
-      if (arm) {
-        this._setBonePose(arm, -1.25 * Math.max(0, strike), isRight ? 0.25 * strike : -0.25 * strike, 0)
-      }
-      if (forearm) {
-        this._setBonePose(forearm, -0.90 * Math.max(0, strike), 0, 0)
-      }
-    }
-
-    // 3. Chute Rasteiro de Varredura na Grama
-    if (this.state === 'KICK_BALL') {
-      const p = Math.min(1, Math.max(0, this.stateTime / 1.05))
-      const kick = Math.sin(p * Math.PI)
-      this._setBonePose(this._bones.spine, 0.30 * kick, 0, 0)
-      this._setBonePose(this._bones.rightThigh, -0.85 * kick, 0, 0)
-      this._setBonePose(this._bones.rightShin, 1.10 * kick, 0, 0)
-    }
-
-    // 4. Agarrar a Bola rente ao chão
-    if (this.state === 'GRAB_BALL') {
-      const p = Math.min(1, Math.max(0, this.stateTime / 0.9))
-      const bend = Math.sin(p * Math.PI)
-      this._setBonePose(this._bones.spine, 0.75 * bend, 0, 0)
-      this._setBonePose(this._bones.rightUpperArm, -1.20 * bend, 0.2 * bend, 0)
-      this._setBonePose(this._bones.rightForearm, -0.90 * bend, 0, 0)
-    }
-
-    // 5. Butt Slam com Arco Corporal Real (Pulo, Encolhimento e Queda)
-    if (this.state === 'BUTT_SLAM') {
-      const p = Math.min(1, Math.max(0, this.stateTime / 2.2))
-      if (p < 0.5) {
-        const up = Math.sin((p / 0.5) * (Math.PI * 0.5))
-        this._setBonePose(this._bones.spine, -0.35 * up, 0, 0)
-        this._setBonePose(this._bones.leftUpperArm, -1.25 * up, 0, 0)
-        this._setBonePose(this._bones.rightUpperArm, -1.25 * up, 0, 0)
-      } else {
-        const down = Math.sin(((p - 0.5) / 0.5) * Math.PI)
-        this._setBonePose(this._bones.leftThigh, -1.05 * down, 0, 0)
-        this._setBonePose(this._bones.rightThigh, -1.05 * down, 0, 0)
-        this._setBonePose(this._bones.pelvis, 0.35 * down, 0, 0)
-        this._setBonePose(this._bones.spine, 0.45 * down, 0, 0)
-      }
-    }
-
+    // As novas animações MoCap de corpo inteiro (arena-kong-gorak-final-mocap.glb)
+    // já possuem toda a coreografia orgânica de flexão da coluna, socos martelo no chão,
+    // chutes rasteiros e pernas encolhidas no Butt Slam baked a 60 FPS.
     if (this.model) {
       this.model.updateWorldMatrix(true, true)
     }
@@ -676,9 +602,9 @@ export class KongGorak {
 
     // Janela de contato do golpe: entre 35% e 75% da animação
     if (!this._hitDone && progress >= 0.35 && progress <= 0.75) {
-      const posR = this._getBoneWorldPosition(this._bones.rightHand)
-      const posL = this._getBoneWorldPosition(this._bones.leftHand)
-      const handPos = posR || posL || this.rootGroup.position
+      const posR = this._getBoneWorldPosition(this._bones.hitboxRHand) || this._getBoneWorldPosition(this._bones.rightHand)
+      const posL = this._getBoneWorldPosition(this._bones.hitboxLHand) || this._getBoneWorldPosition(this._bones.leftHand)
+      const handPos = (this._punchSide === 'punch_right' ? posR : posL) || posR || posL || this.rootGroup.position
 
       // Verifica contato físico real com carros (raio de 6.0m ao redor da mão)
       const cars = this.getCars().filter(Boolean)
@@ -731,7 +657,7 @@ export class KongGorak {
     const progress = this.stateTime / duration
 
     if (!this._hitDone && progress >= 0.35 && progress <= 0.75) {
-      const footPos = this._getBoneWorldPosition(this._bones.rightFoot) || this.rootGroup.position
+      const footPos = this._getBoneWorldPosition(this._bones.hitboxRFoot) || this._getBoneWorldPosition(this._bones.rightFoot) || this.rootGroup.position
       const bPos = this.getBallPosition()
       if (bPos && footPos.distanceTo(bPos) <= 6.5) {
         this._hitDone = true
@@ -767,7 +693,7 @@ export class KongGorak {
     const progress = this.stateTime / duration
 
     if (!this._hitDone && progress >= 0.30 && progress <= 0.75) {
-      const handPos = this._getBoneWorldPosition(this._bones.rightHand) || this.rootGroup.position
+      const handPos = this._getBoneWorldPosition(this._bones.hitboxRHand) || this._getBoneWorldPosition(this._bones.rightHand) || this.rootGroup.position
       const bPos = this.getBallPosition()
       if (bPos && handPos.distanceTo(bPos) <= 6.5) {
         this._hitDone = true
@@ -832,12 +758,12 @@ export class KongGorak {
   // ─── BOLA ANEXADA À MÃO ────────────────────────────────────────────────────
 
   private _attachBallToHand() {
-    if (!this.ball || !this._bones.rightHand || this._heldBall) return
-    const hand = this._bones.rightHand
-    hand.updateWorldMatrix(true, false)
+    const anchor = this._bones.ballHoldPoint || this._bones.rightHand
+    if (!this.ball || !anchor || this._heldBall) return
+    anchor.updateWorldMatrix(true, false)
     const ballObj = this.ball.mesh || this.ball
-    hand.attach(ballObj)
-    ballObj.position.set(0, 1.8, 0)
+    anchor.attach(ballObj)
+    ballObj.position.set(0, 0, 0)
 
     this.ball.userData = this.ball.userData || {}
     this.ball.userData.kongHeld = true
@@ -849,9 +775,10 @@ export class KongGorak {
   }
 
   private _keepBallInHand() {
-    if (!this._heldBall || !this._bones.rightHand) return
+    const anchor = this._bones.ballHoldPoint || this._bones.rightHand
+    if (!this._heldBall || !anchor) return
     const ballObj = this._heldBall.mesh || this._heldBall
-    ballObj.position.set(0, 1.8, 0)
+    ballObj.position.set(0, 0, 0)
     ballObj.quaternion.identity()
     if (this._heldBall.pos) {
       ballObj.getWorldPosition(this._heldBall.pos)
