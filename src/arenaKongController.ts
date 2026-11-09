@@ -83,6 +83,7 @@ export class KongGorak {
   private _currentAction: THREE.AnimationAction | null = null
   private _currentActionName = ''
   private _bones: BoneMap = { all: [] }
+  private _restPose = new Map<THREE.Bone, { position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 }>()
   private _punchSide: 'punch_left' | 'punch_right' = 'punch_right'
   private _footstepTimer = 0
 
@@ -163,6 +164,16 @@ export class KongGorak {
       })
 
       this._bones = this._findBones(this.model)
+
+      // Salva a pose de repouso limpa de cada osso para poses procedurais estáveis (sem acúmulo!)
+      this._restPose.clear()
+      this._bones.all.forEach((bone) => {
+        this._restPose.set(bone, {
+          position: bone.position.clone(),
+          quaternion: bone.quaternion.clone(),
+          scale: bone.scale.clone()
+        })
+      })
 
       // Inicializa o mixer com a cena do modelo
       this.mixer = new THREE.AnimationMixer(this.model)
@@ -407,83 +418,95 @@ export class KongGorak {
   }
 
   // ─── POSTURA PROCEDURAL: INCLINAÇÃO REAL EM DIREÇÃO AO CHÃO E FIM DO T-POSE ──
+  private _setBonePose(bone: THREE.Bone | undefined, rx: number, ry: number, rz: number) {
+    if (!bone) return
+    const rest = this._restPose.get(bone)
+    if (!rest) return
+    const delta = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'))
+    bone.quaternion.copy(rest.quaternion).multiply(delta)
+  }
+
+  private _restoreRestPose() {
+    this._bones.all.forEach((bone) => {
+      const rest = this._restPose.get(bone)
+      if (rest) {
+        bone.quaternion.copy(rest.quaternion)
+      }
+    })
+  }
+
   private _applyProceduralAdjustments(_dt: number) {
     if (!this._bones.spine) return
 
-    // 1. Postura natural de gorila durante locomoção (fim do T-Pose!)
+    // 1. Em locomoção (PATROL ou CHASE_BALL), deixa o clipe walk original tocar limpo e fluido sem acúmulo
     if (this.state === 'PATROL' || this.state === 'CHASE_BALL') {
-      this._bones.spine.rotateX(0.24)
-      if (this._bones.leftUpperArm) {
-        this._bones.leftUpperArm.rotateZ(0.35)
-        this._bones.leftUpperArm.rotateX(-0.18)
-      }
-      if (this._bones.rightUpperArm) {
-        this._bones.rightUpperArm.rotateZ(-0.35)
-        this._bones.rightUpperArm.rotateX(-0.18)
-      }
+      return
     }
 
-    // 2. Soco Martelo Descendente: tronco curva para frente e para baixo e o punho atinge o solo!
+    // 2. Soco Martelo Descendente: tronco curva em arco descendente e o punho atinge a grama!
     if (this.state === 'PUNCH_CAR' || this.state === 'PUNCH_BALL') {
-      const progress = Math.min(1, this.stateTime / 0.95)
-      const strike = progress < 0.45
-        ? Math.sin((progress / 0.45) * (Math.PI / 2))
-        : 1.0 - Math.pow((progress - 0.45) / 0.55, 2)
+      const p = Math.min(1, Math.max(0, this.stateTime / 0.95))
+      let strike = 0
+      let pitch = 0
+      if (p < 0.35) {
+        const t = p / 0.35
+        strike = -0.30 * Math.sin(t * Math.PI * 0.5)
+        pitch = -0.10 * Math.sin(t * Math.PI * 0.5)
+      } else if (p < 0.60) {
+        const t = (p - 0.35) / 0.25
+        strike = Math.sin(t * Math.PI * 0.5)
+        pitch = 0.65 * Math.sin(t * Math.PI * 0.5) // 37 graus de inclinação para frente!
+      } else {
+        const t = (p - 0.60) / 0.40
+        strike = Math.max(0, 1.0 - t * t)
+        pitch = Math.max(0, 0.65 * (1.0 - t))
+      }
 
-      // Inclina a coluna para frente em direção ao chão (cerca de 33 graus)
-      this._bones.spine.rotateX(0.58 * strike)
+      this._setBonePose(this._bones.spine, pitch, 0, 0)
 
       const isRight = this._punchSide === 'punch_right'
       const arm = isRight ? this._bones.rightUpperArm : this._bones.leftUpperArm
       const forearm = isRight ? this._bones.rightForearm : this._bones.leftForearm
       if (arm) {
-        arm.rotateX(-0.95 * strike)
-        arm.rotateZ(isRight ? -0.22 * strike : 0.22 * strike)
+        this._setBonePose(arm, -1.25 * Math.max(0, strike), isRight ? 0.25 * strike : -0.25 * strike, 0)
       }
       if (forearm) {
-        forearm.rotateX(-0.80 * strike)
+        this._setBonePose(forearm, -0.90 * Math.max(0, strike), 0, 0)
       }
     }
 
     // 3. Chute Rasteiro de Varredura na Grama
     if (this.state === 'KICK_BALL') {
-      const progress = Math.min(1, this.stateTime / 1.05)
-      const kick = Math.sin(progress * Math.PI)
-      this._bones.spine.rotateX(0.28 * kick)
-      if (this._bones.rightThigh) {
-        this._bones.rightThigh.rotateX(-0.85 * kick)
-      }
-      if (this._bones.rightShin) {
-        this._bones.rightShin.rotateX(1.05 * kick)
-      }
+      const p = Math.min(1, Math.max(0, this.stateTime / 1.05))
+      const kick = Math.sin(p * Math.PI)
+      this._setBonePose(this._bones.spine, 0.30 * kick, 0, 0)
+      this._setBonePose(this._bones.rightThigh, -0.85 * kick, 0, 0)
+      this._setBonePose(this._bones.rightShin, 1.10 * kick, 0, 0)
     }
 
     // 4. Agarrar a Bola rente ao chão
     if (this.state === 'GRAB_BALL') {
-      const progress = Math.min(1, this.stateTime / 0.9)
-      const bend = Math.sin(progress * Math.PI)
-      this._bones.spine.rotateX(0.72 * bend)
-      if (this._bones.rightUpperArm) {
-        this._bones.rightUpperArm.rotateX(-1.15 * bend)
-      }
-      if (this._bones.rightForearm) {
-        this._bones.rightForearm.rotateX(-0.85 * bend)
-      }
+      const p = Math.min(1, Math.max(0, this.stateTime / 0.9))
+      const bend = Math.sin(p * Math.PI)
+      this._setBonePose(this._bones.spine, 0.75 * bend, 0, 0)
+      this._setBonePose(this._bones.rightUpperArm, -1.20 * bend, 0.2 * bend, 0)
+      this._setBonePose(this._bones.rightForearm, -0.90 * bend, 0, 0)
     }
 
     // 5. Butt Slam com Arco Corporal Real (Pulo, Encolhimento e Queda)
     if (this.state === 'BUTT_SLAM') {
-      const progress = Math.min(1, this.stateTime / 2.2)
-      if (progress < 0.5) {
-        const up = Math.sin((progress / 0.5) * (Math.PI / 2))
-        this._bones.spine.rotateX(-0.35 * up)
-        if (this._bones.leftUpperArm) this._bones.leftUpperArm.rotateX(-1.2 * up)
-        if (this._bones.rightUpperArm) this._bones.rightUpperArm.rotateX(-1.2 * up)
+      const p = Math.min(1, Math.max(0, this.stateTime / 2.2))
+      if (p < 0.5) {
+        const up = Math.sin((p / 0.5) * (Math.PI * 0.5))
+        this._setBonePose(this._bones.spine, -0.35 * up, 0, 0)
+        this._setBonePose(this._bones.leftUpperArm, -1.25 * up, 0, 0)
+        this._setBonePose(this._bones.rightUpperArm, -1.25 * up, 0, 0)
       } else {
-        const down = Math.sin(((progress - 0.5) / 0.5) * Math.PI)
-        if (this._bones.leftThigh) this._bones.leftThigh.rotateX(-1.05 * down)
-        if (this._bones.rightThigh) this._bones.rightThigh.rotateX(-1.05 * down)
-        this._bones.spine.rotateX(0.42 * down)
+        const down = Math.sin(((p - 0.5) / 0.5) * Math.PI)
+        this._setBonePose(this._bones.leftThigh, -1.05 * down, 0, 0)
+        this._setBonePose(this._bones.rightThigh, -1.05 * down, 0, 0)
+        this._setBonePose(this._bones.pelvis, 0.35 * down, 0, 0)
+        this._setBonePose(this._bones.spine, 0.45 * down, 0, 0)
       }
     }
 
@@ -639,6 +662,7 @@ export class KongGorak {
     this._hitDone = false
     this.state = next
     this.stateTime = 0
+    this._restoreRestPose()
     // Cooldown obrigatório de 1 segundo para o Kong se mover antes de outro ataque
     this.actionCooldown = 1.0
     this._playAction('walk', true)
