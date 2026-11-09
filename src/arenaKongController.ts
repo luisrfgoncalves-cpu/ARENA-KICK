@@ -187,7 +187,7 @@ export class KongGorak {
     this.rootGroup.position.set(18, 0, 0)
     this.rootGroup.rotation.y = -Math.PI / 2
 
-    // Configuração de sombras e colorSpace
+    // Configuração de sombras, colorSpace e iluminação de pelagem
     this.model.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh
@@ -197,6 +197,9 @@ export class KongGorak {
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
           mats.forEach((m: any) => {
             if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
+            if (typeof m.roughness === 'number') m.roughness = 0.8
+            if (typeof m.metalness === 'number') m.metalness = 0.05
+            if (m.emissive) m.emissive.setHex(0x181310)
           })
         }
       }
@@ -281,6 +284,65 @@ export class KongGorak {
     }
 
     const pelvis = findExact('Pelvis', 'Hips', 'Waist')
+    const leftHand = findExact('L_Hand', 'LeftHand')
+    const rightHand = findExact('R_Hand', 'RightHand')
+    const leftFoot = findExact('L_Foot', 'LeftFoot')
+    const rightFoot = findExact('R_Foot', 'RightFoot')
+
+    let hitboxLHand = findExact('Hitbox_L_Hand')
+    if (!hitboxLHand && leftHand) {
+      hitboxLHand = new THREE.Bone()
+      hitboxLHand.name = 'Hitbox_L_Hand'
+      hitboxLHand.position.set(-0.08, 0.39, 0.28)
+      leftHand.add(hitboxLHand)
+      all.push(hitboxLHand)
+    }
+
+    let hitboxRHand = findExact('Hitbox_R_Hand')
+    if (!hitboxRHand && rightHand) {
+      hitboxRHand = new THREE.Bone()
+      hitboxRHand.name = 'Hitbox_R_Hand'
+      hitboxRHand.position.set(0.03, 0.47, 0.06)
+      rightHand.add(hitboxRHand)
+      all.push(hitboxRHand)
+    }
+
+    let hitboxLFoot = findExact('Hitbox_L_Foot')
+    if (!hitboxLFoot && leftFoot) {
+      hitboxLFoot = new THREE.Bone()
+      hitboxLFoot.name = 'Hitbox_L_Foot'
+      hitboxLFoot.position.set(0.17, 0.02, 0.05)
+      leftFoot.add(hitboxLFoot)
+      all.push(hitboxLFoot)
+    }
+
+    let hitboxRFoot = findExact('Hitbox_R_Foot')
+    if (!hitboxRFoot && rightFoot) {
+      hitboxRFoot = new THREE.Bone()
+      hitboxRFoot.name = 'Hitbox_R_Foot'
+      hitboxRFoot.position.set(-0.16, 0.02, 0.05)
+      rightFoot.add(hitboxRFoot)
+      all.push(hitboxRFoot)
+    }
+
+    let hitboxPelvis = findExact('Hitbox_Pelvis')
+    if (!hitboxPelvis && pelvis) {
+      hitboxPelvis = new THREE.Bone()
+      hitboxPelvis.name = 'Hitbox_Pelvis'
+      hitboxPelvis.position.set(0.30, -0.30, -0.03)
+      pelvis.add(hitboxPelvis)
+      all.push(hitboxPelvis)
+    }
+
+    let ballHoldPoint = findExact('Ball_Hold_Point')
+    if (!ballHoldPoint && rightHand) {
+      ballHoldPoint = new THREE.Bone()
+      ballHoldPoint.name = 'Ball_Hold_Point'
+      ballHoldPoint.position.set(0.05, 0.45, 0.15)
+      rightHand.add(ballHoldPoint)
+      all.push(ballHoldPoint)
+    }
+
     return {
       all,
       root: findExact('Root'),
@@ -295,20 +357,20 @@ export class KongGorak {
       rightUpperArm: findExact('R_Upperarm', 'R_UpperArm', 'RightUpperArm'),
       leftForearm: findExact('L_Forearm', 'LeftForearm'),
       rightForearm: findExact('R_Forearm', 'RightForearm'),
-      leftHand: findExact('L_Hand', 'LeftHand'),
-      rightHand: findExact('R_Hand', 'RightHand'),
+      leftHand,
+      rightHand,
       leftThigh: findExact('L_Thigh', 'LeftThigh'),
       rightThigh: findExact('R_Thigh', 'RightThigh'),
       leftShin: findExact('L_Calf', 'LeftCalf', 'LeftShin'),
       rightShin: findExact('R_Calf', 'RightCalf', 'RightShin'),
-      leftFoot: findExact('L_Foot', 'LeftFoot'),
-      rightFoot: findExact('R_Foot', 'RightFoot'),
-      hitboxLHand: findExact('Hitbox_L_Hand'),
-      hitboxRHand: findExact('Hitbox_R_Hand'),
-      hitboxLFoot: findExact('Hitbox_L_Foot'),
-      hitboxRFoot: findExact('Hitbox_R_Foot'),
-      hitboxPelvis: findExact('Hitbox_Pelvis'),
-      ballHoldPoint: findExact('Ball_Hold_Point')
+      leftFoot,
+      rightFoot,
+      hitboxLHand,
+      hitboxRHand,
+      hitboxLFoot,
+      hitboxRFoot,
+      hitboxPelvis,
+      ballHoldPoint
     }
   }
 
