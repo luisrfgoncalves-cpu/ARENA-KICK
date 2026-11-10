@@ -188,6 +188,10 @@ document.getElementById('btn-local-2p')!.addEventListener('click', () => {
 document.getElementById('btn-turbo-3d')?.addEventListener('click', () => {
   void openGarage()
 })
+document.getElementById('btn-start-game-direct')?.addEventListener('click', (e) => {
+  e.stopPropagation()
+  void openGarage()
+})
 document.getElementById('btn-quick-garage')?.addEventListener('click', (e) => {
   e.stopPropagation()
   void openGarage()

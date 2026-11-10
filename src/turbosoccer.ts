@@ -146,7 +146,9 @@ export class TurboSoccerGame {
   private orangeCars:    CarObject[] = []  // time laranja (inclui playerCar)
   private blueCars:      CarObject[] = []  // time azul (inclui botCar)
   private allCars:       CarObject[] = []  // todos os carros para loops
-  // ── ARENA DO GORAK: TITÃS GIGANTE GORAK & CENÁRIO SELVAGEM ──
+  public getActiveGoraks(): KongGorak[] {
+    return this.kongGoraks
+  }
   private kongGoraks:       KongGorak[] = []
   private kongEnvResult:    ArenaKongEnvironmentResult | null = null
   private kongBackdropMesh: THREE.Mesh | null = null
@@ -791,11 +793,11 @@ export class TurboSoccerGame {
         }
 
         // Quantidade de Gigantes Gorak conforme a dificuldade:
-        // Fácil = 1 Gorak | Médio = 2 Goraks | Brutal/Difícil = 3 Goraks
+        // Fácil = 1 Gorak | Médio = 2 Goraks | Difícil/Campeão = 3 Goraks
         let gorakCount = 1
-        if (this.difficulty === 'hard') {
+        if (this.botLevel === 'hard' || this.botLevel === 'expert') {
           gorakCount = 3
-        } else if (this.difficulty === 'medium') {
+        } else if (this.botLevel === 'medium') {
           gorakCount = 2
         }
 
@@ -5672,8 +5674,29 @@ private resolveCarCarCollision() {
 
     // Calibração do tempo de predição balística pelo nível de dificuldade
     const predTime = this.botLevel === 'easy' ? 0.16 : this.botLevel === 'medium' ? 0.38 : this.botLevel === 'hard' ? 0.65 : 0.90
-    const predX = Math.max(-FIELD_W / 2 + 4, Math.min(FIELD_W / 2 - 4, bp.x + bv.x * predTime))
-    const predZ = Math.max(-FIELD_L / 2 + 4, Math.min(FIELD_L / 2 - 4, bp.z + bv.z * predTime))
+    let predX = Math.max(-FIELD_W / 2 + 4, Math.min(FIELD_W / 2 - 4, bp.x + bv.x * predTime))
+    let predZ = Math.max(-FIELD_L / 2 + 4, Math.min(FIELD_L / 2 - 4, bp.z + bv.z * predTime))
+
+    // ── DESVIO INTELIGENTE DO GIGANTE GORAK ──
+    // Os carros reconhecem a ameaça do Gorak e tentam desviar, simulando reflexo humano com margem de erro
+    if (this.theme === 'kong' && this.kongGoraks.length > 0) {
+      for (const gorak of this.kongGoraks) {
+        const gPos = gorak.rootGroup.position
+        for (const car of teamCars) {
+          const cPos = car.pos
+          const distToGorak = cPos.distanceTo(gPos)
+          // Se estiver a menos de 14m do Gorak e a bola não estiver exatamente nos pés do Gorak
+          if (distToGorak < 14.0 && bp.distanceTo(gPos) > 6.0) {
+            // Chance humana de falha / hesitação (20% de chance de errar a rota)
+            if (Math.random() > 0.20) {
+              const avoidDir = cPos.clone().sub(gPos).normalize()
+              predX += avoidDir.x * 12.0
+              predZ += avoidDir.z * 12.0
+            }
+          }
+        }
+      }
+    }
     const predY = Math.max(BALL_R, bp.y + bv.y * predTime - 0.5 * this.studioParams.gravity * predTime * predTime)
 
     // Avalia e classifica os membros da equipe pela melhor oportunidade de finalização

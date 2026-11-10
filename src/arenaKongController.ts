@@ -589,25 +589,26 @@ export class KongGorak {
     this.rootGroup.position.x = Math.max(-107, Math.min(107, this.rootGroup.position.x))
     this.rootGroup.position.z = Math.max(-177, Math.min(177, this.rootGroup.position.z))
 
-    // 7. Collider de corpo periódico (não empurra se estiver agarrando a bola)
+    // 7. Collider de corpo sólido (bloqueia o carro sem spam de explosões)
     this._bodyColliderFrame = (this._bodyColliderFrame + 1) % 2
     if (this._bodyColliderFrame === 0 && this.state !== 'GRAB_BALL' && this.state !== 'HOLD_BALL') {
       const kongBox = new THREE.Box3().setFromObject(this.rootGroup)
-      // Expande a caixa ligeiramente para colisão física em toda a massa muscular do Gorak
-      kongBox.expandByScalar(0.8)
+      kongBox.expandByScalar(0.4)
 
-      // Colisão de impacto brutal contra qualquer carro que encostar no corpo
       const cars = this.getCars().filter(Boolean)
       for (const car of cars) {
         const cPos = this.getCarPosition(car)
         if (!cPos) continue
-        if (kongBox.containsPoint(cPos) || kongBox.distanceToPoint(cPos) < 2.8) {
+        if (kongBox.containsPoint(cPos) || kongBox.distanceToPoint(cPos) < 2.0) {
+          // O carro bate no corpo sólido do Gorak: perde velocidade e é empurrado suavemente, SEM explosões
           const pushDir = cPos.clone().sub(this.rootGroup.position)
-          pushDir.y = Math.max(pushDir.y, 0.45)
+          pushDir.y = 0.1
           pushDir.normalize()
-          this.physics.applyImpulse?.(car, pushDir.clone().multiplyScalar(68))
-          this.physics.applyAngularImpulse?.(car, new THREE.Vector3((Math.random() - 0.5) * 20, 25, (Math.random() - 0.5) * 20))
-          this.effects.punch?.(cPos)
+          if (typeof car.velX !== 'undefined') {
+            car.velX = pushDir.x * 12
+            car.velZ = pushDir.z * 12
+            car.velY = Math.min(car.velY, 2)
+          }
         }
       }
 
@@ -617,7 +618,7 @@ export class KongGorak {
         if (dist < 3.2) {
           const pushDir = ballPos.clone().sub(this.rootGroup.position)
           pushDir.y = Math.max(pushDir.y, 0.25)
-          pushDir.normalize().multiplyScalar(35)
+          pushDir.normalize().multiplyScalar(32)
           this.physics.applyImpulse?.(this.ball, pushDir)
         }
       }
@@ -626,24 +627,12 @@ export class KongGorak {
       for (const obs of obstacles) {
         if (!obs || !obs.pos) continue
         const obsDist = kongBox.distanceToPoint(obs.pos)
-        if (obsDist < 3.5) {
+        if (obsDist < 3.2) {
           const pushDir = obs.pos.clone().sub(this.rootGroup.position).normalize()
-          pushDir.y = 0.40
-          obs.vel.copy(pushDir.multiplyScalar(55))
-          obs.rotVel.set((Math.random() - 0.5) * 22, (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 22)
+          pushDir.y = 0.35
+          obs.vel.copy(pushDir.multiplyScalar(40))
+          obs.rotVel.set((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 16)
           this.effects.hitObstacle?.(obs.pos)
-
-          // Se o obstáculo lançado colidir com algum carro próximo, o carro capota!
-          for (const car of cars) {
-            const cPos = this.getCarPosition(car)
-            if (cPos && obs.pos.distanceTo(cPos) < 4.2) {
-              const carDeflect = cPos.clone().sub(obs.pos).normalize()
-              carDeflect.y = 0.55
-              this.physics.applyImpulse?.(car, carDeflect.multiplyScalar(45))
-              this.physics.applyAngularImpulse?.(car, new THREE.Vector3(15, 20, 15))
-              this.effects.punch?.(cPos)
-            }
-          }
         }
       }
     }
@@ -709,7 +698,7 @@ export class KongGorak {
   // AVALIAÇÃO DE COMBATE
   // ============================================================
   private _evaluateCombat() {
-    if (this.actionCooldown > 0 || this.stateTime < 0.25) return
+    if (this.actionCooldown > 0 || this.stateTime < 0.20) return
 
     const kongPos = this.rootGroup.position
     const ballPos = this.getBallPosition()
@@ -724,52 +713,46 @@ export class KongGorak {
       const cPos = this.getCarPosition(car)
       if (!cPos) continue
       const d = kongPos.distanceTo(cPos)
-      if (d < 18.0) nearbyCarsCount++
+      if (d < 16.0) nearbyCarsCount++
       if (d < minCarDist) {
         minCarDist = d
         nearestCar = car
       }
     }
 
-    // 1. BUTT SLAM: Somente se o slamTimer zerou (mínimo 8s) e múltiplos carros ou carro + bola próximos
-    if (this.slamTimer <= 0 && (nearbyCarsCount >= 2 || (nearbyCarsCount >= 1 && ballDist < 16.0))) {
-      this.slamTimer = 8.0 + Math.random() * 4.0
+    // 1. BUTT SLAM: Salto e impacto no chão (raio de 18m) se múltiplos carros ou carro + bola próximos
+    if (this.slamTimer <= 0 && (nearbyCarsCount >= 2 || (nearbyCarsCount >= 1 && ballDist < 18.0))) {
+      this.slamTimer = 9.0 + Math.random() * 4.0
       return this._start('BUTT_SLAM')
     }
 
-    // 2. AÇÕES PRINCIPAIS NA BOLA (Prioridade Máxima)
-    if (ballPos && ballDist < 14.5) {
+    // 2. AÇÕES PRINCIPAIS NA BOLA (Agarre, Chute ou Soco)
+    if (ballPos && ballDist < 16.0) {
       this._smoothLookAt(ballPos, 1.0)
-
-      // Se a bola estiver bem perto (< 11.5m), tenta agarrar ou chutar
-      if (ballDist < 11.5) {
-        if (Math.random() < 0.45) {
-          return this._start('GRAB_BALL')
+      if (ballDist < 12.0) {
+        const pick = Math.random()
+        if (pick < 0.40) {
+          return this._start('GRAB_BALL') // Pega na mão
+        } else if (pick < 0.75) {
+          return this._start('KICK_BALL') // Chuta longe
         }
-        return this._start('KICK_BALL')
+        return this._start('PUNCH_BALL') // Soco no chão
       }
       return this._start('PUNCH_BALL')
     }
 
-    // 3. INVESTIDA RÁPIDA NA BOLA (Sprint se bola estiver solta entre 14.5m e 35m)
-    if (ballPos && ballDist >= 14.5 && ballDist < 35.0) {
-      if (this.state !== 'SPRINT_BALL') {
-        return this._start('SPRINT_BALL')
-      }
-    }
-
-    // 4. ATAQUE CONTRA CARROS QUE CHEGAREM PERTO (< 12m)
-    if (nearestCar && minCarDist < 12.0) {
+    // 3. ATAQUE ATIVO CONTRA CARROS QUE SE APROXIMAM (< 14m)
+    if (nearestCar && minCarDist < 14.0) {
       const cPos = this.getCarPosition(nearestCar)
       if (cPos) this._smoothLookAt(cPos, 1.0)
-      if (minCarDist < 7.5 && Math.random() < 0.5) {
-        return this._start('KICK_BALL') // Chuta o carro
+      if (minCarDist < 8.0 && Math.random() < 0.5) {
+        return this._start('KICK_BALL') // Chute no carro
       }
-      return this._start('PUNCH_CAR') // Esmaga com as mãos
+      return this._start('PUNCH_CAR') // Soco no carro
     }
 
-    // 5. Se a bola estiver distante
-    if (ballPos && this.state !== 'CHASE_BALL' && this.state !== 'SPRINT_BALL') {
+    // 4. Se a bola estiver acessível
+    if (ballPos && this.state !== 'CHASE_BALL') {
       this._start('CHASE_BALL')
     }
   }
