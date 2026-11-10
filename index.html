@@ -549,7 +549,11 @@
       border-color: #f0c040;
       background: rgba(20, 14, 40, 0.85);
     }
-    .car-card.powerkick-car .mode-name { color: #f0c040; }
+
+    .car-card.powerkick-car .mode-name {
+      color: #f0c040;
+    }
+
     .car-card.powerkick-car .pk-badge {
       display: inline-block;
       font-size: 7px;
@@ -561,11 +565,16 @@
       margin-top: 2px;
       letter-spacing: 0.5px;
     }
+
     .car-card.powerkick-car:hover {
       border-color: #ffd700;
-      box-shadow: 0 4px 0 #000, 0 0 10px rgba(240,192,64,0.5);
+      box-shadow: 0 4px 0 #000, 0 0 10px rgba(240, 192, 64, 0.5);
     }
-    .car-card.powerkick-car.active { background: #f0c040 !important; }
+
+    .car-card.powerkick-car.active {
+      background: #f0c040 !important;
+    }
+
     .cars-grid-pk-label {
       font-family: 'Luckiest Guy', cursive;
       font-size: 10px;
@@ -578,6 +587,7 @@
       align-items: center;
       gap: 6px;
     }
+
     .cars-grid-pk-label::before,
     .cars-grid-pk-label::after {
       content: '';
@@ -1043,118 +1053,58 @@
   <div class="screen" id="screen-menu">
     <div class="menu-header">
       <img src="/images/logo-arena-kick.jpg" alt="ARENA KICK" class="official-logo" id="main-logo-img" />
-      <div class="logo-slogan">ENTRE NA ARENA. SEU JOGO COMEÇA AQUI.</div>
+      <div class="logo-slogan">ARENA DOS TITÃS — FUTEBOL TURBO & DESAFIOS</div>
       <div class="rank-pill" id="player-rank-display">🥉 BRONZE · 1000 MMR</div>
     </div>
 
-    <div class="mode-selector">
-      <!-- Turbo Soccer 3D -->
-      <div class="arcade-card turbo-card" id="btn-turbo-3d">
-        <div class="card-cover cover-turbo">
-          <span class="card-badge" style="background:linear-gradient(135deg, #ff7a00, #b45309);">★ 3D DESTAQUE</span>
+    <div class="mode-selector" style="display:flex; flex-direction:column; align-items:center; width:min(720px, 94vw); margin: 0 auto; gap:18px;">
+      <!-- ARENA DOS TITÃS — Jogo Principal em Destaque Absoluto -->
+      <div class="arcade-card turbo-card" id="btn-turbo-3d" style="width:100%; border:4px solid var(--neon-orange); box-shadow:0 12px 30px rgba(255,122,0,0.35); transform:scale(1.02); transition:transform 0.2s;">
+        <div class="card-cover cover-turbo" style="height:190px;">
+          <span class="card-badge" style="background:linear-gradient(135deg, #ff7a00, #b45309); font-size:14px; padding:6px 14px;">🔥 JOGO OFICIAL 3D</span>
           <div class="card-art-hero">
             <div class="hero-banner-art" style="color:#ff9436;">
-              <span style="font-size:38px; filter:drop-shadow(0 0 16px rgba(255,122,0,0.9));">🏎️</span>
+              <span style="font-size:52px; filter:drop-shadow(0 0 20px rgba(255,122,0,0.9));">🏎️⚽</span>
               <div>
-                <div style="font-size:15px; letter-spacing:2px; color:#fff;">TURBO ARENA</div>
-                <div style="font-size:10px; color:#ff9436; letter-spacing:3px;">ROCKET LEAGUE 3D</div>
+                <div style="font-size:24px; letter-spacing:3px; color:#fff; font-family:'Luckiest Guy',cursive;">ARENA DOS TITÃS</div>
+                <div style="font-size:12px; color:#ffd23f; letter-spacing:4px; font-weight:700;">FUTEBOL TURBO & DESAFIOS</div>
               </div>
             </div>
           </div>
         </div>
-        <div class="card-content">
-          <div class="card-title">TURBO SOCCER 3D</div>
-          <div class="card-desc">Futebol 3D estilo Rocket League com acrobacias aéreas, pulos duplos, nitro veloz, modo
-            rumble e estádio cel-shading.</div>
-          <div class="card-tags">
-            <span class="card-tag">🚀 1v1 até 4v4</span>
-            <span class="card-tag">🏎️ 8 Carros</span>
-            <span class="card-tag">🧲 Rumble & Gelo</span>
+        <div class="card-content" style="padding:22px 26px;">
+          <div class="card-title" style="font-size:26px;">ARENA DOS TITÃS</div>
+          <div class="card-desc" style="font-size:15px; line-height:1.5;">Entre no combate automobilístico mais insano: domine 5 carros blindados com super poderes, marque gols espetaculares e enfrente o colossal <b>Gigante Gorak</b> solto pela arena!</div>
+          <div class="card-tags" style="margin:14px 0 18px 0; gap:8px;">
+            <span class="card-tag" style="font-size:12px; padding:5px 12px;">🏎️ 5 Veículos Titãs</span>
+            <span class="card-tag" style="font-size:12px; padding:5px 12px;">🏛️ Arena Gorak</span>
+            <span class="card-tag" style="font-size:12px; padding:5px 12px;">🚀 1v1 até 4v4</span>
+            <span class="card-tag" style="font-size:12px; padding:5px 12px;">💥 Acrobacias & Nitro</span>
           </div>
-          <button class="btn btn-orange card-btn">JOGAR 3D ▶</button>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; width:100%;">
+            <button class="btn btn-orange card-btn" style="flex:2; font-size:20px; padding:16px 24px; min-width:200px;">▶ JOGAR AGORA</button>
+            <button class="btn btn-secondary card-btn" id="btn-quick-garage" style="flex:1; border-color:var(--neon-cyan); color:var(--neon-cyan); font-size:16px; padding:16px 20px; min-width:160px;">🚗 GARAGEM</button>
+          </div>
         </div>
       </div>
 
-      <!-- BeatBall vs Bot -->
-      <div class="arcade-card bot-card" id="btn-vs-bot">
-        <div class="card-cover cover-bot">
-          <span class="card-badge" style="background:linear-gradient(135deg, #0284c7, #0369a1);">🤖 1P ARCADE</span>
-          <div class="card-art-hero">
-            <div class="hero-banner-art" style="color:#38bdf8;">
-              <span style="font-size:38px; filter:drop-shadow(0 0 16px rgba(0,210,255,0.9));">⚡</span>
-              <div>
-                <div style="font-size:15px; letter-spacing:2px; color:#fff;">BEATBALL IA</div>
-                <div style="font-size:10px; color:#38bdf8; letter-spacing:3px;">ARCADE TÁTICO 2D</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="card-content">
-          <div class="card-title">BEATBALL VS BOT</div>
-          <div class="card-desc">Futebol tático 2D contra Inteligência Artificial balanceada com física realista, efeito
-            de curva e super chutes.</div>
-          <div class="card-tags">
-            <span class="card-tag">🧠 3 Dificuldades</span>
-            <span class="card-tag">👥 1v1 ou 2v2</span>
-            <span class="card-tag">⚡ Super Chute</span>
-          </div>
-          <button class="btn btn-secondary card-btn"
-            style="border-color:var(--neon-cyan); color:var(--neon-cyan);">ENFRENTAR IA ▶</button>
-        </div>
-      </div>
-
-      <!-- BeatBall 2P -->
-      <div class="arcade-card local-card" id="btn-local-2p">
-        <div class="card-cover cover-local">
-          <span class="card-badge" style="background:linear-gradient(135deg, #db2777, #9d174d);">⚔️ 2P LOCAL</span>
-          <div class="card-art-hero">
-            <div class="hero-banner-art" style="color:#f472b6;">
-              <span style="font-size:38px; filter:drop-shadow(0 0 16px rgba(255,51,119,0.9));">⚔️</span>
-              <div>
-                <div style="font-size:15px; letter-spacing:2px; color:#fff;">VERSUS LOCAL</div>
-                <div style="font-size:10px; color:#f472b6; letter-spacing:3px;">DUELO 2 JOGADORES</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="card-content">
-          <div class="card-title">BEATBALL 2P LOCAL</div>
-          <div class="card-desc">Duelo clássico competitivo para dois jogadores locais no mesmo teclado ou controles USB
-            / Bluetooth.</div>
-          <div class="card-tags">
-            <span class="card-tag">👥 2 Jogadores</span>
-            <span class="card-tag">⚡ Super Dash</span>
-            <span class="card-tag">🏟️ 3 Estádios</span>
-          </div>
-          <button class="btn btn-secondary card-btn"
-            style="border-color:var(--neon-pink); color:var(--neon-pink);">DUELO LOCAL ▶</button>
-        </div>
-      </div>
-
-      <!-- Multiplayer Online -->
-      <div class="arcade-card online-card" id="btn-online-1v1">
-        <div class="card-cover cover-online">
-          <span class="card-badge" style="background:linear-gradient(135deg, #059669, #047857);">🌐 MULTIPLAYER</span>
+      <!-- Multiplayer Online — Card informativo com aviso claro de desenvolvimento -->
+      <div class="arcade-card online-card" id="btn-online-1v1" style="width:100%; opacity:0.85; border:2px dashed rgba(74,222,128,0.5);">
+        <div class="card-cover cover-online" style="height:100px;">
+          <span class="card-badge" style="background:#eab308; color:#000; font-weight:800; font-size:11px;">🚧 EM DESENVOLVIMENTO</span>
           <div class="card-art-hero">
             <div class="hero-banner-art" style="color:#4ade80;">
-              <span style="font-size:38px; filter:drop-shadow(0 0 16px rgba(34,197,94,0.9));">🌐</span>
+              <span style="font-size:32px;">🌐</span>
               <div>
-                <div style="font-size:15px; letter-spacing:2px; color:#fff;">GLOBAL ONLINE</div>
-                <div style="font-size:10px; color:#4ade80; letter-spacing:3px;">WEBRTC ESPORTS</div>
+                <div style="font-size:16px; letter-spacing:2px; color:#fff;">MODO MULTIPLAYER ONLINE</div>
+                <div style="font-size:10px; color:#fef08a; letter-spacing:2px;">CONEXÃO WEBRTC EM BREVE</div>
               </div>
             </div>
           </div>
         </div>
-        <div class="card-content">
-          <div class="card-title">MULTIPLAYER ONLINE</div>
-          <div class="card-desc">Jogue com amigos pela internet via conexão direta WebRTC. Até 8 jogadores reais ou
-            assista ao vivo como Espectador!</div>
-          <div class="card-tags">
-            <span class="card-tag">🌐 Sem Servidor</span>
-            <span class="card-tag">👁️ Espectador</span>
-            <span class="card-tag">🏎️ 2D & 3D</span>
-          </div>
-          <button class="btn btn-primary card-btn">SALAS ONLINE ▶</button>
+        <div class="card-content" style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:13px; color:var(--text-muted);">Salas para jogar online com amigos pela internet estão sendo aprimoradas.</div>
+          <button class="btn btn-secondary card-btn" style="font-size:12px; padding:8px 16px; border-color:rgba(74,222,128,0.6); color:#4ade80; pointer-events:none;">EM BREVE 🔒</button>
         </div>
       </div>
     </div>
@@ -1253,62 +1203,10 @@
             TURNTABLE 3D AO VIVO</div>
         </div>
 
-        <!-- SELEÇÃO DOS 8 VEÍCULOS (GRID 4x2 NUNCA CORTA) -->
-        <div class="cars-grid">
-          <!-- Octane Turbo -->
-          <div class="car-card active" data-car="octane-cartoon">
-            <div class="car-card-img"><img src="/assets/cars-cards/octane-cartoon.svg" alt="Octane" /></div>
-            <div class="mode-name">Octane</div>
-            <div class="mode-desc">Rocket Classic</div>
-          </div>
-          <!-- Dune Buggy 4x4 -->
-          <div class="car-card" data-car="buggy">
-            <div class="car-card-img"><img src="/assets/cars-cards/buggy.svg" alt="Dune Buggy" /></div>
-            <div class="mode-name">Dune Buggy</div>
-            <div class="mode-desc">Offroad 4x4</div>
-          </div>
-          <!-- Ferrari GT -->
-          <div class="car-card" data-car="ferrari">
-            <div class="car-card-img"><img src="/assets/cars-cards/ferrari.svg" alt="Ferrari GT" /></div>
-            <div class="mode-name">Ferrari GT</div>
-            <div class="mode-desc">Aerodinâmico</div>
-          </div>
-          <!-- ToyCar Super -->
-          <div class="car-card" data-car="toycar">
-            <div class="car-card-img"><img src="/assets/cars-cards/toycar.svg" alt="ToyCar" /></div>
-            <div class="mode-name">ToyCar</div>
-            <div class="mode-desc">Chassi Largo</div>
-          </div>
-          <!-- Cruiser Yellow -->
-          <div class="car-card" data-car="cartoon-yellow">
-            <div class="car-card-img"><img src="/assets/cars-cards/cartoon-yellow.svg" alt="Cruiser" /></div>
-            <div class="mode-name">Cruiser</div>
-            <div class="mode-desc">Controle Suave</div>
-          </div>
-          <!-- Beast Green -->
-          <div class="car-card" data-car="cartoon-green">
-            <div class="car-card-img"><img src="/assets/cars-cards/cartoon-green.svg" alt="Beast" /></div>
-            <div class="mode-name">Beast</div>
-            <div class="mode-desc">Tração Forte</div>
-          </div>
-          <!-- Phantom Purple -->
-          <div class="car-card" data-car="cartoon-purple">
-            <div class="car-card-img"><img src="/assets/cars-cards/cartoon-purple.svg" alt="Phantom" /></div>
-            <div class="mode-name">Phantom</div>
-            <div class="mode-desc">Super Drift</div>
-          </div>
-          <!-- Moto Nitro -->
-          <div class="car-card" data-car="cartoon-moto">
-            <div class="car-card-img"><img src="/assets/cars-cards/cartoon-moto.svg" alt="Moto Nitro" /></div>
-            <div class="mode-name">Moto Nitro</div>
-            <div class="mode-desc">Ágil & Toon</div>
-          </div>
-
-          <!-- ─── POWERKICK EXCLUSIVE CARS ─── -->
-          <div class="cars-grid-pk-label">⚡ ARENA POWER-KICK ⚡</div>
-
+        <!-- SELEÇÃO DOS 5 VEÍCULOS TITÃS -->
+        <div class="cars-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
           <!-- Volt Striker — Velocidade / Nitro -->
-          <div class="car-card powerkick-car" data-car="volt-striker">
+          <div class="car-card powerkick-car active" data-car="volt-striker">
             <div class="car-card-img"><img src="/assets/cars-cards/volt-striker.svg" alt="Volt Striker" /></div>
             <div class="mode-name">Volt Striker</div>
             <div class="mode-desc">+28% Nitro</div>
@@ -1330,14 +1228,16 @@
           </div>
           <!-- Guincho Tody — Reboque & Super Empurrão -->
           <div class="car-card powerkick-car" data-car="guincho-tody">
-            <div class="car-card-img"><img src="/assets/cars-cards/guincho-tody.png" onerror="this.src='/assets/cars-cards/guincho-tody.svg'" alt="Guincho Tody" /></div>
+            <div class="car-card-img"><img src="/assets/cars-cards/guincho-tody.png"
+                onerror="this.src='/assets/cars-cards/guincho-tody.svg'" alt="Guincho Tody" /></div>
             <div class="mode-name">Guincho Tody</div>
             <div class="mode-desc">+40% Empurrão</div>
             <span class="pk-badge">POWER-KICK</span>
           </div>
           <!-- Van Gost — Blindagem Fantasma & Defesa -->
           <div class="car-card powerkick-car" data-car="van-gost">
-            <div class="car-card-img"><img src="/assets/cars-cards/van-gost.png" onerror="this.src='/assets/cars-cards/van-gost.svg'" alt="Van Gost" /></div>
+            <div class="car-card-img"><img src="/assets/cars-cards/van-gost.png"
+                onerror="this.src='/assets/cars-cards/van-gost.svg'" alt="Van Gost" /></div>
             <div class="mode-name">Van Gost</div>
             <div class="mode-desc">+35% Escudo</div>
             <span class="pk-badge">POWER-KICK</span>
@@ -1346,70 +1246,72 @@
       </div>
 
       <!-- COLUNA DIREITA: REGRAS E MODO DE DISPUTA -->
-      <div class="garage-deck">
+      <div class="garage-deck" style="gap:16px;">
         <!-- FORMATO DA ARENA -->
-        <div class="setting-section-title" style="color:var(--neon-orange);">⚔️ FORMATO DA ARENA:</div>
-        <div class="pills-row turbo-format-row">
+        <div class="setting-section-title" style="color:var(--neon-orange); font-size:16px;">⚔️ FORMATO DA PARTIDA:</div>
+        <div class="pills-row turbo-format-row" style="gap:10px;">
           <button class="btn btn-secondary pill-btn turbo-format-btn active" data-turbo-format="1v1"
-            style="border-color:#00ff88; color:#00ff88;">⚔️ 1v1 (DUELO)</button>
+            style="border-color:#00ff88; color:#00ff88; font-size:15px; padding:12px 18px;">⚔️ 1v1 (DUELO)</button>
           <button class="btn btn-secondary pill-btn turbo-format-btn" data-turbo-format="2v2"
-            style="border-color:#00cfff; color:#00cfff;">👥 2v2 (DUPLAS)</button>
+            style="border-color:#00cfff; color:#00cfff; font-size:15px; padding:12px 18px;">👥 2v2 (DUPLAS)</button>
           <button class="btn btn-secondary pill-btn turbo-format-btn" data-turbo-format="3v3"
-            style="border-color:#ffd23f; color:#ffd23f;">⚡ 3v3 (TRIOS)</button>
+            style="border-color:#ffd23f; color:#ffd23f; font-size:15px; padding:12px 18px;">⚡ 3v3 (TRIOS)</button>
           <button class="btn btn-secondary pill-btn turbo-format-btn" data-turbo-format="4v4"
-            style="border-color:#ff4d7d; color:#ff4d7d;">🔥 4v4 (ATÉ 8)</button>
+            style="border-color:#ff4d7d; color:#ff4d7d; font-size:15px; padding:12px 18px;">🔥 4v4 (ATÉ 8)</button>
         </div>
 
         <!-- NÍVEL DOS BOTS -->
-        <div class="setting-section-title" style="color:var(--neon-yellow);">🤖 DIFICULDADE DOS BOTS:</div>
-        <div class="pills-row">
+        <div class="setting-section-title" style="color:var(--neon-yellow); font-size:16px;">🤖 DIFICULDADE DOS BOTS:</div>
+        <div class="pills-row" style="gap:10px;">
           <button class="btn btn-secondary pill-btn turbo-diff-btn" data-turbo-level="easy"
-            style="border-color:#00ff88; color:#00ff88;">😌 FÁCIL</button>
+            style="border-color:#00ff88; color:#00ff88; font-size:15px; padding:12px 18px;">😌 FÁCIL</button>
           <button class="btn btn-secondary pill-btn turbo-diff-btn active" data-turbo-level="medium"
-            style="border-color:#00cfff; color:#00cfff;">😎 MÉDIO</button>
+            style="border-color:#00cfff; color:#00cfff; font-size:15px; padding:12px 18px;">😎 MÉDIO</button>
           <button class="btn btn-secondary pill-btn turbo-diff-btn" data-turbo-level="hard"
-            style="border-color:#ff6600; color:#ff6600;">🔥 DIFÍCIL</button>
+            style="border-color:#ff6600; color:#ff6600; font-size:15px; padding:12px 18px;">🔥 DIFÍCIL</button>
           <button class="btn btn-secondary pill-btn turbo-diff-btn" data-turbo-level="expert"
-            style="border-color:#a855f7; color:#a855f7;">🏆 CAMPEÃO</button>
+            style="border-color:#a855f7; color:#a855f7; font-size:15px; padding:12px 18px;">🏆 CAMPEÃO</button>
         </div>
 
         <!-- CENÁRIO DO ESTÁDIO -->
-        <div class="setting-section-title" style="color:var(--neon-cyan);">🏟️ CENÁRIO DO ESTÁDIO:</div>
-        <div class="pills-row">
-          <button class="btn btn-secondary pill-btn turbo-theme-btn active" data-turbo-theme="classic"
-            style="border-color:#ffd23f; color:#ffd23f; background:linear-gradient(135deg, rgba(255, 210, 63, 0.2), rgba(255, 122, 0, 0.3));">⚡ ARENA POWER-KICK</button>
+        <div class="setting-section-title" style="color:var(--neon-cyan); font-size:16px;">🏟️ CENÁRIO DO ESTÁDIO:</div>
+        <div class="pills-row" style="gap:10px;">
+          <button class="btn btn-secondary pill-btn turbo-theme-btn active" data-turbo-theme="kong"
+            style="border-color:#22c55e; color:#22c55e; font-size:15px; padding:12px 18px; background:linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(6, 78, 59, 0.35));"
+            title="COLISEU DOS TITÃS — GIGANTE GORAK">🏛️ ARENA GORAK</button>
+          <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="classic"
+            style="border-color:#ffd23f; color:#ffd23f; font-size:15px; padding:12px 18px; background:linear-gradient(135deg, rgba(255, 210, 63, 0.2), rgba(255, 122, 0, 0.3));">⚡
+            ARENA POWER-KICK</button>
           <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="cyber"
-            style="border-color:#00cfff; color:#00cfff;">🌙 CYBER NOTURNO</button>
+            style="border-color:#00cfff; color:#00cfff; font-size:15px; padding:12px 18px;">🌙 CYBER NOTURNO</button>
           <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="futsal"
-            style="border-color:#ff6b00; color:#ff6b00;">🥅 FUTSAL INDOOR</button>
+            style="border-color:#ff6b00; color:#ff6b00; font-size:15px; padding:12px 18px;">🥅 FUTSAL INDOOR</button>
           <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="snowday"
-            style="border-color:#38bdf8; color:#38bdf8;">🏒 ESTÁDIO DE GELO</button>
-          <button class="btn btn-secondary pill-btn turbo-theme-btn" data-turbo-theme="kong"
-            style="border-color:#22c55e; color:#22c55e; background:linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(6, 78, 59, 0.35));" title="COLISEU DOS TITÃS — GIGANTE GORAK">🏛️ ARENA GORAK</button>
+            style="border-color:#38bdf8; color:#38bdf8; font-size:15px; padding:12px 18px;">🏒 ESTÁDIO DE GELO</button>
         </div>
 
         <!-- MODO DE JOGO -->
-        <div class="setting-section-title" style="color:var(--neon-green);">🎲 MODO DE JOGO:</div>
-        <div class="pills-row">
+        <div class="setting-section-title" style="color:var(--neon-green); font-size:16px;">🎲 MODO DE JOGO:</div>
+        <div class="pills-row" style="gap:10px;">
           <button class="btn btn-secondary pill-btn turbo-mode-btn active" data-turbo-mode="standard"
-            style="border-color:#00ff88; color:#00ff88;">⚽ FUTEBOL PADRÃO</button>
+            style="border-color:#00ff88; color:#00ff88; font-size:15px; padding:12px 18px;">⚽ FUTEBOL PADRÃO</button>
           <button class="btn btn-secondary pill-btn turbo-mode-btn" data-turbo-mode="rumble"
-            style="border-color:#ffd23f; color:#ffd23f;">🧲 RUMBLE (TODOS OS ESTÁDIOS)</button>
+            style="border-color:#ffd23f; color:#ffd23f; font-size:15px; padding:12px 18px;">🧲 RUMBLE (TODOS OS ESTÁDIOS)</button>
           <button class="btn btn-secondary pill-btn turbo-mode-btn" data-turbo-mode="snowday"
-            style="border-color:#38bdf8; color:#38bdf8;">🏒 HOCKEY NO GELO</button>
+            style="border-color:#38bdf8; color:#38bdf8; font-size:15px; padding:12px 18px;">🏒 HOCKEY NO GELO</button>
         </div>
 
         <!-- EXPLOSÃO DE GOL -->
-        <div class="setting-section-title" style="color:var(--neon-pink);">💥 EXPLOSÃO DE GOL:</div>
-        <div class="pills-row">
+        <div class="setting-section-title" style="color:var(--neon-pink); font-size:16px;">💥 EXPLOSÃO DE GOL:</div>
+        <div class="pills-row" style="gap:10px;">
           <button class="btn btn-secondary pill-btn turbo-explosion-btn active" data-explosion="toon"
-            style="border-color:#ff6600; color:#ff6600;">🔥 TOON FIRE</button>
+            style="border-color:#ff6600; color:#ff6600; font-size:15px; padding:12px 18px;">🔥 TOON FIRE</button>
           <button class="btn btn-secondary pill-btn turbo-explosion-btn" data-explosion="supernova"
-            style="border-color:#c084fc; color:#c084fc;">🌌 SUPERNOVA</button>
+            style="border-color:#c084fc; color:#c084fc; font-size:15px; padding:12px 18px;">🌌 SUPERNOVA</button>
           <button class="btn btn-secondary pill-btn turbo-explosion-btn" data-explosion="lightning"
-            style="border-color:#00e5ff; color:#00e5ff;">⚡ RAIO EMP</button>
+            style="border-color:#00e5ff; color:#00e5ff; font-size:15px; padding:12px 18px;">⚡ RAIO EMP</button>
           <button class="btn btn-secondary pill-btn turbo-explosion-btn" data-explosion="confetti"
-            style="border-color:#22c55e; color:#22c55e;">🎉 CONFETE</button>
+            style="border-color:#22c55e; color:#22c55e; font-size:15px; padding:12px 18px;">🎉 CONFETE</button>
         </div>
 
         <!-- AJUSTES DE FÍSICA AVANÇADA (RETRÁTIL) -->

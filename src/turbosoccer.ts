@@ -831,8 +831,8 @@ export class TurboSoccerGame {
         this.setTrainingMode(true)
       }
 
-      // Carrega modelos 3D reais (GLB) para todos os carros — variedade total sem caixas geométricas
-      const botModelPool = ['buggy', 'ferrari', 'toycar', 'cartoon-yellow', 'cartoon-green', 'cartoon-purple', 'cartoon-moto', 'sportscar', 'volt-striker', 'titan-shift', 'nova-forge', 'guincho-tody', 'van-gost']
+      // Carrega modelos 3D reais (GLB) para todos os carros — baseado no pool dos 5 Titãs
+      const botModelPool = ['volt-striker', 'titan-shift', 'nova-forge', 'guincho-tody', 'van-gost']
       const loadPromises: Promise<any>[] = []
 
       loadPromises.push(this.playerCar.loadModel(this.selectedCarModelId))
@@ -840,7 +840,7 @@ export class TurboSoccerGame {
         const allyModel = botModelPool[(i - 1) % botModelPool.length]
         loadPromises.push(this.orangeCars[i].loadModel(allyModel))
       }
-      const primaryBotModel = this.selectedCarModelId === 'buggy' ? 'ferrari' : 'buggy'
+      const primaryBotModel = this.selectedCarModelId === 'volt-striker' ? 'titan-shift' : 'volt-striker'
       loadPromises.push(this.botCar.loadModel(primaryBotModel))
       for (let i = 1; i < this.blueCars.length; i++) {
         const botModel = botModelPool[(i + 1) % botModelPool.length]

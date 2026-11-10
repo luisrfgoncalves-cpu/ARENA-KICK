@@ -21,7 +21,10 @@ let selectedDiff: 'easy' | 'medium' | 'hard' = 'easy'
 let gameMode: 'bot' | '2p' = 'bot'
 
 // Customizações ativas
-let selectedCar = localStorage.getItem('arena_kick_selected_car') || 'octane-cartoon'
+let selectedCar = localStorage.getItem('arena_kick_selected_car') || 'volt-striker'
+if (!['volt-striker', 'titan-shift', 'nova-forge', 'guincho-tody', 'van-gost'].includes(selectedCar)) {
+  selectedCar = 'volt-striker'
+}
 let selectedTurboTheme: TurboTheme = 'classic'
 let selectedTurboLevel: TurboBotLevel = 'medium'
 let selectedTurboFormat: TurboMatchFormat = '1v1'
@@ -182,7 +185,11 @@ document.getElementById('btn-local-2p')!.addEventListener('click', () => {
 })
 
 // MODO TURBO SOCCER 3D (Abre Garagem para escolher o carro!)
-document.getElementById('btn-turbo-3d')!.addEventListener('click', () => {
+document.getElementById('btn-turbo-3d')?.addEventListener('click', () => {
+  void openGarage()
+})
+document.getElementById('btn-quick-garage')?.addEventListener('click', (e) => {
+  e.stopPropagation()
   void openGarage()
 })
 
