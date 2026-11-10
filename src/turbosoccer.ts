@@ -146,8 +146,8 @@ export class TurboSoccerGame {
   private orangeCars:    CarObject[] = []  // time laranja (inclui playerCar)
   private blueCars:      CarObject[] = []  // time azul (inclui botCar)
   private allCars:       CarObject[] = []  // todos os carros para loops
-  // ── ARENA KONG: GORILA NEUTRO KONG GORAK & CENÁRIO SELVAGEM ──
-  private kongGorak:        KongGorak | null = null
+  // ── ARENA DO GORAK: TITÃS GIGANTE GORAK & CENÁRIO SELVAGEM ──
+  private kongGoraks:       KongGorak[] = []
   private kongEnvResult:    ArenaKongEnvironmentResult | null = null
   private kongBackdropMesh: THREE.Mesh | null = null
     // ── MOEDAS DE NITRO & OBSTÁCULOS DINÂMICOS ────────────────
@@ -705,7 +705,7 @@ export class TurboSoccerGame {
       window.addEventListener('keydown', this.onKeyDown)
       window.addEventListener('keyup', this.onKeyUp)
 
-      // ── ARENA KONG: AMBIENTE SELVAGEM & GORILA GIGANTE KONG GORAK ──
+      // ── ARENA DO GORAK: TITÃS GIGANTE GORAK & CENÁRIO ──
       if (this.theme === 'kong') {
         loadArenaKongEnvironment(this.scene, { mode: 'day' }).then((env) => {
           if (this.destroyed) {
@@ -713,7 +713,7 @@ export class TurboSoccerGame {
             return
           }
           this.kongEnvResult = env
-        }).catch((err) => console.warn('[ArenaKong] Falha ao carregar kits de ambiente:', err))
+        }).catch((err) => console.warn('[ArenaGorak] Falha ao carregar kits de ambiente:', err))
 
         const kongPhysics = {
           applyImpulse: (target: any, impulse: THREE.Vector3) => {
@@ -723,12 +723,12 @@ export class TurboSoccerGame {
               target.velX += impulse.x
               target.velZ += impulse.z
               target.velY = Math.max(target.velY, Math.abs(impulse.y))
-              if (typeof target.applySpinOut === 'function') target.applySpinOut(1.8)
+              if (typeof target.applySpinOut === 'function') target.applySpinOut(2.5)
             }
           },
           applyAngularImpulse: (target: any, _ang: THREE.Vector3) => {
             if (target && typeof target.applySpinOut === 'function') {
-              target.applySpinOut(2.2)
+              target.applySpinOut(2.5)
             }
           },
           setKinematic: (target: any, isKinematic: boolean) => {
@@ -747,61 +747,83 @@ export class TurboSoccerGame {
         const kongEffects = {
           kick: (pos?: THREE.Vector3) => {
             this.audio.playPowerHit()
-            this.audio.synthesizeBoom(90, 0.4, 0.8)
-            if (pos) this.emitCartoonStarBurst(pos, 35, 0xfacc15)
+            this.audio.synthesizeBoom(95, 0.45, 0.9)
+            if (pos) this.emitCartoonStarBurst(pos, 38, 0xfacc15)
           },
           punch: (pos?: THREE.Vector3) => {
             this.audio.playPunchImpact()
             this.audio.playHit()
-            this.triggerCameraShake(0.35)
-            if (pos) this.emitCartoonStarBurst(pos, 40, 0xef4444)
+            this.triggerCameraShake(0.40)
+            if (pos) this.emitCartoonStarBurst(pos, 45, 0xef4444)
           },
           grab: (pos?: THREE.Vector3) => {
             this.audio.playDash()
-            if (pos) this.emitCartoonStarBurst(pos, 22, 0x00f0ff)
+            if (pos) this.emitCartoonStarBurst(pos, 25, 0x00f0ff)
           },
           throw: (pos?: THREE.Vector3) => {
             this.audio.playPowerHit()
-            this.audio.synthesizeBoom(70, 0.5, 1.0)
-            this.triggerCameraShake(0.55)
-            if (pos) this.emitCartoonStarBurst(pos, 44, 0x22c55e)
+            this.audio.synthesizeBoom(75, 0.6, 1.2)
+            this.triggerCameraShake(0.65)
+            if (pos) this.emitCartoonStarBurst(pos, 48, 0x22c55e)
           },
           slam: (pos?: THREE.Vector3) => {
             this.audio.playPunchImpact()
-            this.audio.synthesizeBoom(55, 0.85, 1.6)
-            this.triggerCameraShake(0.95)
+            this.audio.synthesizeBoom(50, 0.95, 1.8)
+            this.triggerCameraShake(1.1)
             if (pos) {
-              this.emitCartoonStarBurst(pos, 60, 0x22c55e)
-              this.emitCartoonStarBurst(pos, 35, 0xffffff)
+              this.emitCartoonStarBurst(pos, 70, 0x22c55e)
+              this.emitCartoonStarBurst(pos, 45, 0xffffff)
             }
           },
           hitObstacle: (pos?: THREE.Vector3) => {
             this.audio.playWallBounce()
-            this.audio.playCollisionTiered(25)
-            if (pos) this.emitCartoonStarBurst(pos, 28, 0xd97706)
+            this.audio.playCollisionTiered(30)
+            if (pos) this.emitCartoonStarBurst(pos, 32, 0xd97706)
           },
           step: (_pos?: THREE.Vector3) => {
-            this.audio.synthesizeBoom(40, 0.12, 0.18)
-            this.triggerCameraShake(0.06)
+            this.audio.synthesizeBoom(38, 0.14, 0.22)
+            this.triggerCameraShake(0.08)
           },
           rage: (_k: number) => {
-            this.audio.synthesizeBoom(80, 0.9, 1.5)
-            this.triggerCameraShake(0.5)
+            this.audio.synthesizeBoom(75, 1.1, 1.8)
+            this.triggerCameraShake(0.65)
           }
         }
 
-        this.kongGorak = new KongGorak({
-          scene: this.scene,
-          ball: this.ball,
-          getCars: () => this.allCars,
-          getObstacles: () => this.dynamicObstacles,
-          physics: kongPhysics,
-          camera: kongCamera,
-          effects: kongEffects
-        })
+        // Quantidade de Gigantes Gorak conforme a dificuldade:
+        // Fácil = 1 Gorak | Médio = 2 Goraks | Brutal/Difícil = 3 Goraks
+        let gorakCount = 1
+        if (this.difficulty === 'hard') {
+          gorakCount = 3
+        } else if (this.difficulty === 'medium') {
+          gorakCount = 2
+        }
 
-        this.scene.add(this.kongGorak.rootGroup)
-        this.kongGorak.load().catch((err) => console.warn('[KongGorak] Falha ao carregar modelo:', err))
+        const gorakSpawnConfigs = [
+          { x: 18, z: 0, rot: -Math.PI / 2 },
+          { x: -35, z: 45, rot: Math.PI / 3 },
+          { x: 35, z: -45, rot: -Math.PI / 3 }
+        ]
+
+        this.kongGoraks = []
+        for (let i = 0; i < gorakCount; i++) {
+          const cfg = gorakSpawnConfigs[i] || { x: 0, z: 0, rot: 0 }
+          const gorak = new KongGorak({
+            scene: this.scene,
+            ball: this.ball,
+            getCars: () => this.allCars,
+            getObstacles: () => this.dynamicObstacles,
+            physics: kongPhysics,
+            camera: kongCamera,
+            effects: kongEffects
+          })
+
+          gorak.rootGroup.position.set(cfg.x, 0, cfg.z)
+          gorak.rootGroup.rotation.y = cfg.rot
+          this.scene.add(gorak.rootGroup)
+          gorak.load().catch((err) => console.warn(`[KongGorak ${i + 1}] Falha ao carregar modelo:`, err))
+          this.kongGoraks.push(gorak)
+        }
       }
 
       this.loop()
@@ -1847,7 +1869,7 @@ export class TurboSoccerGame {
       ctx.fillStyle = '#22c55e'
       ctx.shadowColor = '#22c55e'
       ctx.shadowBlur = 18
-      ctx.fillText('🦍 ARENA KONG 🦍', w / 2, 650)
+      ctx.fillText('🏛️ ARENA GORAK 🏛️', w / 2, 650)
       ctx.shadowBlur = 0
     } else {
       ctx.fillStyle = '#e2e8f0'
@@ -2949,9 +2971,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           }
           this.updateBotAI(dt)
         }
-        // ── KONG GORAK: Atualiza gorila neutro na Arena Kong ──
-        if (this.kongGorak && this.theme === 'kong') {
-          this.kongGorak.update(dt)
+        // ── GIGANTE GORAK: Atualiza titãs neutros na Arena Gorak ──
+        if (this.kongGoraks.length > 0 && this.theme === 'kong') {
+          for (const gorak of this.kongGoraks) {
+            gorak.update(dt)
+          }
         }
         this.resolveCarCarCollision()
         // Física da bola: somente Host (online) ou sempre (solo)
@@ -7430,11 +7454,13 @@ private resolveCarCarCollision() {
     this.smokePuffs = []
     this.smokeGeo.dispose()
 
-    // ── Limpeza Arena Kong ──
-    if (this.kongGorak) {
-      this.scene.remove(this.kongGorak.rootGroup)
-      this.kongGorak.dispose()
-      this.kongGorak = null
+    // ── Limpeza Arena Gorak ──
+    if (this.kongGoraks.length > 0) {
+      for (const gorak of this.kongGoraks) {
+        this.scene.remove(gorak.rootGroup)
+        gorak.dispose()
+      }
+      this.kongGoraks = []
     }
     if (this.kongEnvResult) {
       this.kongEnvResult.dispose()
