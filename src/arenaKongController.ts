@@ -184,10 +184,10 @@ export class KongGorak {
     // ============================================================
     // ETAPA B: ESCALA E PIVÔ
     // ============================================================
-    // Ajusta para altura calibrada de ~16.5m (harmoniosa com carros de 1.4m e bola de 2.0m)
+    // Ajusta para altura calibrada de ~19.0m (alcance perfeito da mão na bola e imponência colossal)
     const initialBox = new THREE.Box3().setFromObject(this.model)
     const initialSize = initialBox.getSize(new THREE.Vector3())
-    const targetHeight = 16.5
+    const targetHeight = 19.0
     if (initialSize.y > 0.1) {
       const scale = targetHeight / initialSize.y
       this.model.scale.setScalar(scale)
@@ -199,7 +199,7 @@ export class KongGorak {
     this.model.position.y = -calibratedBox.min.y
     this._slamBaseY = 0
 
-    // Configuração de sombras, colorSpace e iluminação de pelagem
+    // Configuração de sombras, colorSpace e iluminação PBR nítida
     this.model.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh
@@ -209,9 +209,9 @@ export class KongGorak {
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
           mats.forEach((m: any) => {
             if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
-            if (typeof m.roughness === 'number') m.roughness = 0.8
-            if (typeof m.metalness === 'number') m.metalness = 0.05
-            if (m.emissive) m.emissive.setHex(0x181310)
+            if (typeof m.roughness === 'number') m.roughness = 0.65 // Menos reflexo fosco, mais definição muscular
+            if (typeof m.metalness === 'number') m.metalness = 0.20 // Realce na armadura de bronze
+            if (m.emissive) m.emissive.setHex(0x221a14) // Detalhes visíveis sob qualquer iluminação
           })
         }
       }
@@ -904,14 +904,15 @@ export class KongGorak {
 
   private _updateGrab(_dt: number) {
     const action = this.actions['grab_ball']
-    const duration = action?.getClip().duration || 0.90
+    const duration = action?.getClip().duration || 1.10
     const progress = this.stateTime / duration
 
-    if (!this._hitDone && progress >= 0.30 && progress <= 0.75) {
-      const grabPoint = this._getBoneWorldPosition(this._bones.ballHoldPoint) || this._getBoneWorldPosition(this._bones.hitboxRHand)
+    // Janela de agarre garantida: atrai a bola para a palma da mão
+    if (!this._hitDone && progress >= 0.25 && progress <= 0.85) {
+      const grabPoint = this._getBoneWorldPosition(this._bones.rightHand) || this._getBoneWorldPosition(this._bones.hitboxRHand)
       const bPos = this.getBallPosition()
 
-      if (grabPoint && bPos && grabPoint.distanceTo(bPos) <= 5.8) {
+      if (grabPoint && bPos && grabPoint.distanceTo(bPos) <= 9.0) {
         this._hitDone = true
         this._attachBallToHand()
         this.effects.grab?.(bPos)
@@ -929,9 +930,9 @@ export class KongGorak {
 
   private _updateThrow(_dt: number) {
     const action = this.actions['throw_ball']
-    const duration = action?.getClip().duration || 0.95
+    const duration = action?.getClip().duration || 1.05
 
-    if (!this._hitDone && this.stateTime >= 0.35) {
+    if (!this._hitDone && this.stateTime >= 0.38) {
       this._hitDone = true
       this._releaseBallWithArc()
       this.effects.throw?.(this.getBallPosition() || undefined)
@@ -1028,9 +1029,9 @@ export class KongGorak {
     // Lança a bola com força em arco
     const direction = new THREE.Vector3()
     this.rootGroup.getWorldDirection(direction)
-    direction.y = 0.45
+    direction.y = 0.50
     direction.normalize()
-    this.physics.applyImpulse?.(ball, direction.multiplyScalar(85.0))
+    this.physics.applyImpulse?.(ball, direction.multiplyScalar(105.0))
     this._heldBall = null
   }
 

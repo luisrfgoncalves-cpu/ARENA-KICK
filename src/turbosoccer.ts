@@ -813,6 +813,8 @@ export class TurboSoccerGame {
           { x: -45, z: -60, rot: 3 * Math.PI / 4 }
         ]
 
+        const gorakGlowColors = [0xffd23f, 0xef4444, 0x22c55e, 0x38bdf8]
+
         this.kongGoraks = []
         for (let i = 0; i < gorakCount; i++) {
           const cfg = gorakSpawnConfigs[i] || { x: 0, z: 0, rot: 0 }
@@ -829,8 +831,21 @@ export class TurboSoccerGame {
           gorak.rootGroup.position.set(cfg.x, 0, cfg.z)
           gorak.rootGroup.rotation.y = cfg.rot
           gorak.walkDirection = (i % 2 === 0) ? 1 : -1
-          // Escala intervalos de slam para os titãs não pularem juntos em sincronia
           gorak.slamTimer = 6.0 + i * 4.0
+
+          // Glifo rúnico luminoso nos pés para diferenciar os Titãs com classe e sem alterar a textura original
+          const ringGeo = new THREE.RingGeometry(2.8, 3.4, 32)
+          ringGeo.rotateX(-Math.PI / 2)
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: gorakGlowColors[i % gorakGlowColors.length],
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.75
+          })
+          const ringMesh = new THREE.Mesh(ringGeo, ringMat)
+          ringMesh.position.y = 0.08
+          gorak.rootGroup.add(ringMesh)
+
           this.scene.add(gorak.rootGroup)
           gorak.load().catch((err) => console.warn(`[KongGorak ${i + 1}] Falha ao carregar modelo:`, err))
           this.kongGoraks.push(gorak)
@@ -5684,8 +5699,76 @@ private resolveCarCarCollision() {
     const blueActive = this.blueCars.filter(c => !c.isDemoed && (!this.isOnline1v1 || c !== this.botCar))
     const orangeActive = this.orangeCars.filter(c => !c.isDemoed && (c !== this.playerCar || this.spectatorMode))
 
-    this.assignTeamRolesAndRun(blueActive, true, dt)
-    this.assignTeamRolesAndRun(orangeActive, false, dt)
+    // ── PAPÉIS DINÂMICOS E SINCRONIZADOS DE EQUIPE (Striker, Support, Goalkeeper) ──
+    this.assignDynamicTeamRoles(blueActive, true, dt)
+    this.assignDynamicTeamRoles(orangeActive, false, dt)
+  }
+
+  private assignDynamicTeamRoles(teamCars: CarObject[], isBlue: boolean, dt: number) {
+    if (teamCars.length === 0) return
+
+    const bp = this.ball.pos
+    const ownGoalZ = isBlue ? -FIELD_L / 2 : FIELD_L / 2
+    const opponentGoalZ = isBlue ? FIELD_L / 2 : -FIELD_L / 2
+
+    // Ordena carros por proximidade à bola (o mais perto vira Striker)
+    const sortedByBall = [...teamCars].sort((a, b) => a.pos.distanceTo(bp) - b.pos.distanceTo(bp))
+    const striker = sortedByBall[0]
+    const support = sortedByBall.length > 1 ? sortedByBall[1] : null
+    const defender = sortedByBall.length > 2 ? sortedByBall[2] : null
+    const anchor = sortedByBall.length > 3 ? sortedByBall[3] : null
+
+    for (const car of teamCars) {
+      if (car === striker) {
+        // ATACANTE: Conduz, dribla e chuta para o gol adversário
+        this.runCarTacticalBehavior(car, isBlue, 'striker', opponentGoalZ, dt)
+      } else if (car === support) {
+        // APOIO / MEIA: Posiciona-se no flanco na sobra da bola para rebotes
+        this.runCarTacticalBehavior(car, isBlue, 'support', opponentGoalZ, dt)
+      } else if (car === defender || car === anchor) {
+        // GOLEIRO / ZAGUEIRO: Protege a boca do gol contra contra-ataques
+        this.runCarTacticalBehavior(car, isBlue, 'goalkeeper', ownGoalZ, dt)
+      } else {
+        this.runCarTacticalBehavior(car, isBlue, 'support', opponentGoalZ, dt)
+      }
+    }
+  }
+
+  private runCarTacticalBehavior(car: CarObject, isBlue: boolean, role: 'striker' | 'support' | 'goalkeeper', goalZ: number, dt: number) {
+    const bp = this.ball.pos
+    const bv = this.ball.vel
+    let targetX = bp.x
+    let targetZ = bp.z
+
+    if (role === 'striker') {
+      const predTime = this.botLevel === 'easy' ? 0.20 : this.botLevel === 'medium' ? 0.40 : 0.70
+      targetX = THREE.MathUtils.clamp(bp.x + bv.x * predTime, -FIELD_W / 2 + 5, FIELD_W / 2 - 5)
+      targetZ = THREE.MathUtils.clamp(bp.z + bv.z * predTime, -FIELD_L / 2 + 5, FIELD_L / 2 - 5)
+    } else if (role === 'support') {
+      // Posiciona-se 14m ao lado ou atrás da bola
+      const side = isBlue ? 12 : -12
+      targetX = THREE.MathUtils.clamp(bp.x + side, -FIELD_W / 2 + 8, FIELD_W / 2 - 8)
+      targetZ = THREE.MathUtils.clamp(bp.z + (isBlue ? -10 : 10), -FIELD_L / 2 + 10, FIELD_L / 2 - 10)
+    } else if (role === 'goalkeeper') {
+      // Guarda a entrada da área do próprio gol
+      targetX = THREE.MathUtils.clamp(bp.x * 0.4, -GOAL_W / 2, GOAL_W / 2)
+      targetZ = goalZ + (isBlue ? 18 : -18)
+    }
+
+    // ── DESVIO DO GORAK: Não atropela e não buga ──
+    if (this.theme === 'kong' && this.kongGoraks.length > 0) {
+      for (const gorak of this.kongGoraks) {
+        const gPos = gorak.rootGroup.position
+        const distToGorak = car.pos.distanceTo(gPos)
+        if (distToGorak < 12.0 && bp.distanceTo(gPos) > 5.5) {
+          const avoidDir = car.pos.clone().sub(gPos).normalize()
+          targetX += avoidDir.x * 14.0
+          targetZ += avoidDir.z * 14.0
+        }
+      }
+    }
+
+    this.driveCarTowards(car, targetX, targetZ, dt)
   }
 
   private assignTeamRolesAndRun(teamCars: CarObject[], isBlue: boolean, dt: number) {
