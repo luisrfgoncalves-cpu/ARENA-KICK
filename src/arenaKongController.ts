@@ -199,10 +199,6 @@ export class KongGorak {
     this.model.position.y = -calibratedBox.min.y
     this._slamBaseY = 0
 
-    // Posição inicial no círculo central
-    this.rootGroup.position.set(18, 0, 0)
-    this.rootGroup.rotation.y = -Math.PI / 2
-
     // Configuração de sombras, colorSpace e iluminação de pelagem
     this.model.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {

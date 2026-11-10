@@ -793,18 +793,24 @@ export class TurboSoccerGame {
         }
 
         // Quantidade de Gigantes Gorak conforme a dificuldade:
-        // Fácil = 1 Gorak | Médio = 2 Goraks | Difícil/Campeão = 3 Goraks
+        // Fácil = 1 Gorak | Médio = 2 Goraks | Difícil = 3 Goraks | Campeão = 4 Goraks
         let gorakCount = 1
-        if (this.botLevel === 'hard' || this.botLevel === 'expert') {
+        if (this.botLevel === 'expert') {
+          gorakCount = 4
+        } else if (this.botLevel === 'hard') {
           gorakCount = 3
         } else if (this.botLevel === 'medium') {
           gorakCount = 2
         }
 
+        // Posições estratégicas em quadrantes totalmente separados da arena:
+        // Quadrante 1 (Meio Campo Direita), Quadrante 2 (Fundo Esquerda),
+        // Quadrante 3 (Fundo Direita), Quadrante 4 (Frente Esquerda)
         const gorakSpawnConfigs = [
-          { x: 18, z: 0, rot: -Math.PI / 2 },
-          { x: -35, z: 45, rot: Math.PI / 3 },
-          { x: 35, z: -45, rot: -Math.PI / 3 }
+          { x: 30, z: 15, rot: -Math.PI / 2 },
+          { x: -55, z: 90, rot: Math.PI / 4 },
+          { x: 55, z: -90, rot: -3 * Math.PI / 4 },
+          { x: -45, z: -60, rot: 3 * Math.PI / 4 }
         ]
 
         this.kongGoraks = []
@@ -822,6 +828,9 @@ export class TurboSoccerGame {
 
           gorak.rootGroup.position.set(cfg.x, 0, cfg.z)
           gorak.rootGroup.rotation.y = cfg.rot
+          gorak.walkDirection = (i % 2 === 0) ? 1 : -1
+          // Escala intervalos de slam para os titãs não pularem juntos em sincronia
+          gorak.slamTimer = 6.0 + i * 4.0
           this.scene.add(gorak.rootGroup)
           gorak.load().catch((err) => console.warn(`[KongGorak ${i + 1}] Falha ao carregar modelo:`, err))
           this.kongGoraks.push(gorak)
@@ -2973,10 +2982,25 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           }
           this.updateBotAI(dt)
         }
-        // ── GIGANTE GORAK: Atualiza titãs neutros na Arena Gorak ──
+        // ── GIGANTE GORAK: Atualiza titãs neutros na Arena Gorak com separação mútua ──
         if (this.kongGoraks.length > 0 && this.theme === 'kong') {
-          for (const gorak of this.kongGoraks) {
-            gorak.update(dt)
+          for (let i = 0; i < this.kongGoraks.length; i++) {
+            const g1 = this.kongGoraks[i]
+            g1.update(dt)
+
+            // Evita colisão entre Goraks (repulsão suave para nunca se sobreporem)
+            for (let j = i + 1; j < this.kongGoraks.length; j++) {
+              const g2 = this.kongGoraks[j]
+              const p1 = g1.rootGroup.position
+              const p2 = g2.rootGroup.position
+              const dist = p1.distanceTo(p2)
+              if (dist < 18.0 && dist > 0.1) {
+                const sepDir = p1.clone().sub(p2).normalize()
+                const overlap = (18.0 - dist) * 0.5
+                p1.addScaledVector(sepDir, overlap * dt * 2.0)
+                p2.addScaledVector(sepDir, -overlap * dt * 2.0)
+              }
+            }
           }
         }
         this.resolveCarCarCollision()
