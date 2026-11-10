@@ -85,6 +85,21 @@ export const EXPECTED_CLIPS = [
   'standing_relax'
 ] as const
 
+// Aliases para mapear os nomes reais do MoCap do Mixamo
+const CLIP_ALIASES: Record<string, string[]> = {
+  walk: ['walk_monster', 'walking', 'walk', 'monster_walk'],
+  idle: ['action_idle_to_fight_idle', 'standing_relax', 'idle', 'fight_idle'],
+  roar_rage: ['idle_roar', 'roar', 'roar_rage'],
+  punch_right: ['great_sword_slash', 'sword_and_shield_slash', 'punch_right', 'punch'],
+  punch_left: ['sword_and_shield_slash', 'great_sword_slash', 'punch_left'],
+  kick_ball: ['heavy_kick', 'drop_kick', 'kick_ball', 'kick'],
+  grab_ball: ['grab_and_throw', 'throw_object', 'grab_ball'],
+  hold_ball: ['grab_and_throw', 'hold_ball', 'throw_object'],
+  throw_ball: ['throw', 'throw_object', 'throw_ball', 'grab_and_throw'],
+  butt_slam: ['jump_impact_landing', 'jumping_down', 'stomp', 'butt_slam'],
+  standing_relax: ['action_idle_to_fight_idle', 'standing_relax', 'idle']
+}
+
 export class KongGorak {
   public rootGroup = new THREE.Group()
   public model: THREE.Object3D | null = null
@@ -159,7 +174,7 @@ export class KongGorak {
   // ============================================================
   async load(): Promise<void> {
     const loader = new GLTFLoader()
-    const glbPath = '/assets/arena-kong/arena-kong-gorak-final-mocap.glb'
+    const glbPath = '/assets/arena-kong/gorilla_mocap_complete.glb'
 
     const gltf = await loader.loadAsync(glbPath)
     this.model = gltf.scene
@@ -226,17 +241,32 @@ export class KongGorak {
     // ============================================================
     this.mixer = new THREE.AnimationMixer(this.model)
 
+    // 1. Registra clips pelo nome original
     gltf.animations.forEach((clip) => {
-      const key = clip.name.toLowerCase().replace(/\s+/g, '_')
-      this.clips[key] = clip
+      const rawKey = clip.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      this.clips[rawKey] = clip
       const action = this.mixer!.clipAction(clip)
-      this.actions[key] = action
+      this.actions[rawKey] = action
+    })
 
-      // Loops contínuos
-      if (['idle', 'standing_relax', 'walk', 'hold_ball'].includes(key)) {
+    // 2. Mapeia aliases esperados pelo sistema do jogo
+    for (const [standardName, aliases] of Object.entries(CLIP_ALIASES)) {
+      if (this.actions[standardName]) continue
+      for (const alias of aliases) {
+        const found = Object.keys(this.actions).find((k) => k === alias || k.includes(alias))
+        if (found) {
+          this.clips[standardName] = this.clips[found]
+          this.actions[standardName] = this.actions[found]
+          break
+        }
+      }
+    }
+
+    // Configuração de loop para cada ação
+    Object.entries(this.actions).forEach(([key, action]) => {
+      if (['idle', 'standing_relax', 'walk', 'hold_ball', 'walk_monster'].includes(key)) {
         action.setLoop(THREE.LoopRepeat, Infinity)
       } else {
-        // Clips de ação: disparo único com retenção do último frame
         action.setLoop(THREE.LoopOnce, 1)
         action.clampWhenFinished = true
       }
@@ -269,7 +299,7 @@ export class KongGorak {
 
     const findExact = (...terms: string[]): THREE.Bone | undefined => {
       for (const t of terms) {
-        const found = all.find((b) => b.name.toLowerCase() === t.toLowerCase())
+        const found = all.find((b) => b.name.toLowerCase() === t.toLowerCase() || b.name.toLowerCase() === `mixamorig:${t.toLowerCase()}`)
         if (found) return found
       }
       for (const t of terms) {
@@ -284,10 +314,10 @@ export class KongGorak {
     }
 
     const pelvis = findExact('Pelvis', 'Hips', 'Waist')
-    const leftHand = findExact('L_Hand', 'LeftHand')
-    const rightHand = findExact('R_Hand', 'RightHand')
-    const leftFoot = findExact('L_Foot', 'LeftFoot')
-    const rightFoot = findExact('R_Foot', 'RightFoot')
+    const leftHand = findExact('L_Hand', 'LeftHand', 'mixamorig:LeftHand')
+    const rightHand = findExact('R_Hand', 'RightHand', 'mixamorig:RightHand')
+    const leftFoot = findExact('L_Foot', 'LeftFoot', 'mixamorig:LeftFoot')
+    const rightFoot = findExact('R_Foot', 'RightFoot', 'mixamorig:RightFoot')
 
     let hitboxLHand = findExact('Hitbox_L_Hand')
     if (!hitboxLHand && leftHand) {
@@ -345,24 +375,24 @@ export class KongGorak {
 
     return {
       all,
-      root: findExact('Root'),
-      hips: findExact('Hips') || pelvis,
+      root: findExact('Root', 'mixamorig:Hips'),
+      hips: findExact('Hips', 'mixamorig:Hips') || pelvis,
       pelvis,
-      spine01: findExact('Spine01', 'Spine'),
-      spine02: findExact('Spine02'),
-      neck: findExact('Neck'),
-      head: findExact('Head'),
-      jaw: findExact('Jaw'),
-      leftUpperArm: findExact('L_Upperarm', 'L_UpperArm', 'LeftUpperArm'),
-      rightUpperArm: findExact('R_Upperarm', 'R_UpperArm', 'RightUpperArm'),
-      leftForearm: findExact('L_Forearm', 'LeftForearm'),
-      rightForearm: findExact('R_Forearm', 'RightForearm'),
+      spine01: findExact('Spine01', 'Spine', 'mixamorig:Spine'),
+      spine02: findExact('Spine02', 'mixamorig:Spine1', 'mixamorig:Spine2'),
+      neck: findExact('Neck', 'mixamorig:Neck'),
+      head: findExact('Head', 'mixamorig:Head'),
+      jaw: findExact('Jaw', 'mixamorig:Jaw'),
+      leftUpperArm: findExact('L_Upperarm', 'L_UpperArm', 'LeftUpperArm', 'mixamorig:LeftArm'),
+      rightUpperArm: findExact('R_Upperarm', 'R_UpperArm', 'RightUpperArm', 'mixamorig:RightArm'),
+      leftForearm: findExact('L_Forearm', 'LeftForearm', 'mixamorig:LeftForeArm'),
+      rightForearm: findExact('R_Forearm', 'RightForearm', 'mixamorig:RightForeArm'),
       leftHand,
       rightHand,
-      leftThigh: findExact('L_Thigh', 'LeftThigh'),
-      rightThigh: findExact('R_Thigh', 'RightThigh'),
-      leftShin: findExact('L_Calf', 'LeftCalf', 'LeftShin'),
-      rightShin: findExact('R_Calf', 'RightCalf', 'RightShin'),
+      leftThigh: findExact('L_Thigh', 'LeftThigh', 'mixamorig:LeftUpLeg'),
+      rightThigh: findExact('R_Thigh', 'RightThigh', 'mixamorig:RightUpLeg'),
+      leftShin: findExact('L_Calf', 'LeftCalf', 'LeftShin', 'mixamorig:LeftLeg'),
+      rightShin: findExact('R_Calf', 'RightCalf', 'RightShin', 'mixamorig:RightLeg'),
       leftFoot,
       rightFoot,
       hitboxLHand,
@@ -483,6 +513,24 @@ export class KongGorak {
     // 1. Atualização única do AnimationMixer
     if (this.mixer) {
       this.mixer.update(safeDt)
+    }
+
+    // Olhar dinâmico para a bola ou carro mais próximo com a cabeça/pescoço
+    if (this._bones.neck || this._bones.head) {
+      const bPos = this.getBallPosition()
+      if (bPos && this.state !== 'BUTT_SLAM') {
+        const lookTarget = bPos.clone()
+        const bone = this._bones.head || this._bones.neck
+        if (bone) {
+          const boneWorld = new THREE.Vector3()
+          bone.getWorldPosition(boneWorld)
+          const dir = lookTarget.sub(boneWorld).normalize()
+          if (dir.y < 0) {
+            // Inclina para baixo suavemente
+            bone.rotation.x = THREE.MathUtils.lerp(bone.rotation.x, -0.35, safeDt * 4.0)
+          }
+        }
+      }
     }
 
     // 2. Sincronização limpa das matrizes mundiais (sem rotações procedurais arbitrárias)
