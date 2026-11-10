@@ -168,19 +168,21 @@ window.addEventListener('gamepadconnected', (e) => {
 })
 
 // ── MENU PRINCIPAL ───────────────────────────────────────────
-document.getElementById('btn-vs-bot')!.addEventListener('click', () => {
+document.getElementById('btn-vs-bot')?.addEventListener('click', () => {
   gameMode = 'bot'
-  document.getElementById('select-mode-title')!.textContent = 'BEATBALL VS BOT IA'
+  const title = document.getElementById('select-mode-title')
+  if (title) title.textContent = 'BEATBALL VS BOT IA'
   const diffRow = document.querySelector('.diff-row') as HTMLElement
-  diffRow.style.display = 'flex'
+  if (diffRow) diffRow.style.display = 'flex'
   showScreen('select')
 })
 
-document.getElementById('btn-local-2p')!.addEventListener('click', () => {
+document.getElementById('btn-local-2p')?.addEventListener('click', () => {
   gameMode = '2p'
-  document.getElementById('select-mode-title')!.textContent = 'BEATBALL 2 JOGADORES'
+  const title = document.getElementById('select-mode-title')
+  if (title) title.textContent = 'BEATBALL 2 JOGADORES'
   const diffRow = document.querySelector('.diff-row') as HTMLElement
-  diffRow.style.display = 'none'
+  if (diffRow) diffRow.style.display = 'none'
   showScreen('select')
 })
 
