@@ -286,6 +286,21 @@ export class KongGorak {
     this._playAction('walk', true)
 
     this.rootGroup.add(this.model)
+
+    // ── RIM LIGHT: luz de contorno dedicada que destaca musculatura e armadura ──
+    // Posicionada atrás e acima do Gorak, apontando para frente — simula key light de estúdio
+    const rimLight = new THREE.PointLight(0xfff4cc, 4.5, 38)
+    rimLight.position.set(0, 14, -9) // atrás e acima
+    rimLight.castShadow = false       // sem custo de shadow map extra
+    rimLight.name = 'gorakRimLight'
+    this.rootGroup.add(rimLight)
+
+    // Luz de preenchimento lateral (fill light) — realça detalhes laterais sem achatar
+    const fillLight = new THREE.PointLight(0xd0e8ff, 1.8, 28)
+    fillLight.position.set(5, 8, 2)
+    fillLight.castShadow = false
+    fillLight.name = 'gorakFillLight'
+    this.rootGroup.add(fillLight)
   }
 
   private _findBones(root: THREE.Object3D): BoneMap {
@@ -596,14 +611,19 @@ export class KongGorak {
         const cPos = this.getCarPosition(car)
         if (!cPos) continue
         if (kongBox.containsPoint(cPos) || kongBox.distanceToPoint(cPos) < 2.0) {
-          // O carro bate no corpo sólido do Gorak: perde velocidade e é empurrado suavemente, SEM explosões
+          // O carro bate no corpo sólido do Gorak como numa parede de concreto:
+          // 1) Zera a componente de velocidade em direção ao Gorak (bloqueia avanço)
+          // 2) Empurra lateralmente para fora (bounce físico)
           const pushDir = cPos.clone().sub(this.rootGroup.position)
-          pushDir.y = 0.1
+          pushDir.y = 0
           pushDir.normalize()
           if (typeof car.velX !== 'undefined') {
-            car.velX = pushDir.x * 12
-            car.velZ = pushDir.z * 12
-            car.velY = Math.min(car.velY, 2)
+            // Calcula velocidade atual na direção do Gorak (componente "entrando")
+            const curSpd = Math.sqrt(car.velX * car.velX + car.velZ * car.velZ)
+            // Zera a velocidade frontal (impede atravessar) — mantém só 20% residual lateral
+            car.velX = pushDir.x * Math.min(curSpd * 0.20, 18)
+            car.velZ = pushDir.z * Math.min(curSpd * 0.20, 18)
+            car.velY = Math.min(car.velY, 1.5)
           }
         }
       }

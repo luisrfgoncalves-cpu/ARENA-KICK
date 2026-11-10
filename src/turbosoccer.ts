@@ -857,19 +857,43 @@ export class TurboSoccerGame {
         this.setTrainingMode(true)
       }
 
-      // Carrega modelos 3D reais (GLB) para todos os carros — baseado no pool dos 5 Titãs
+      // Carrega modelos 3D reais (GLB) para todos os carros — pool dos 5 Titãs embaralhado
       const botModelPool = ['volt-striker', 'titan-shift', 'nova-forge', 'guincho-tody', 'van-gost']
+
+      // Embaralha Fisher-Yates — garante variedade aleatória sem repetição adjacente
+      const shufflePool = (arr: string[]): string[] => {
+        const a = [...arr]
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]]
+        }
+        return a
+      }
+
+      // Pool separado por time para garantir que aliados e rivais não repitam entre si
+      const allyPool  = shufflePool(botModelPool)
+      const rivalPool = shufflePool(botModelPool)
+      // Remove modelo do jogador de ambos os pools (bots não repetem o carro do player)
+      const removePlayerCar = (pool: string[]) => {
+        const idx = pool.indexOf(this.selectedCarModelId)
+        if (idx !== -1) pool.splice(idx, 1)
+        return pool
+      }
+      removePlayerCar(allyPool)
+      removePlayerCar(rivalPool)
+
       const loadPromises: Promise<any>[] = []
 
       loadPromises.push(this.playerCar.loadModel(this.selectedCarModelId))
       for (let i = 1; i < this.orangeCars.length; i++) {
-        const allyModel = botModelPool[(i - 1) % botModelPool.length]
+        const allyModel = allyPool[(i - 1) % allyPool.length]
         loadPromises.push(this.orangeCars[i].loadModel(allyModel))
       }
-      const primaryBotModel = this.selectedCarModelId === 'volt-striker' ? 'titan-shift' : 'volt-striker'
+      // Bot principal do time azul: evita repetir o carro do player e o primeiro aliado
+      const primaryBotModel = rivalPool[0] || (this.selectedCarModelId === 'volt-striker' ? 'titan-shift' : 'volt-striker')
       loadPromises.push(this.botCar.loadModel(primaryBotModel))
       for (let i = 1; i < this.blueCars.length; i++) {
-        const botModel = botModelPool[(i + 1) % botModelPool.length]
+        const botModel = rivalPool[i % rivalPool.length] || botModelPool[i % botModelPool.length]
         loadPromises.push(this.blueCars[i].loadModel(botModel))
       }
       void Promise.allSettled(loadPromises)
