@@ -98,7 +98,7 @@ export type TurboBotLevel = 'easy' | 'medium' | 'hard' | 'expert'
 export type TurboMatchFormat = '1v1' | '2v2' | '3v3' | '4v4'
 export type GoalExplosionType = 'toon' | 'supernova' | 'lightning' | 'confetti'
 export type TurboGameMode = 'standard' | 'rumble' | 'snowday'
-export type RumblePowerup = 'magnet' | 'shockwave' | 'punch' | 'overdrive' | 'missile' | 'freeze' | 'oil'
+export type RumblePowerup = 'magnet' | 'shockwave' | 'punch' | 'overdrive' | 'missile' | 'freeze' | 'oil' | 'titan_trap'
 
 export interface TurboTuning {
   playerSpeedMult?: number
@@ -178,6 +178,15 @@ export class TurboSoccerGame {
     vel: THREE.Vector3
     owner: CarObject
     target: CarObject | null
+    lifetime: number
+  }[] = []
+
+  private activeTitanTraps: {
+    group: THREE.Group
+    pos: THREE.Vector3
+    vel: THREE.Vector3
+    owner: CarObject
+    targetGorak: any
     lifetime: number
   }[] = []
 
@@ -583,10 +592,10 @@ export class TurboSoccerGame {
       this.buildCartoonArena()
       this.buildObstacles3D()
       this.buildBoostCoins()
-      // ARENA POWER-KICK (ou modo Rumble): Caixas surpresa e Launch Pads na arena!
-      if (this.theme === 'classic' || this.gameMode === 'rumble') {
+      // ARENA POWER-KICK (ou modo Rumble) OU ARENA GORAK: Spawna caixas de poder
+      if (this.theme === 'classic' || this.gameMode === 'rumble' || this.theme === 'kong') {
         this.buildMysteryBoxes()
-        this.buildLaunchPads()
+        if (this.theme !== 'kong') this.buildLaunchPads()
       }
       this.buildMagnetArc()
       this.buildGoals()
@@ -3764,7 +3773,30 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       [-14, 0, 12], [14, 0, 12], [0, -22, 12], [0, 22, 12]
     ]
 
-    for (const [x, z, val] of padPositions) {
+    // Na Arena Gorak: reduz as moedas pequenas pela metade para equilibrar o mapa
+    const isKong = this.theme === 'kong'
+    const filteredPads = isKong
+      ? padPositions.filter(([x, z, val]) => val >= 100 || (Math.abs(x) + Math.abs(z)) % 2 === 0)
+      : padPositions
+
+    // Textura de feixe de luz vertical em degradê suave (Glow Beam)
+    const createBeamTexture = (isLarge: boolean) => {
+      const c = document.createElement('canvas')
+      c.width = 128
+      c.height = 256
+      const ctx = c.getContext('2d')!
+      const grad = ctx.createLinearGradient(0, 256, 0, 0)
+      grad.addColorStop(0, isLarge ? 'rgba(255, 170, 0, 0.75)' : 'rgba(0, 207, 255, 0.75)')
+      grad.addColorStop(0.35, isLarge ? 'rgba(255, 200, 50, 0.35)' : 'rgba(100, 230, 255, 0.35)')
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, 128, 256)
+      return new THREE.CanvasTexture(c)
+    }
+    const largeBeamTex = createBeamTexture(true)
+    const smallBeamTex = createBeamTexture(false)
+
+    for (const [x, z, val] of filteredPads) {
       const isLarge = val >= 100
       const g = new THREE.Group()
       g.position.set(x, 0, z)
@@ -3799,19 +3831,33 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       const coinOutlineMesh = new THREE.Mesh(coinOutlineGeo, coinOutlineMat)
       coinMesh.add(coinOutlineMesh)
 
-      // Base luminosa no chão
+      // ── CÍRCULO E FEIXE DE LUZ REAL (Estilo eSports / Rocket League) ──
+      // Anel no chão com gradiente luminoso
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(radius * 0.8, radius * 1.35, 32),
+        new THREE.RingGeometry(radius * 0.75, radius * 1.6, 32),
         new THREE.MeshBasicMaterial({
-          color: isLarge ? 0xffaa00 : 0x00cfff,
+          color: isLarge ? 0xffb703 : 0x00f0ff,
           transparent: true,
-          opacity: 0.55,
+          opacity: 0.65,
           side: THREE.DoubleSide
         })
       )
       ring.rotation.x = -Math.PI / 2
-      ring.position.y = 0.04
+      ring.position.y = 0.05
       g.add(ring)
+
+      // Cilindro vertical de feixe de luz suave ascendente
+      const beamGeo = new THREE.CylinderGeometry(radius * 1.1, radius * 1.3, 3.2, 24, 1, true)
+      const beamMat = new THREE.MeshBasicMaterial({
+        map: isLarge ? largeBeamTex : smallBeamTex,
+        transparent: true,
+        opacity: 0.60,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+      const beamMesh = new THREE.Mesh(beamGeo, beamMat)
+      beamMesh.position.y = 1.6
+      g.add(beamMesh)
 
       // Sombra cartoon no chão
       const shadow = new THREE.Mesh(
@@ -3823,8 +3869,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       g.add(shadow)
 
       // Luz cartoon
-      const light = new THREE.PointLight(isLarge ? 0xffaa00 : 0x00cfff, isLarge ? 1.5 : 0.8, isLarge ? 8 : 4.5)
-      light.position.y = 1.0
+      const light = new THREE.PointLight(isLarge ? 0xffaa00 : 0x00cfff, isLarge ? 1.8 : 1.1, isLarge ? 9 : 5.5)
+      light.position.y = 1.2
       g.add(light)
 
       this.scene.add(g)
@@ -3922,7 +3968,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
     })
 
     // Spawns de caixas estratégicos separados de moedas e launch pads (distância mínima > 22 metros)
-    const spawns = [
+    let spawns = [
       { x: -38, z: 0 },
       { x:  38, z: 0 },
       { x: -48, z:  80 },
@@ -3936,6 +3982,46 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       { x: -72, z: -38 },
       { x:  72, z: -38 }
     ]
+
+    // Na Arena Gorak: quantidade cirúrgica por nível de dificuldade
+    // Fácil = 3 pods (1 meio de campo + 1 em cada área)
+    // Médio = 4 pods (1 meio de campo + 3 cantos)
+    // Difícil = 5 pods
+    // Campeão = 6 pods
+    if (this.theme === 'kong') {
+      if (this.botLevel === 'easy') {
+        spawns = [
+          { x: 0, z: 0 },    // meio de campo
+          { x: 0, z: 72 },   // perto da área sul
+          { x: 0, z: -72 }   // perto da área norte
+        ]
+      } else if (this.botLevel === 'medium') {
+        spawns = [
+          { x: 0, z: 0 },    // meio de campo
+          { x: -50, z: 65 }, // canto 1
+          { x:  50, z: 65 }, // canto 2
+          { x: -50, z: -65 } // canto 3
+        ]
+      } else if (this.botLevel === 'hard') {
+        spawns = [
+          { x: 0, z: 0 },
+          { x: -48, z:  70 },
+          { x:  48, z:  70 },
+          { x: -48, z: -70 },
+          { x:  48, z: -70 }
+        ]
+      } else {
+        // expert / campeão (6 pods)
+        spawns = [
+          { x: -35, z: 0 },
+          { x:  35, z: 0 },
+          { x: -50, z:  70 },
+          { x:  50, z:  70 },
+          { x: -50, z: -70 },
+          { x:  50, z: -70 }
+        ]
+      }
+    }
 
     for (const sp of spawns) {
       const g = new THREE.Group()
@@ -3978,8 +4064,11 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
   private updateMysteryBoxes(dt: number) {
     const time = Date.now() * 0.003
-    // Pool balanceada com mais caixas de míssil teleguiado cartoon
-    const pool: RumblePowerup[] = ['missile', 'missile', 'freeze', 'oil', 'magnet', 'shockwave', 'punch', 'overdrive']
+    // Na Arena Gorak: o único poder coletável é a REDE TITÂNICA (titan_trap) para prender o Gorak!
+    // No modo Rumble clássico: pool normal com todos os poderes contra adversários.
+    const pool: RumblePowerup[] = this.theme === 'kong'
+      ? ['titan_trap']
+      : ['missile', 'missile', 'freeze', 'oil', 'magnet', 'shockwave', 'punch', 'overdrive']
 
     for (let i = 0; i < this.mysteryBoxes.length; i++) {
       const mb = this.mysteryBoxes[i]
@@ -4015,7 +4104,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
                 magnet: '🧲 ÍMÃ DA BOLA!',
                 shockwave: '💨 ONDA DE CHOQUE!',
                 punch: '🥊 SUPER SOCO!',
-                overdrive: '⚡ NITRO OVERDRIVE!'
+                overdrive: '⚡ NITRO OVERDRIVE!',
+                titan_trap: '🕸️ REDE DE ENERGIA!'
               }
               const label = itemNames[awarded] || '📦 ITEM OBTIDO!'
               // Inicia a Roleta de poderes no HUD (0.75s de suspense antes de revelar)
@@ -4127,6 +4217,17 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           <path d="M22 46 C 18 36, 26 24, 32 20 C 38 24, 46 36, 42 46 C 36 52, 28 52, 22 46 Z" fill="#00cfff" stroke="#0f172a" stroke-width="2.5"/>
           <path d="M26 44 C 24 38, 28 30, 32 26 C 36 30, 40 38, 38 44 Z" fill="#ffffff"/>
           <polygon points="34,8 20,32 30,32 26,56 46,26 34,26" fill="#facc15" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>`
+
+      case 'titan_trap':
+        return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" fill="#0284c7" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="32" cy="32" r="28" fill="#38bdf8" opacity="0.4"/>
+          <!-- Rede / Teia Elétrica Titânica -->
+          <path d="M12 18 L52 18 M12 32 L52 32 M12 46 L52 46" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M18 12 L18 52 M32 12 L32 52 M46 12 L46 52" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="32" cy="32" r="14" fill="#00f0ff" opacity="0.3" stroke="#facc15" stroke-width="2" stroke-dasharray="3,3"/>
+          <polygon points="32,20 34,28 42,28 36,33 38,41 32,36 26,41 28,33 22,28 30,28" fill="#facc15" stroke="#0f172a" stroke-width="1.5"/>
         </svg>`
     }
   }
@@ -4727,6 +4828,111 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         this.scene.remove(p.group)
         this.activePunches.splice(i, 1)
       }
+    }
+
+    // 5. REDES TITÂNICAS (TITAN TRAP PROJECTILE)
+    for (let i = this.activeTitanTraps.length - 1; i >= 0; i--) {
+      const trap = this.activeTitanTraps[i]
+      trap.lifetime -= dt
+
+      if (trap.targetGorak && trap.targetGorak.rootGroup) {
+        const toTarget = trap.targetGorak.rootGroup.position.clone().add(new THREE.Vector3(0, 7.5, 0)).sub(trap.pos)
+        toTarget.normalize()
+        trap.vel.lerp(toTarget.multiplyScalar(72), dt * 6.0)
+      }
+
+      trap.pos.addScaledVector(trap.vel, dt)
+      trap.group.position.copy(trap.pos)
+      trap.group.rotation.x += dt * 8
+      trap.group.rotation.y += dt * 10
+
+      // Efeito de partículas elétricas
+      if (Math.random() < 0.45) {
+        this.emitCartoonStarBurst(trap.pos, 3, 0x00f0ff)
+      }
+
+      let hit = false
+      if (trap.targetGorak && trap.targetGorak.rootGroup) {
+        const gPos = trap.targetGorak.rootGroup.position
+        const dist = trap.pos.distanceTo(gPos)
+        if (dist < 8.5) {
+          hit = true
+          // PARALISA O GORAK POR 3.5 SEGUNDOS COM REDE DE CHOQUE!
+          trap.targetGorak.applyTrap(3.5)
+          this.audio.synthesizeBoom(140, 0.5, 0.8)
+          this.triggerCameraShake(1.4)
+          this.triggerImpactFlash(gPos)
+          this.emitCartoonStarBurst(gPos.clone().add(new THREE.Vector3(0, 8, 0)), 36, 0x00f0ff)
+          this.emitCartoonStarBurst(gPos.clone().add(new THREE.Vector3(0, 8, 0)), 20, 0xfacc15)
+          this.showQuickChat('⚡ GORAK PRESO NA REDE!')
+        }
+      }
+
+      if (hit || trap.lifetime <= 0) {
+        this.scene.remove(trap.group)
+        this.activeTitanTraps.splice(i, 1)
+      }
+    }
+  }
+
+  /** Dispara a Rede Elétrica Titânica contra o Gorak na linha de mira */
+  public fireTitanTrap(owner: CarObject) {
+    if (this.kongGoraks.length === 0) return
+
+    // Encontra o Gorak mais próximo da linha de mira do carro (ou mais próximo em distância)
+    let bestGorak = this.kongGoraks[0]
+    let minD = 9999
+    const carFwd = new THREE.Vector3(Math.sin(owner.yaw), 0, Math.cos(owner.yaw)).normalize()
+
+    for (const g of this.kongGoraks) {
+      const gPos = g.rootGroup.position
+      const toG = gPos.clone().sub(owner.pos)
+      const d = toG.length()
+      // Prioriza alinhamento frontal
+      const dot = carFwd.dot(toG.normalize())
+      const score = d - (dot > 0.4 ? 40 : 0) // bônus de alinhamento
+      if (score < minD) {
+        minD = score
+        bestGorak = g
+      }
+    }
+
+    const tGroup = new THREE.Group()
+    // Esfera central de plasma elétrico
+    const orb = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(1.6, 1),
+      new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true })
+    )
+    tGroup.add(orb)
+    // Anel de contenção elétrico
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.4, 0.25, 12, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffd23f })
+    )
+    tGroup.add(ring)
+    const pLight = new THREE.PointLight(0x00f0ff, 2.5, 16)
+    tGroup.add(pLight)
+
+    const spawnPos = owner.pos.clone().add(new THREE.Vector3(Math.sin(owner.yaw) * 4.5, 1.8, Math.cos(owner.yaw) * 4.5))
+    tGroup.position.copy(spawnPos)
+    this.scene.add(tGroup)
+
+    const fwd = carFwd.clone().multiplyScalar(68)
+    this.activeTitanTraps.push({
+      group: tGroup,
+      pos: spawnPos,
+      vel: fwd,
+      owner,
+      targetGorak: bestGorak,
+      lifetime: 4.0
+    })
+
+    this.audio.playPowerHit()
+    this.audio.playDash()
+    if (owner === this.playerCar) {
+      this.showQuickChat('🕸️ DISPAROU REDE TITÂNICA!')
+    } else {
+      this.showQuickChat('🤖 BOT DISPAROU REDE NO GORAK!')
     }
   }
 
@@ -5815,7 +6021,12 @@ private resolveCarCarCollision() {
 
       const distGoalOpponent = Math.abs(predZ - opponentGoalZ)
 
-      if (botState.powerup === 'punch') {
+      if (botState.powerup === 'titan_trap') {
+        // Rede Titânica: bot usa se algum Gorak estiver a menos de 80m e não estiver preso
+        if (this.kongGoraks.some(g => g.trapTimer <= 0 && bc.pos.distanceTo(g.rootGroup.position) < 80)) {
+          this.activateBotRumble(bc, botState)
+        }
+      } else if (botState.powerup === 'punch') {
         // Super Soco: aciona se estiver perto da bola para mandar um canhão a gol, ou para desarmar
         if (distBall < 18 || (distBall < 35 && distGoalOpponent < 65)) {
           this.activateBotRumble(bc, botState)
@@ -6778,6 +6989,12 @@ private resolveCarCarCollision() {
     const p = this.rumblePowerup
     this.rumblePowerup = null
 
+    if (p === 'titan_trap') {
+      this.fireTitanTrap(this.playerCar)
+      this.updateRumbleHUD()
+      return
+    }
+
     if (p === 'missile') {
       this.firePlayerMissile()
       this.updateRumbleHUD()
@@ -6836,6 +7053,11 @@ private resolveCarCarCollision() {
         minD = d
         bestTarget = r
       }
+    }
+
+    if (p === 'titan_trap') {
+      this.fireTitanTrap(bot)
+      return
     }
 
     if (p === 'missile') {
@@ -7136,7 +7358,8 @@ private resolveCarCarCollision() {
         overdrive: 'OVERDRIVE!',
         missile: 'MÍSSIL!',
         freeze: 'CONGELANDO!',
-        oil: 'ÓLEO!'
+        oil: 'ÓLEO!',
+        titan_trap: 'REDE TITÂNICA!'
       }
       this.hudRumbleIcon.innerHTML = this.getCartoonPowerupSVG(this.rumbleActive.type, 38)
       this.hudRumbleName.textContent = `${names[this.rumbleActive.type]} (${this.rumbleActive.timeLeft.toFixed(1)}s)`
@@ -7158,7 +7381,8 @@ private resolveCarCarCollision() {
         overdrive: 'SUPER NITRO',
         missile: 'MÍSSIL TELEGUIDADO',
         freeze: 'RAIO DE GELO',
-        oil: 'MANCHA DE ÓLEO'
+        oil: 'MANCHA DE ÓLEO',
+        titan_trap: 'REDE DE ENERGIA'
       }
       this.hudRumbleIcon.innerHTML = this.getCartoonPowerupSVG(this.rumblePowerup, 40)
       this.hudRumbleName.textContent = names[this.rumblePowerup]

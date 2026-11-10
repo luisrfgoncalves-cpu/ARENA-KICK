@@ -135,6 +135,10 @@ export class KongGorak {
   // Collider de corpo periódico
   private _bodyColliderFrame = 0
 
+  // Estado de aprisionamento por Rede / Teia Elétrica
+  public trapTimer = 0
+  private _trapEffectMesh: THREE.Mesh | null = null
+
   private scene: THREE.Scene
   private ball: any
   private getCars: () => any[]
@@ -213,9 +217,12 @@ export class KongGorak {
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
           mats.forEach((m: any) => {
             if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
-            if (typeof m.roughness === 'number') m.roughness = 0.65 // Menos reflexo fosco, mais definição muscular
-            if (typeof m.metalness === 'number') m.metalness = 0.20 // Realce na armadura de bronze
-            if (m.emissive) m.emissive.setHex(this.emissiveTint) // Tonalidade mística nobre individual por titã sem alterar a textura PBR!
+            if (typeof m.roughness === 'number') m.roughness = 0.38 // Brilho de relevo muscular vívido e nítido
+            if (typeof m.metalness === 'number') m.metalness = 0.45 // Relevo e reflexo metálico brilhante na armadura
+            if (m.emissive) {
+              m.emissive.setHex(this.emissiveTint)
+              m.emissiveIntensity = 0.55 // Brilho sutil e rico que ilumina o corpo sem ofuscar
+            }
           })
         }
       }
@@ -291,17 +298,24 @@ export class KongGorak {
 
     this.rootGroup.add(this.model)
 
-    // ── RIM LIGHT: luz de contorno dedicada que destaca musculatura e armadura ──
-    // Posicionada atrás e acima do Gorak, apontando para frente — simula key light de estúdio
-    const rimLight = new THREE.PointLight(0xfff4cc, 4.5, 38)
-    rimLight.position.set(0, 14, -9) // atrás e acima
-    rimLight.castShadow = false       // sem custo de shadow map extra
+    // ── ILUMINAÇÃO DE DESTAQUE TITÂNICA (Key Light frontal + Rim Light traseira + Fill lateral) ──
+    // 1. Key light frontal alta: ilumina peito, braços e rosto realçando relevos e músculos em HD
+    const keyLight = new THREE.DirectionalLight(0xfff8ee, 2.8)
+    keyLight.position.set(0, 18, 14)
+    keyLight.target = this.model
+    keyLight.name = 'gorakKeyLight'
+    this.rootGroup.add(keyLight)
+
+    // 2. Rim Light: luz de contorno dourada/branca que destaca a silhueta 3D
+    const rimLight = new THREE.PointLight(0xfff6dd, 6.0, 48)
+    rimLight.position.set(0, 16, -11) // atrás e acima
+    rimLight.castShadow = false
     rimLight.name = 'gorakRimLight'
     this.rootGroup.add(rimLight)
 
-    // Luz de preenchimento lateral (fill light) — realça detalhes laterais sem achatar
-    const fillLight = new THREE.PointLight(0xd0e8ff, 1.8, 28)
-    fillLight.position.set(5, 8, 2)
+    // 3. Fill Light lateral: preenchimento lateral sutil
+    const fillLight = new THREE.PointLight(0xdbeafe, 2.5, 36)
+    fillLight.position.set(7, 10, 3)
     fillLight.castShadow = false
     fillLight.name = 'gorakFillLight'
     this.rootGroup.add(fillLight)
@@ -515,6 +529,38 @@ export class KongGorak {
     this.rootGroup.rotation.y += diff * Math.min(1, dt * 5.0)
   }
 
+  public applyTrap(duration = 3.5) {
+    this.trapTimer = duration
+    // Solta a bola caso esteja segurando
+    if (this._heldBall) {
+      this._releaseBallWithArc()
+    }
+    this._playAction('idle', true)
+    if (!this._trapEffectMesh) {
+      // Efeito 3D visual de rede/gaiola elétrica holográfica ao redor do Gorak
+      const trapGeo = new THREE.CylinderGeometry(5.2, 5.6, 16.0, 16, 8, true)
+      const trapMat = new THREE.MeshBasicMaterial({
+        color: 0x00f0ff,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.85
+      })
+      this._trapEffectMesh = new THREE.Mesh(trapGeo, trapMat)
+      this._trapEffectMesh.position.y = 8.0
+      this.rootGroup.add(this._trapEffectMesh)
+    }
+  }
+
+  public removeTrap() {
+    this.trapTimer = 0
+    if (this._trapEffectMesh) {
+      this.rootGroup.remove(this._trapEffectMesh)
+      this._trapEffectMesh.geometry.dispose()
+      ;(this._trapEffectMesh.material as THREE.Material).dispose()
+      this._trapEffectMesh = null
+    }
+  }
+
   // ============================================================
   // LOOP PRINCIPAL DE ATUALIZAÇÃO
   // ============================================================
@@ -522,6 +568,22 @@ export class KongGorak {
     if (!this.model) return
 
     const safeDt = Math.min(dt, 0.05)
+
+    // Se estiver preso na rede de energia:
+    if (this.trapTimer > 0) {
+      this.trapTimer -= safeDt
+      if (this._trapEffectMesh) {
+        this._trapEffectMesh.rotation.y += 4.5 * safeDt
+        ;(this._trapEffectMesh.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(Date.now() * 0.015) * 0.4
+      }
+      if (this.mixer) this.mixer.update(safeDt * 0.2) // animação em câmera lenta se debatendo
+      if (this.trapTimer <= 0) {
+        this.removeTrap()
+        this._start('RAGE') // Ruge furioso ao se libertar!
+      }
+      return
+    }
+
     this.stateTime += safeDt
     this.actionCooldown = Math.max(0, this.actionCooldown - safeDt)
     this.slamTimer = Math.max(0, this.slamTimer - safeDt)
