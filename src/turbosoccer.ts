@@ -551,8 +551,8 @@ export class TurboSoccerGame {
         })
         this.composer.addPass(new RenderPass(this.scene, this.camera))
         const bloom = new BloomEffect({
-          intensity: 0.82,
-          luminanceThreshold: 0.70,
+          intensity: 0.35, // Reduzido de 0.82 para 0.35 para eliminar ofuscamento e névoa branca
+          luminanceThreshold: 0.88, // Apenas neons intensos brilham, o gramado e os modelos ficam 100% nítidos e limpos
           mipmapBlur: true
         })
         const vignette = new VignetteEffect({
@@ -793,7 +793,8 @@ export class TurboSoccerGame {
           },
           step: (_pos?: THREE.Vector3) => {
             this.audio.synthesizeBoom(38, 0.14, 0.22)
-            this.triggerCameraShake(0.08)
+            // Apenas leve tremor visual sem disparar motor háptico contínuo do controle
+            this.camShakeIntensity = Math.min(1.2, this.camShakeIntensity + 0.06)
           },
           rage: (_k: number) => {
             this.audio.synthesizeBoom(75, 1.1, 1.8)
@@ -3868,8 +3869,8 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       shadow.position.y = 0.03
       g.add(shadow)
 
-      // Luz cartoon
-      const light = new THREE.PointLight(isLarge ? 0xffaa00 : 0x00cfff, isLarge ? 1.8 : 1.1, isLarge ? 9 : 5.5)
+      // Luz cartoon suave na moeda
+      const light = new THREE.PointLight(isLarge ? 0xffaa00 : 0x00cfff, isLarge ? 0.75 : 0.45, isLarge ? 5.5 : 3.5)
       light.position.y = 1.2
       g.add(light)
 
@@ -7684,6 +7685,7 @@ private resolveCarCarCollision() {
     window.removeEventListener('resize', this.onResize)
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
+    this.gamepad.stopVibration()
     this.gamepad.onBallCamToggle = undefined
     this.audio.stopAll()
     this.audio.destroy()

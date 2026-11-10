@@ -217,11 +217,11 @@ export class KongGorak {
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
           mats.forEach((m: any) => {
             if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
-            if (typeof m.roughness === 'number') m.roughness = 0.38 // Brilho de relevo muscular vívido e nítido
-            if (typeof m.metalness === 'number') m.metalness = 0.45 // Relevo e reflexo metálico brilhante na armadura
+            if (typeof m.roughness === 'number') m.roughness = 0.50
+            if (typeof m.metalness === 'number') m.metalness = 0.25
             if (m.emissive) {
               m.emissive.setHex(this.emissiveTint)
-              m.emissiveIntensity = 0.55 // Brilho sutil e rico que ilumina o corpo sem ofuscar
+              m.emissiveIntensity = 0.20 // Intensidade controlada para não estourar o pós-processamento de bloom
             }
           })
         }
@@ -298,27 +298,20 @@ export class KongGorak {
 
     this.rootGroup.add(this.model)
 
-    // ── ILUMINAÇÃO DE DESTAQUE TITÂNICA (Key Light frontal + Rim Light traseira + Fill lateral) ──
-    // 1. Key light frontal alta: ilumina peito, braços e rosto realçando relevos e músculos em HD
-    const keyLight = new THREE.DirectionalLight(0xfff8ee, 2.8)
-    keyLight.position.set(0, 18, 14)
+    // ── ILUMINAÇÃO DE DESTAQUE TITÂNICA BALANCEADA ──
+    // Ilumina apenas o modelo sem vazar no chão da arena nem estourar o bloom!
+    const keyLight = new THREE.DirectionalLight(0xfff5e6, 0.85)
+    keyLight.position.set(0, 16, 10)
     keyLight.target = this.model
     keyLight.name = 'gorakKeyLight'
     this.rootGroup.add(keyLight)
 
-    // 2. Rim Light: luz de contorno dourada/branca que destaca a silhueta 3D
-    const rimLight = new THREE.PointLight(0xfff6dd, 6.0, 48)
-    rimLight.position.set(0, 16, -11) // atrás e acima
+    // Rim Light traseira sutil que destaca o contorno sem queimar os pixels
+    const rimLight = new THREE.PointLight(0xfff6dd, 1.8, 22)
+    rimLight.position.set(0, 14, -8)
     rimLight.castShadow = false
     rimLight.name = 'gorakRimLight'
     this.rootGroup.add(rimLight)
-
-    // 3. Fill Light lateral: preenchimento lateral sutil
-    const fillLight = new THREE.PointLight(0xdbeafe, 2.5, 36)
-    fillLight.position.set(7, 10, 3)
-    fillLight.castShadow = false
-    fillLight.name = 'gorakFillLight'
-    this.rootGroup.add(fillLight)
   }
 
   private _findBones(root: THREE.Object3D): BoneMap {

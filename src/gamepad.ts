@@ -169,4 +169,22 @@ export class GamepadManager {
       } catch {}
     }
   }
+
+  stopVibration() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : []
+    const gp = this.gamepadIndex !== null ? gamepads[this.gamepadIndex] : null
+    if (gp && (gp as any).vibrationActuator) {
+      try {
+        (gp as any).vibrationActuator.reset?.()
+      } catch {}
+      try {
+        (gp as any).vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0,
+          duration: 10,
+          weakMagnitude: 0,
+          strongMagnitude: 0
+        })
+      } catch {}
+    }
+  }
 }
