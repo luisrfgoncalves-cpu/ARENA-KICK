@@ -142,6 +142,7 @@ export class KongGorak {
   private physics: KongPhysicsAdapter
   private camera: KongCameraAdapter
   private effects: KongEffectsAdapter
+  public emissiveTint: number = 0x221a14
 
   constructor({
     scene,
@@ -150,7 +151,8 @@ export class KongGorak {
     getObstacles,
     physics = {},
     camera = {},
-    effects = {}
+    effects = {},
+    emissiveTint = 0x221a14
   }: {
     scene: THREE.Scene
     ball: any
@@ -159,6 +161,7 @@ export class KongGorak {
     physics?: KongPhysicsAdapter
     camera?: KongCameraAdapter
     effects?: KongEffectsAdapter
+    emissiveTint?: number
   }) {
     this.scene = scene
     this.ball = ball
@@ -167,6 +170,7 @@ export class KongGorak {
     this.physics = physics
     this.camera = camera
     this.effects = effects
+    this.emissiveTint = emissiveTint
     this.rootGroup.name = 'KongGorakEntity'
   }
 
@@ -211,7 +215,7 @@ export class KongGorak {
             if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
             if (typeof m.roughness === 'number') m.roughness = 0.65 // Menos reflexo fosco, mais definição muscular
             if (typeof m.metalness === 'number') m.metalness = 0.20 // Realce na armadura de bronze
-            if (m.emissive) m.emissive.setHex(0x221a14) // Detalhes visíveis sob qualquer iluminação
+            if (m.emissive) m.emissive.setHex(this.emissiveTint) // Tonalidade mística nobre individual por titã sem alterar a textura PBR!
           })
         }
       }
@@ -600,39 +604,58 @@ export class KongGorak {
     this.rootGroup.position.x = Math.max(-107, Math.min(107, this.rootGroup.position.x))
     this.rootGroup.position.z = Math.max(-177, Math.min(177, this.rootGroup.position.z))
 
-    // 7. Collider de corpo sólido (bloqueia o carro sem spam de explosões)
+    // 7. Collider de corpo sólido — raio esférico fixo de 8m (funciona antes e após o GLB carregar)
     this._bodyColliderFrame = (this._bodyColliderFrame + 1) % 2
-    if (this._bodyColliderFrame === 0 && this.state !== 'GRAB_BALL' && this.state !== 'HOLD_BALL') {
-      const kongBox = new THREE.Box3().setFromObject(this.rootGroup)
-      kongBox.expandByScalar(0.4)
+    if (this._bodyColliderFrame === 0) {
+      // Força update de matriz do modelo para posições de bone corretas
+      if (this.model) this.model.updateMatrixWorld(true)
+
+      const kongPos = this.rootGroup.position
+      const BODY_R = 8.0 // raio sólido do corpo do Gorak
 
       const cars = this.getCars().filter(Boolean)
       for (const car of cars) {
         const cPos = this.getCarPosition(car)
         if (!cPos) continue
-        if (kongBox.containsPoint(cPos) || kongBox.distanceToPoint(cPos) < 2.0) {
-          // O carro bate no corpo sólido do Gorak como numa parede de concreto:
-          // 1) Zera a componente de velocidade em direção ao Gorak (bloqueia avanço)
-          // 2) Empurra lateralmente para fora (bounce físico)
-          const pushDir = cPos.clone().sub(this.rootGroup.position)
-          pushDir.y = 0
-          pushDir.normalize()
+        const dx = cPos.x - kongPos.x
+        const dz = cPos.z - kongPos.z
+        const dist2D = Math.sqrt(dx * dx + dz * dz)
+        if (dist2D < BODY_R) {
+          // Push físico real: empurra o carro para fora do raio
+          const pushX = dx / (dist2D || 1)
+          const pushZ = dz / (dist2D || 1)
+          // Zera a componente "entrando" e aplica push lateral forte
           if (typeof car.velX !== 'undefined') {
-            // Calcula velocidade atual na direção do Gorak (componente "entrando")
-            const curSpd = Math.sqrt(car.velX * car.velX + car.velZ * car.velZ)
-            // Zera a velocidade frontal (impede atravessar) — mantém só 20% residual lateral
-            car.velX = pushDir.x * Math.min(curSpd * 0.20, 18)
-            car.velZ = pushDir.z * Math.min(curSpd * 0.20, 18)
-            car.velY = Math.min(car.velY, 1.5)
+            const inward = car.velX * (-pushX) + car.velZ * (-pushZ) // componente em direção ao Gorak
+            if (inward > 0) {
+              // Remove a velocidade de entrada (carro para de avançar)
+              car.velX += pushX * inward
+              car.velZ += pushZ * inward
+            }
+            // Adiciona push suave para sair do raio
+            const overlap = BODY_R - dist2D
+            car.velX += pushX * overlap * 0.8
+            car.velZ += pushZ * overlap * 0.8
+            car.velY = Math.max(car.velY, 0)
+          } else if (car.vel) {
+            // Fallback para objetos com car.vel (Vector3)
+            const inward = car.vel.x * (-pushX) + car.vel.z * (-pushZ)
+            if (inward > 0) {
+              car.vel.x += pushX * inward
+              car.vel.z += pushZ * inward
+            }
+            const overlap = BODY_R - dist2D
+            car.vel.x += pushX * overlap * 0.8
+            car.vel.z += pushZ * overlap * 0.8
           }
         }
       }
 
       const ballPos = this.getBallPosition()
       if (ballPos && !this.ball?.userData?.kongHeld) {
-        const dist = kongBox.distanceToPoint(ballPos)
-        if (dist < 3.2) {
-          const pushDir = ballPos.clone().sub(this.rootGroup.position)
+        const dist = kongPos.distanceTo(ballPos)
+        if (dist < 6.5) {
+          const pushDir = ballPos.clone().sub(kongPos)
           pushDir.y = Math.max(pushDir.y, 0.25)
           pushDir.normalize().multiplyScalar(32)
           this.physics.applyImpulse?.(this.ball, pushDir)
@@ -642,9 +665,9 @@ export class KongGorak {
       const obstacles = this.getObstacles?.() || []
       for (const obs of obstacles) {
         if (!obs || !obs.pos) continue
-        const obsDist = kongBox.distanceToPoint(obs.pos)
-        if (obsDist < 3.2) {
-          const pushDir = obs.pos.clone().sub(this.rootGroup.position).normalize()
+        const obsDist = kongPos.distanceTo(obs.pos)
+        if (obsDist < 7.0) {
+          const pushDir = obs.pos.clone().sub(kongPos).normalize()
           pushDir.y = 0.35
           obs.vel.copy(pushDir.multiplyScalar(40))
           obs.rotVel.set((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 16)
@@ -743,18 +766,19 @@ export class KongGorak {
     }
 
     // 2. AÇÕES PRINCIPAIS NA BOLA (Agarre, Chute ou Soco)
-    if (ballPos && ballDist < 16.0) {
+    if (ballPos && ballDist < 18.0) {
       this._smoothLookAt(ballPos, 1.0)
-      if (ballDist < 12.0) {
+      if (ballDist < 14.0) {
         const pick = Math.random()
-        if (pick < 0.40) {
+        // 55% de chance de agarrar a bola quando próxima!
+        if (pick < 0.55) {
           return this._start('GRAB_BALL') // Pega na mão
-        } else if (pick < 0.75) {
+        } else if (pick < 0.85) {
           return this._start('KICK_BALL') // Chuta longe
         }
         return this._start('PUNCH_BALL') // Soco no chão
       }
-      return this._start('PUNCH_BALL')
+      return this._start('CHASE_BALL')
     }
 
     // 3. ATAQUE ATIVO CONTRA CARROS QUE SE APROXIMAM (< 14m)
@@ -817,7 +841,7 @@ export class KongGorak {
     this.state = next
     this.stateTime = 0
     this._restoreRestPose()
-    this.actionCooldown = 1.0
+    this.actionCooldown = 0.35 // Cooldown reduzido para manter Gorak dinâmico e combativo!
     this._playAction('walk', true)
   }
 
@@ -830,49 +854,66 @@ export class KongGorak {
     const duration = action?.getClip().duration || 0.95
     const progress = this.stateTime / duration
 
-    // Janela de impacto: entre 35% e 75% da animação
-    if (!this._hitDone && progress >= 0.35 && progress <= 0.75) {
-      const marker = this._punchSide === 'punch_right' ? this._bones.hitboxRHand : this._bones.hitboxLHand
-      const handPos = this._getBoneWorldPosition(marker)
+    // Janela de impacto: entre 30% e 80% da animação
+    if (!this._hitDone && progress >= 0.30 && progress <= 0.80) {
+      // Força update de matrizes antes de ler posições world dos bones
+      if (this.model) this.model.updateMatrixWorld(true)
 
-      if (handPos) {
-        // Colisão com carros (raio de 6.0m do marcador da mão)
-        const cars = this.getCars().filter(Boolean)
-        for (const car of cars) {
-          const cPos = this.getCarPosition(car)
-          if (!cPos) continue
-          if (handPos.distanceTo(cPos) <= 6.0) {
-            this._hitDone = true
+      const markerBone = this._punchSide === 'punch_right' ? this._bones.hitboxRHand : this._bones.hitboxLHand
+      const handPos = this._getBoneWorldPosition(markerBone)
+        || this._getBoneWorldPosition(this._punchSide === 'punch_right' ? this._bones.rightHand : this._bones.leftHand)
+
+      // Fallback: se bone não disponível ainda, usa posição do Gorak + offset frontal estimado
+      const punchPos = handPos || this.rootGroup.position.clone().addScaledVector(
+        new THREE.Vector3(Math.sin(this.rootGroup.rotation.y), 0.6, Math.cos(this.rootGroup.rotation.y)), 7
+      )
+
+      // Colisão com carros (raio de 12m do ponto de impacto)
+      const cars = this.getCars().filter(Boolean)
+      for (const car of cars) {
+        const cPos = this.getCarPosition(car)
+        if (!cPos) continue
+        if (punchPos.distanceTo(cPos) <= 12.0) {
+          this._hitDone = true
+          // Impulso direto no velX/velZ + via applyImpulse como fallback
+          const dir = cPos.clone().sub(this.rootGroup.position).normalize()
+          dir.y = 0.6
+          if (typeof car.velX !== 'undefined') {
+            car.velX += dir.x * 55
+            car.velZ += dir.z * 55
+            car.velY = Math.max(car.velY, 12)
+            if (typeof car.applySpinOut === 'function') car.applySpinOut(2.5)
+          } else {
             this._applyCarImpulse(car, 65.0)
-            this.effects.punch?.(cPos)
-            break
           }
+          this.effects.punch?.(cPos)
+          break
         }
+      }
 
-        // Colisão com bola
-        if (!this._hitDone) {
-          const bPos = this.getBallPosition()
-          if (bPos && handPos.distanceTo(bPos) <= 5.8) {
+      // Colisão com bola (raio de 10m)
+      if (!this._hitDone) {
+        const bPos = this.getBallPosition()
+        if (bPos && punchPos.distanceTo(bPos) <= 10.0) {
+          this._hitDone = true
+          this._applyBallImpulse(80.0)
+          this.effects.punch?.(bPos)
+        }
+      }
+
+      // Colisão com obstáculos
+      if (!this._hitDone) {
+        const obstacles = this.getObstacles?.() || []
+        for (const obs of obstacles) {
+          if (!obs || !obs.pos) continue
+          if (punchPos.distanceTo(obs.pos) <= 10.0) {
             this._hitDone = true
-            this._applyBallImpulse(75.0)
-            this.effects.punch?.(bPos)
-          }
-        }
-
-        // Colisão com obstáculos
-        if (!this._hitDone) {
-          const obstacles = this.getObstacles?.() || []
-          for (const obs of obstacles) {
-            if (!obs || !obs.pos) continue
-            if (handPos.distanceTo(obs.pos) <= 6.0) {
-              this._hitDone = true
-              const dir = obs.pos.clone().sub(this.rootGroup.position).normalize()
-              dir.y = 0.45
-              obs.vel.copy(dir.multiplyScalar(65.0))
-              obs.rotVel.set((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 16)
-              this.effects.hitObstacle?.(obs.pos)
-              break
-            }
+            const dir = obs.pos.clone().sub(this.rootGroup.position).normalize()
+            dir.y = 0.45
+            obs.vel.copy(dir.multiplyScalar(65.0))
+            obs.rotVel.set((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 16)
+            this.effects.hitObstacle?.(obs.pos)
+            break
           }
         }
       }
@@ -888,30 +929,63 @@ export class KongGorak {
     const duration = action?.getClip().duration || 1.05
     const progress = this.stateTime / duration
 
-    if (!this._hitDone && progress >= 0.35 && progress <= 0.75) {
-      const footPos = this._getBoneWorldPosition(this._bones.hitboxRFoot) || this._getBoneWorldPosition(this._bones.hitboxLFoot)
+    if (!this._hitDone && progress >= 0.30 && progress <= 0.80) {
+      // Força update de matrizes antes de ler posições world dos bones
+      if (this.model) this.model.updateMatrixWorld(true)
 
-      if (footPos) {
-        const bPos = this.getBallPosition()
-        if (bPos && footPos.distanceTo(bPos) <= 6.2) {
-          this._hitDone = true
-          this._applyBallImpulse(90.0)
-          this.effects.kick?.(bPos)
-        }
+      const footBone = this._bones.hitboxRFoot || this._bones.rightFoot || this._bones.hitboxLFoot || this._bones.leftFoot
+      const footPos = this._getBoneWorldPosition(footBone)
 
-        if (!this._hitDone) {
-          const obstacles = this.getObstacles?.() || []
-          for (const obs of obstacles) {
-            if (!obs || !obs.pos) continue
-            if (footPos.distanceTo(obs.pos) <= 6.2) {
-              this._hitDone = true
-              const dir = obs.pos.clone().sub(this.rootGroup.position).normalize()
-              dir.y = 0.52
-              obs.vel.copy(dir.multiplyScalar(78.0))
-              obs.rotVel.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 20)
-              this.effects.hitObstacle?.(obs.pos)
-              break
+      // Fallback: posição do Gorak + offset baixo frontal
+      const kickPos = footPos || this.rootGroup.position.clone().addScaledVector(
+        new THREE.Vector3(Math.sin(this.rootGroup.rotation.y), -0.5, Math.cos(this.rootGroup.rotation.y)), 6
+      )
+
+      // Chute na bola (raio de 12m)
+      const bPos = this.getBallPosition()
+      if (bPos && kickPos.distanceTo(bPos) <= 12.0) {
+        this._hitDone = true
+        this._applyBallImpulse(95.0)
+        this.effects.kick?.(bPos)
+      }
+
+      // Chute em carros próximos
+      if (!this._hitDone) {
+        const cars = this.getCars().filter(Boolean)
+        for (const car of cars) {
+          const cPos = this.getCarPosition(car)
+          if (!cPos) continue
+          if (kickPos.distanceTo(cPos) <= 12.0) {
+            this._hitDone = true
+            const dir = cPos.clone().sub(this.rootGroup.position).normalize()
+            dir.y = 0.5
+            if (typeof car.velX !== 'undefined') {
+              car.velX += dir.x * 60
+              car.velZ += dir.z * 60
+              car.velY = Math.max(car.velY, 10)
+              if (typeof car.applySpinOut === 'function') car.applySpinOut(2.5)
+            } else {
+              this._applyCarImpulse(car, 70.0)
             }
+            this.effects.kick?.(cPos)
+            break
+          }
+        }
+      }
+
+      // Chute em obstáculos
+      if (!this._hitDone) {
+        const obstacles = this.getObstacles?.() || []
+        for (const obs of obstacles) {
+          if (!obs || !obs.pos) continue
+          if (kickPos.distanceTo(obs.pos) <= 12.0) {
+            this._hitDone = true
+            const dir = obs.pos.clone().sub(this.rootGroup.position).normalize()
+            dir.y = 0.52
+            obs.vel.copy(dir.multiplyScalar(80.0))
+            obs.rotVel.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 20)
+            this.effects.hitObstacle?.(obs.pos)
+            break
           }
         }
       }
@@ -927,15 +1001,29 @@ export class KongGorak {
     const duration = action?.getClip().duration || 1.10
     const progress = this.stateTime / duration
 
-    // Janela de agarre garantida: atrai a bola para a palma da mão
-    if (!this._hitDone && progress >= 0.25 && progress <= 0.85) {
-      const grabPoint = this._getBoneWorldPosition(this._bones.rightHand) || this._getBoneWorldPosition(this._bones.hitboxRHand)
+    // Janela de agarre: entre 20% e 90% da animação
+    if (!this._hitDone && progress >= 0.20 && progress <= 0.90) {
+      // Garante que as matrizes estejam atualizadas antes de ler posição world do bone
+      if (this.model) this.model.updateMatrixWorld(true)
+
+      const grabBone = this._bones.ballHoldPoint || this._bones.hitboxRHand || this._bones.rightHand
+      const grabPoint = this._getBoneWorldPosition(grabBone)
       const bPos = this.getBallPosition()
 
-      if (grabPoint && bPos && grabPoint.distanceTo(bPos) <= 9.0) {
-        this._hitDone = true
-        this._attachBallToHand()
-        this.effects.grab?.(bPos)
+      if (grabPoint && bPos) {
+        const dist = grabPoint.distanceTo(bPos)
+        // Atrai a bola magneticamente para a mão enquanto na janela (facilita o contato visual)
+        if (dist <= 18.0 && dist > 0.5 && this.ball && !this.ball.userData?.kongHeld) {
+          const attract = grabPoint.clone().sub(bPos).normalize().multiplyScalar(Math.min(dist * 0.4, 8))
+          attract.y = Math.max(attract.y, 0)
+          this.physics.applyImpulse?.(this.ball, attract)
+        }
+        // Confirma o agarre quando a bola está próxima o suficiente da mão
+        if (dist <= 11.0) {
+          this._hitDone = true
+          this._attachBallToHand()
+          this.effects.grab?.(bPos)
+        }
       }
     }
 

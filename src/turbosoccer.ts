@@ -813,7 +813,9 @@ export class TurboSoccerGame {
           { x: -45, z: -60, rot: 3 * Math.PI / 4 }
         ]
 
-        const gorakGlowColors = [0xffd23f, 0xef4444, 0x22c55e, 0x38bdf8]
+        // Tonalidades nobres de emissive por titã (sem círculos no chão e sem alterar texturas)
+        // Titã Dourado, Titã Carmesim, Titã Esmeralda, Titã Safira
+        const gorakEmissiveTints = [0x382810, 0x3d1212, 0x12361a, 0x10283d]
 
         this.kongGoraks = []
         for (let i = 0; i < gorakCount; i++) {
@@ -825,26 +827,14 @@ export class TurboSoccerGame {
             getObstacles: () => this.dynamicObstacles,
             physics: kongPhysics,
             camera: kongCamera,
-            effects: kongEffects
+            effects: kongEffects,
+            emissiveTint: gorakEmissiveTints[i % gorakEmissiveTints.length]
           })
 
           gorak.rootGroup.position.set(cfg.x, 0, cfg.z)
           gorak.rootGroup.rotation.y = cfg.rot
           gorak.walkDirection = (i % 2 === 0) ? 1 : -1
           gorak.slamTimer = 6.0 + i * 4.0
-
-          // Glifo rúnico luminoso nos pés para diferenciar os Titãs com classe e sem alterar a textura original
-          const ringGeo = new THREE.RingGeometry(2.8, 3.4, 32)
-          ringGeo.rotateX(-Math.PI / 2)
-          const ringMat = new THREE.MeshBasicMaterial({
-            color: gorakGlowColors[i % gorakGlowColors.length],
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.75
-          })
-          const ringMesh = new THREE.Mesh(ringGeo, ringMat)
-          ringMesh.position.y = 0.08
-          gorak.rootGroup.add(ringMesh)
 
           this.scene.add(gorak.rootGroup)
           gorak.load().catch((err) => console.warn(`[KongGorak ${i + 1}] Falha ao carregar modelo:`, err))
@@ -7621,6 +7611,7 @@ export class CarObject {
   public isBot:         boolean
   public forceTeamColor: boolean = false
   public teamBadgeMesh: THREE.Sprite | null = null
+  public teamRingMesh: THREE.Mesh | null = null
 
   constructor(scene: THREE.Scene, color: number, isBot: boolean, forceTeamColor = false) {
     this.scene          = scene
@@ -7636,6 +7627,22 @@ export class CarObject {
     this.shadowMesh.rotation.x = -Math.PI / 2
     this.shadowMesh.position.set(this.pos.x, 0.04, this.pos.z)
     this.scene.add(this.shadowMesh)
+
+    // Círculo/Anel de equipe bem visível e nítido sob o carro (raio 4.6m a 5.4m)
+    // Cores padronizadas: Laranja Dourado (time aliado) ou Azul Ciano (time rival)
+    const isBlueTeam = (color === 0x0099ff || color === 0x00cfff || color === 0x00eeff || color === 0x44aaff)
+    const ringColor = isBlueTeam ? 0x00b4d8 : 0xff7b00
+    const ringGeo = new THREE.RingGeometry(3.6, 4.4, 32)
+    ringGeo.rotateX(-Math.PI / 2)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: ringColor,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.75
+    })
+    this.teamRingMesh = new THREE.Mesh(ringGeo, ringMat)
+    this.teamRingMesh.position.set(this.pos.x, 0.05, this.pos.z)
+    this.scene.add(this.teamRingMesh)
 
     // Fogo de Nitro Traseiro
     this.flameGroup = this.buildFlame()
@@ -7697,6 +7704,12 @@ export class CarObject {
       this.shadowMesh.position.set(this.pos.x, 0.04, this.pos.z)
       const s = Math.max(0.55, 1 - this.pos.y * 0.05)
       this.shadowMesh.scale.set(s, s, 1)
+    }
+
+    if (this.teamRingMesh) {
+      this.teamRingMesh.position.set(this.pos.x, 0.05, this.pos.z)
+      const s = Math.max(0.65, 1 - this.pos.y * 0.04)
+      this.teamRingMesh.scale.set(s, s, 1)
     }
   }
 
