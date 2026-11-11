@@ -133,7 +133,11 @@ export class GaragePreview {
 
     if (!isCustom) {
       const size = bbox.getSize(new THREE.Vector3())
-      if (size.x > size.z) model.rotation.y = -Math.PI / 2
+      if (this.currentCarId === 'guincho-tody' || this.currentCarId === 'van-gost') {
+        model.rotation.y = Math.PI
+      } else if (size.x > size.z) {
+        model.rotation.y = -Math.PI / 2
+      }
 
       const longLen = Math.max(size.x, size.z)
       if (longLen > 0.0001) model.scale.setScalar(5.2 / longLen)

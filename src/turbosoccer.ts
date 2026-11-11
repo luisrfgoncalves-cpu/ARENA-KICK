@@ -638,7 +638,7 @@ export class TurboSoccerGame {
       this.buildMagnetArc()
       this.buildGoals()
       this.buildBall()
-      this.loadSceneryClouds()
+      if (this.theme !== 'kong') this.loadSceneryClouds()
       this.loadCornerFlags()
       this.buildCartoonCrowd()
       this.buildImpactFlash()
@@ -8067,7 +8067,13 @@ export class CarObject {
           let bbox = new THREE.Box3().setFromObject(model)
           const rawSize = bbox.getSize(new THREE.Vector3())
 
-          if (rawSize.x > rawSize.z) model.rotation.y = -Math.PI / 2
+          // Orientação precisa por modelo:
+          if (modelId === 'guincho-tody' || modelId === 'van-gost') {
+            // Tripo AI gera frente voltada para -Y ou -Z / X invertido
+            model.rotation.y = Math.PI // frente alinhada perfeitamente com a direção de corrida
+          } else if (rawSize.x > rawSize.z) {
+            model.rotation.y = -Math.PI / 2
+          }
 
           // Normaliza o comprimento para ~5.2 m (porte ágil e esportivo)
           const longLen = Math.max(rawSize.x, rawSize.z)
