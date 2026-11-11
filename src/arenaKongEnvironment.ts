@@ -100,11 +100,16 @@ export async function loadArenaKongEnvironment(
     }
   }
 
-  // Carrega kits modulares do cenário fora da área jogável
+  // Carrega kits modulares 3D reais do cenário fora da área jogável com escala monumental
   await Promise.allSettled([
-    loadGLB('arena-kong-stadium-kit.glb', 'ArenaKongStadiumKit'),
-    loadGLB('arena-kong-jungle-kit.glb', 'ArenaKongJungleKit'),
-    loadGLB('arena-kong-cliffs-ruins.glb', 'ArenaKongCliffsRuins', [0, 0, -215], [1.2, 1.2, 1.2])
+    // Ruínas e penhascos colossais ao fundo ao norte e sul
+    loadGLB('arena-kong-cliffs-ruins.glb', 'ArenaKongCliffsNorth', [0, 25, -235], [240, 140, 240]),
+    loadGLB('arena-kong-cliffs-ruins.glb', 'ArenaKongCliffsSouth', [0, 25,  235], [240, 140, 240]),
+    // Floresta tropical e selva dos titãs margeando as laterais
+    loadGLB('arena-kong-jungle-kit.glb', 'ArenaKongJungleWest', [-160, 20, 0], [180, 110, 320]),
+    loadGLB('arena-kong-jungle-kit.glb', 'ArenaKongJungleEast', [ 160, 20, 0], [180, 110, 320]),
+    // Arquitetura e muralhas de pedra do coliseu dos titãs
+    loadGLB('arena-kong-stadium-kit.glb', 'ArenaKongStadiumWalls', [0, 16, 0], [260, 80, 400])
   ])
 
   // Garante que o backdrop esteja presente sem duplicar

@@ -20,6 +20,12 @@ export type SoundKey =
   | 'boost'
   | 'crowd'
   | 'cheer'
+  | 'coinPickup'
+  | 'pickupCrate'
+  | 'titanNetLaunch'
+  | 'titanNetCapture'
+  | 'collisionVehicle'
+  | 'obstacleHit' 
 
 const SFX = '/audio/sfx'
 const CROWD = '/audio/crowd'
@@ -263,71 +269,39 @@ export class AudioManager {
   playVictory()    { this.play('victory') }
   playBoost()      { this.play('boost') }
 
-  playDemo() {
-    this.play('postHit')
-    this.play('powerHit')
-    this.synthesizeBoom()
+    playDemo() {
+    this.playPostHit()
+    this.playPowerHit()
   }
 
-  /** Sintetizador sonoro Web Audio para explosão e impacto estrondoso garantido */
-  public synthesizeBoom(frequency = 120, duration = 0.55, volume = 0.9) {
+  playCoinPickup() {
     if (this.muted) return
-    try {
-      const ctx = Howler.ctx
-      if (!ctx) return
-      if (ctx.state === 'suspended') ctx.resume()
+    try { sounds?.coinPickup?.play() } catch {}
+  }
 
-      const now = ctx.currentTime
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      const filter = ctx.createBiquadFilter()
+  playPickupCrate() {
+    if (this.muted) return
+    try { sounds?.pickupCrate?.play() } catch {}
+  }
 
-      // Queda brusca de frequência: de 180Hz para 25Hz (som de estrondo)
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(frequency, now)
-      osc.frequency.exponentialRampToValueAtTime(25, now + duration)
+  playTitanNetLaunch() {
+    if (this.muted) return
+    try { sounds?.titanNetLaunch?.play() } catch {}
+  }
 
-      // Filtro passa-baixa analógico para corpo pesado de sub-grave
-      filter.type = 'lowpass'
-      filter.frequency.setValueAtTime(450, now)
-      filter.frequency.exponentialRampToValueAtTime(60, now + duration)
+  playTitanNetCapture() {
+    if (this.muted) return
+    try { sounds?.titanNetCapture?.play() } catch {}
+  }
 
-      // Envelope de volume com decaimento exponencial
-      gain.gain.setValueAtTime(volume, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + duration)
+  playCollisionVehicle() {
+    if (this.muted) return
+    try { sounds?.collisionVehicle?.play() } catch {}
+  }
 
-      osc.connect(filter)
-      filter.connect(gain)
-      gain.connect(ctx.destination)
-
-      osc.start(now)
-      osc.stop(now + duration)
-
-      // Camada de ruído/estilhaços brancos cel-shading
-      const bufferSize = ctx.sampleRate * duration
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
-      const data = buffer.getChannelData(0)
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2))
-      }
-      const noise = ctx.createBufferSource()
-      noise.buffer = buffer
-      const noiseFilter = ctx.createBiquadFilter()
-      noiseFilter.type = 'bandpass'
-      noiseFilter.frequency.setValueAtTime(800, now)
-      noiseFilter.Q.setValueAtTime(1.5, now)
-
-      const noiseGain = ctx.createGain()
-      noiseGain.gain.setValueAtTime(volume * 0.7, now)
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.7)
-
-      noise.connect(noiseFilter)
-      noiseFilter.connect(noiseGain)
-      noiseGain.connect(ctx.destination)
-
-      noise.start(now)
-      noise.stop(now + duration * 0.7)
-    } catch {}
+  playObstacleHit() {
+    if (this.muted) return
+    try { sounds?.obstacleHit?.play() } catch {}
   }
 
   /** Som de lançamento/voo de foguete ou míssil */

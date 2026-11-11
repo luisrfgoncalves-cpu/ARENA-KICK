@@ -117,7 +117,44 @@ export interface TurboTuning {
 // ============================================================
 //  CLASSE PRINCIPAL DO JOGO TURBO SOCCER 3D
 // ============================================================
+
 export class TurboSoccerGame {
+  // Cache de GLB de Props Cartoon
+  private static propModels: {
+    coinLarge?: THREE.Group
+    coinSmall?: THREE.Group
+    barrel?: THREE.Group
+    cone?: THREE.Group
+    crate?: THREE.Group
+    netProjectile?: THREE.Group
+  } = {}
+
+  private async preloadPropsGLB(): Promise<void> {
+    const loader = new GLTFLoader()
+    const load = async (path: string) => {
+      try {
+        const gltf = await loader.loadAsync(path)
+        return gltf.scene
+      } catch {
+        return null
+      }
+    }
+    const [cLarge, cSmall, bar, con, crt, net] = await Promise.all([
+      load('/assets/props/boost_coin_gold_large_100.glb'),
+      load('/assets/props/boost_coin_cyan_small_12.glb'),
+      load('/assets/props/obstacle_barrel.glb'),
+      load('/assets/props/obstacle_traffic_cone.glb'),
+      load('/assets/props/power_crate_titan_trap.glb'),
+      load('/assets/props/titan_trap_projectile.glb')
+    ])
+    if (cLarge) TurboSoccerGame.propModels.coinLarge = cLarge
+    if (cSmall) TurboSoccerGame.propModels.coinSmall = cSmall
+    if (bar) TurboSoccerGame.propModels.barrel = bar
+    if (con) TurboSoccerGame.propModels.cone = con
+    if (crt) TurboSoccerGame.propModels.crate = crt
+    if (net) TurboSoccerGame.propModels.netProjectile = net
+  }
+
   private container:     HTMLElement
   private scene:         THREE.Scene
   private camera:        THREE.PerspectiveCamera
@@ -566,6 +603,7 @@ export class TurboSoccerGame {
       }
     }
 
+    this.preloadPropsGLB().catch(() => {})
     // 6. Monitor de Performance FPS stats.js (ativável via tecla F2)
     try {
       this.stats = new Stats()
@@ -3908,7 +3946,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
             coin.respawnTimer = 5.5
             coin.group.visible = false
             if (car === this.playerCar) {
-              this.audio.playBoost()
+              this.audio.playCoinPickup()
               this.triggerImpactFlash(coin.pos)
             }
             break
@@ -4031,16 +4069,23 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       const g = new THREE.Group()
       g.position.set(sp.x, 2.5, sp.z)
 
-      const boxGeo = new THREE.BoxGeometry(3.2, 3.2, 3.2)
-      const boxMesh = new THREE.Mesh(boxGeo, boxMat)
-      boxMesh.castShadow = true
-      g.add(boxMesh)
+      let boxMesh: THREE.Object3D
+      if (TurboSoccerGame.propModels.crate) {
+        boxMesh = TurboSoccerGame.propModels.crate.clone(true)
+        boxMesh.scale.setScalar(3.2)
+        boxMesh.traverse(c => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true } })
+        g.add(boxMesh)
+      } else {
+        const boxGeo = new THREE.BoxGeometry(3.2, 3.2, 3.2)
+        boxMesh = new THREE.Mesh(boxGeo, boxMat)
+        ;(boxMesh as THREE.Mesh).castShadow = true
+        g.add(boxMesh)
 
-      // Borda preta de contorno cartoon 3D expressiva
-      const outlineGeo = new THREE.BoxGeometry(3.38, 3.38, 3.38)
-      const outlineMat = new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
-      const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat)
-      boxMesh.add(outlineMesh)
+        const outlineGeo = new THREE.BoxGeometry(3.38, 3.38, 3.38)
+        const outlineMat = new THREE.MeshBasicMaterial({ color: 0x070b16, side: THREE.BackSide })
+        const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat)
+        boxMesh.add(outlineMesh)
+      }
 
       const shadow = new THREE.Mesh(
         new THREE.CircleGeometry(2.4, 24),
@@ -4096,8 +4141,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
                 // Já possui poder ou está sorteando
                 break
               }
-              // SOM DE EXPLOSÃO DA CAIXA: playDemo() = postHit + powerHit = efeito de impacto forte
-              this.audio.playDemo()
+              this.audio.playPickupCrate()
               this.triggerImpactFlash(mb.pos)
               this.emitCartoonStarBurst(mb.pos, 24, 0xfacc15)
               this.emitCartoonStarBurst(mb.pos, 12, 0xff5500)
@@ -4863,6 +4907,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
           hit = true
           // PARALISA O GORAK POR 3.5 SEGUNDOS COM REDE DE CHOQUE!
           trap.targetGorak.applyTrap(3.5)
+          this.audio.playTitanNetCapture()
           this.audio.synthesizeBoom(140, 0.5, 0.8)
           this.triggerCameraShake(1.4)
           this.triggerImpactFlash(gPos)
@@ -4903,17 +4948,22 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
 
     const tGroup = new THREE.Group()
     // Esfera central de plasma elétrico
-    const orb = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(1.6, 1),
-      new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true })
-    )
-    tGroup.add(orb)
-    // Anel de contenção elétrico
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(2.4, 0.25, 12, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffd23f })
-    )
-    tGroup.add(ring)
+    if (TurboSoccerGame.propModels.netProjectile) {
+      const netMesh = TurboSoccerGame.propModels.netProjectile.clone(true)
+      netMesh.scale.setScalar(2.8)
+      tGroup.add(netMesh)
+    } else {
+      const orb = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(1.6, 1),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true })
+      )
+      tGroup.add(orb)
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(2.4, 0.25, 12, 24),
+        new THREE.MeshBasicMaterial({ color: 0xffd23f })
+      )
+      tGroup.add(ring)
+    }
     const pLight = new THREE.PointLight(0x00f0ff, 2.5, 16)
     tGroup.add(pLight)
 
@@ -4931,8 +4981,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       lifetime: 4.0
     })
 
-    this.audio.playPowerHit()
-    this.audio.playDash()
+    this.audio.playTitanNetLaunch()
     if (owner === this.playerCar) {
       this.showQuickChat('🕸️ DISPAROU REDE TITÂNICA!')
     } else {
@@ -5076,29 +5125,33 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
         gradientMap: TOON_GRADIENT
       })
 
-      // Formato clássico abaulado de barril real (mais largo no centro)
-      const topHalf = new THREE.Mesh(new THREE.CylinderGeometry(rimR, bellyR, barrelH / 2, 24), woodMat)
-      topHalf.position.y = barrelH / 4
-      topHalf.castShadow = true
-      g.add(topHalf)
+      if (TurboSoccerGame.propModels.barrel) {
+        const bModel = TurboSoccerGame.propModels.barrel.clone(true)
+        bModel.scale.setScalar(3.2)
+        bModel.traverse(c => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true } })
+        g.add(bModel)
+      } else {
+        const topHalf = new THREE.Mesh(new THREE.CylinderGeometry(rimR, bellyR, barrelH / 2, 24), woodMat)
+        topHalf.position.y = barrelH / 4
+        topHalf.castShadow = true
+        g.add(topHalf)
 
-      const btmHalf = new THREE.Mesh(new THREE.CylinderGeometry(bellyR, rimR, barrelH / 2, 24), woodMat)
-      btmHalf.position.y = -barrelH / 4
-      btmHalf.castShadow = true
-      g.add(btmHalf)
+        const btmHalf = new THREE.Mesh(new THREE.CylinderGeometry(bellyR, rimR, barrelH / 2, 24), woodMat)
+        btmHalf.position.y = -barrelH / 4
+        btmHalf.castShadow = true
+        g.add(btmHalf)
 
-      // Tampas superior e inferior
-      const topCap = new THREE.Mesh(new THREE.CylinderGeometry(rimR - 0.05, rimR - 0.05, 0.12, 24), capMat)
-      topCap.position.y = barrelH / 2
-      g.add(topCap)
+        const topCap = new THREE.Mesh(new THREE.CylinderGeometry(rimR - 0.05, rimR - 0.05, 0.12, 24), capMat)
+        topCap.position.y = barrelH / 2
+        g.add(topCap)
 
-      // 4 Aros de ferro clássicos de reforço com relevo
-      const ringOffsets = [barrelH * 0.42, barrelH * 0.14, -barrelH * 0.14, -barrelH * 0.42]
-      const ringRadii   = [rimR + 0.06, bellyR + 0.05, bellyR + 0.05, rimR + 0.06]
-      for (let i = 0; i < ringOffsets.length; i++) {
-        const rim = new THREE.Mesh(new THREE.CylinderGeometry(ringRadii[i], ringRadii[i], 0.22, 24), ironMat)
-        rim.position.y = ringOffsets[i]
-        g.add(rim)
+        const ringOffsets = [barrelH * 0.42, barrelH * 0.14, -barrelH * 0.14, -barrelH * 0.42]
+        const ringRadii   = [rimR + 0.06, bellyR + 0.05, bellyR + 0.05, rimR + 0.06]
+        for (let i = 0; i < ringOffsets.length; i++) {
+          const rim = new THREE.Mesh(new THREE.CylinderGeometry(ringRadii[i], ringRadii[i], 0.22, 24), ironMat)
+          rim.position.y = ringOffsets[i]
+          g.add(rim)
+        }
       }
 
       this.scene.add(g)
