@@ -979,6 +979,9 @@ export class TurboSoccerGame {
   public togglePause = () => {
     if (this.matchEnded || this.destroyed) return
     this.paused = !this.paused
+    if (this.paused) {
+      this.gamepad.stopVibration()
+    }
     if (this.pauseOverlay) this.pauseOverlay.style.display = this.paused ? 'flex' : 'none'
   }
 
@@ -3870,7 +3873,7 @@ RT Acelerar &nbsp; LT Ré &nbsp; LS Direção &nbsp; RS Câmera &nbsp; A Pulo/Fl
       g.add(shadow)
 
       // Luz cartoon suave na moeda
-      const light = new THREE.PointLight(isLarge ? 0xffaa00 : 0x00cfff, isLarge ? 0.75 : 0.45, isLarge ? 5.5 : 3.5)
+      const light = new THREE.PointLight(isLarge ? 0xffaa00 : 0x00cfff, isLarge ? 0.4 : 0.2, isLarge ? 3.5 : 2.0)
       light.position.y = 1.2
       g.add(light)
 
@@ -7982,37 +7985,8 @@ export class CarObject {
 
   async loadModel(modelId: string): Promise<void> {
     // Modelos personalizados construídos exclusivamente com Three.js de alta fidelidade
-    if (modelId === 'guincho-tody' || modelId === 'van-gost') {
-      while (this.group.children.length > 0) {
-        this.group.remove(this.group.children[0])
-      }
-      this.wheels = []
-      this.steerWheels = []
+    // Guincho Tody e Van Gost agora carregam seus modelos GLB oficiais
 
-      const res = modelId === 'guincho-tody' ? buildGuinchoTodyVehicle() : buildVanGostVehicle()
-      this.wheels = res.wheels
-      this.steerWheels = res.steerWheels
-      this.group.add(res.group)
-
-      const underglow = new THREE.PointLight(res.underglowColor, 2.8, 10)
-      underglow.position.set(0, 0.4, 0)
-      this.group.add(underglow)
-
-      if (this.forceTeamColor) {
-        const roofMarker = new THREE.Mesh(
-          new THREE.SphereGeometry(0.26, 12, 12),
-          new THREE.MeshBasicMaterial({ color: this.teamColor })
-        )
-        roofMarker.position.set(0, res.roofMarkerY, 0)
-        this.group.add(roofMarker)
-      }
-
-      this.flameGroup = this.buildFlame()
-      this.flameGroup.position.set(0, 0.1, 0)
-      this.group.add(this.flameGroup)
-
-      return Promise.resolve()
-    }
 
     const file = CAR_MODELS[modelId]?.file || '/models/vehicle-truck-red.glb'
 
@@ -8105,7 +8079,7 @@ export class CarObject {
 
           // Luz Neon Underglow no chão sob o veículo
           const underglowColor = modelId === 'nova-forge' ? 0x00f0ff : this.teamColor
-          const underglow = new THREE.PointLight(underglowColor, 2.8, 10)
+          const underglow = new THREE.PointLight(underglowColor, 1.4, 8)
           underglow.position.set(0, 0.4, 0)
           this.group.add(underglow)
 

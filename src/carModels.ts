@@ -29,12 +29,12 @@ export const CAR_MODELS: Record<string, CarModelEntry> = {
     attrs: { shieldBonus: 2.0, jumpBonus: 6 }  // Escudo + Pulo
   },
   'guincho-tody': {
-    file: '/models/guincho-tody.glb',
+    file: '/assets/models/powerkick-cars/guincho-tody.glb',
     label: 'Guincho Tody',
     attrs: { pushBonus: 1.40, nitroBonus: 1.10 }  // +40% Empurrão
   },
   'van-gost': {
-    file: '/models/van-gost.glb',
+    file: '/assets/models/powerkick-cars/van-gost.glb',
     label: 'Van Gost',
     attrs: { shieldBonus: 2.5, pushBonus: 1.20 }  // +35% Escudo
   }

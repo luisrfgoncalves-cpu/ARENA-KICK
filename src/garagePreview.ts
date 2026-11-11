@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { CAR_MODELS } from './carModels'
-import { buildGuinchoTodyVehicle, buildVanGostVehicle } from './customVehicles'
+// GLBs oficiais
 
 export class GaragePreview {
   private host: HTMLElement
@@ -87,16 +87,7 @@ export class GaragePreview {
     const token = ++this.loadToken
 
     // Carros personalizados com modelos 3D cartoon de alta fidelidade
-    if (carId === 'guincho-tody') {
-      const res = buildGuinchoTodyVehicle()
-      this.mount(res.group, true)
-      return
-    }
-    if (carId === 'van-gost') {
-      const res = buildVanGostVehicle()
-      this.mount(res.group, true)
-      return
-    }
+    // Todos os 5 carros utilizam seus arquivos GLB oficiais
 
     const entry = CAR_MODELS[carId]
     const file = (entry && entry.file) ? entry.file : '/models/vehicle-truck-red.glb'
